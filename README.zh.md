@@ -1,3 +1,5 @@
+本维护 fork 面向已声明的 Windows 源码 Web 宿主 DSH `0.2.2-rc.1`，保留上游行为和在线目录。固定来源与验证范围见 [FORK.md](FORK.md)。
+
 <p align="center">
   <img src="assets/logo.svg" width="96" alt="dsh-market logo">
 </p>

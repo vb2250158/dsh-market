@@ -1,3 +1,5 @@
+This maintenance fork targets the tested Windows source-Web host DSH `0.2.2-rc.1`. The upstream behavior and catalog remain unchanged. See [FORK.md](FORK.md) for the pinned source and validation scope.
+
 <p align="center">
   <img src="assets/logo.svg" width="96" alt="dsh-market logo">
 </p>
