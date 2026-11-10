@@ -8,6 +8,8 @@ Git and npm packages include both Host `lib/` and browser `client/client.js`. `p
 
 ## Unreleased
 
+- `1.70.2-fork.2`: normalize trailing whitespace in shipped Host JavaScript and declarations after TypeScript emits them; runtime behavior is unchanged.
+
 - `1.70.2-fork.1`: declare the tested DSH host and fork source while retaining the upstream market and theme lifecycle behavior. Commit Host artifacts so fixed Git installs can use the same package outputs as npm.
 - 本 fork 只声明当前 Windows 源码 Web 受测环境，保留上游目录和皮肤管理行为；不自动安装或启用其他皮肤。
 

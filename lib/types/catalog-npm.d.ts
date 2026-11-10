@@ -39,7 +39,7 @@ export declare function fileFromTarball(gz: Buffer, wanted: string): Buffer | nu
  *   the published version is the one already held.
  * @throws when the package, the tarball or the file inside it cannot be read.
  */
-export declare function catalogFromPackage(registry: string, pkg: string, known?: string, 
+export declare function catalogFromPackage(registry: string, pkg: string, known?: string,
 /** The entry to extract; the catalog package carries `plugins.json`, companions theirs. */
 file?: string): Promise<{
     version: string;

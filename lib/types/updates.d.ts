@@ -202,7 +202,7 @@ export declare function fetchNpmLatest(name: string): Promise<string | null>;
  */
 export declare function newerPrereleaseFor(name: string, installed: string | null): Promise<string | null>;
 /** Per-plugin update checks; a failed check reports no update rather than failing the listing. */
-export declare function checkUpdates(profile: string, force?: boolean, explicitDir?: string, 
+export declare function checkUpdates(profile: string, force?: boolean, explicitDir?: string,
 /**
  * Packages that follow a release channel instead of plain `latest`. Only
  * ever the market itself: opting into early builds is volunteering to try
