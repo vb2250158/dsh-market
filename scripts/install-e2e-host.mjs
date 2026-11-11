@@ -50,6 +50,13 @@ if (!version) {
 }
 
 const OVERRIDES = {
+  // 2026-11-04: cordis 4.1.0 (+ loader 1.1.0) published and the two oldest
+  // CLI lines stopped booting on it — `mountRootInclude` → `PluginGroup.create`
+  // → "Cannot read properties of null (reading 'entry')", on 0.1.0-rc.8 and
+  // 0.1.2-alpha.2 only, while the newer lines stayed green. Same shape as
+  // #684: the old CLIs' caret ranges float onto a plugin set their
+  // dsh-app-boot cannot boot. Pin the last 4.0.x for those lines only.
+  '@deepseek-ai/cordis': '4.0.5',
   '@deepseek-ai/cordis-plugin-loader': '1.0.2',
   '@deepseek-ai/cordis-plugin-hmr': '1.0.16',
 }
@@ -100,12 +107,24 @@ writeFileSync(join(root, 'pnpm-workspace.yaml'), [
   '',
 ].join('\n'))
 
-const install = spawnSync('pnpm', ['install', '--no-frozen-lockfile'], {
+const attempt = () => spawnSync('pnpm', ['install', '--no-frozen-lockfile'], {
   cwd: root,
   stdio: 'inherit',
   // pnpm is a .cmd shim on Windows, which spawn only finds through a shell.
   shell: process.platform === 'win32',
 })
+let install = attempt()
+if (install.status !== 0) {
+  // A registry race upstream is not this repository's failure. Measured
+  // 2026-10-28: `@aws-sdk/middleware-websocket` named `@aws-sdk/core@^3.978.7`
+  // before core 3.978.7 was published, and every web-e2e job went red with
+  // `ERR_PNPM_NO_MATCHING_VERSION` for about two minutes until it landed.
+  // One retry after the wave settles turns that into a slower pass instead of
+  // a red lane someone has to re-read.
+  console.error('host install failed; retrying once in 20s in case the registry was racing a publish')
+  await new Promise(resolve => setTimeout(resolve, 20_000))
+  install = attempt()
+}
 if (install.status !== 0) process.exit(install.status ?? 1)
 
 const bin = join(root, 'node_modules', '.bin')

@@ -1,7 +1,7 @@
 /**
  * Discovery-time DSH compatibility metadata.
  *
- * The public catalog does not carry npm manifests. Fetching every manifest
+ * The public catalog does not carry package manifests. Fetching every manifest
  * while the market opens would turn one catalog request into more than a
  * thousand registry requests, so this module supplies a bounded, on-demand
  * index. Successful public manifest facts are cached beside the market's
@@ -14,6 +14,9 @@ import { dirname } from 'node:path'
 import { compareSemver, isSemver, satisfiesRange } from './check.ts'
 import { classifyPeer, crossesImplicitCeiling } from './compatibility.ts'
 import { marketFetch } from './net.ts'
+import { isStableReleaseVersion } from './release-candidates.ts'
+import { activeRegion, githubRoutesFor, rememberGithubRoute, throughProxy } from './regions.ts'
+import { parseSourceUrl } from './sources.ts'
 
 export type HostCompatibilityStatus = 'compatible' | 'incompatible' | 'unknown'
 export type HostCompatibilityBasis = 'manifest' | 'undeclared' | 'unavailable'
@@ -62,6 +65,84 @@ const FETCH_TIMEOUT_MS = 8_000
 const DEFAULT_CONCURRENCY = 8
 const MAX_CACHE_ENTRIES = 5_000
 const MAX_RANGE_LENGTH = 256
+
+export interface GitHubManifestSource {
+  url: string
+  tarball?: string | null
+  releaseManifest?: unknown
+}
+
+/** Reuse catalog facts only for this repository's exact pinned install asset. */
+export function catalogReleaseManifest(source: GitHubManifestSource): NpmManifestFacts | null {
+  const facts = record(source.releaseManifest)
+  const repository = parseSourceUrl(source.url)?.repo
+  const release = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/releases\/download\/[^/]+\/[^/?#]+\.(?:tgz|tar\.gz)$/.exec(source.tarball ?? '')
+  if (facts === null || !repository || !release || release[1]!.toLowerCase() !== repository.toLowerCase()
+    || facts.tarball !== source.tarball || !validFacts(facts)) return null
+  return { version: facts.version, enginesDsh: facts.enginesDsh, peerDependencies: facts.peerDependencies }
+}
+
+/** Read the linked package at its selected release, never the repository root by accident. */
+async function githubManifest(source: GitHubManifestSource, fetcher: FetchLike): Promise<unknown> {
+  const parsed = parseSourceUrl(source.url)
+  if (parsed === null) throw new Error('not a GitHub package source')
+  const json = async (url: string): Promise<unknown> => {
+    const response = await fetcher(url, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      headers: { accept: 'application/json', 'user-agent': 'dsh-market' },
+    })
+    if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+    return await response.json()
+  }
+  let ref = /\/tree\/([^/]+)\//.exec(source.url)?.[1] ?? 'HEAD'
+  if (source.tarball != null) {
+    const release = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/releases\/(?:download\/([^/]+)|latest\/download)\/[^/?#]+\.(?:tgz|tar\.gz)$/.exec(source.tarball)
+    if (release === null || release[1]!.toLowerCase() !== parsed.repo.toLowerCase()) {
+      throw new Error('archive does not name this repository release')
+    }
+    if (release[2] !== undefined) ref = decodeURIComponent(release[2])
+    else {
+      const latest = record(await json(`https://api.github.com/repos/${parsed.repo}/releases/latest`))
+      if (typeof latest?.tag_name !== 'string') throw new Error('release tag unavailable')
+      ref = latest.tag_name
+    }
+  }
+  if (ref === '' || ref.length > 256 || ref.split('/').some(part => part === '' || part === '.' || part === '..')) {
+    throw new Error('invalid GitHub reference')
+  }
+  const file = parsed.subpath === null ? 'package.json' : `${parsed.subpath}/package.json`
+  const manifest = await rawJson(`https://raw.githubusercontent.com/${parsed.repo}/${encodeURIComponent(ref)}/${file}`)
+  if (record(manifest) === null) throw new Error('package manifest unavailable')
+  return manifest
+
+  /**
+   * Read a raw file through the region's configured routes, in order.
+   *
+   * `raw.githubusercontent.com` is blockable on its own — the report (#1148)
+   * measured an `ECONNRESET` with no proxy and a 200 through one — while the
+   * catalog and the registry answered fine, so "the market page loads" said
+   * nothing about this read. This path used to compose the host directly and
+   * give up on the first error, and the card then said the host's requirement
+   * was unknown even though the release declares one. The routes are the same
+   * list the update path walks; one retry per route covers the transient
+   * resets that made a single miss look permanent.
+   */
+  async function rawJson(url: string): Promise<unknown> {
+    let last: unknown
+    for (const route of githubRoutesFor('raw', activeRegion())) {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const value = await json(throughProxy(route, url))
+          rememberGithubRoute('raw', route)
+          return value
+        } catch (error) {
+          last = error
+        }
+      }
+    }
+    throw last instanceof Error ? last : new Error('GitHub raw content unavailable')
+  }
+}
 
 function range(value: unknown): string | null {
   if (typeof value !== 'string') return null
@@ -196,7 +277,7 @@ export function deriveHostCompatibility(
 }
 
 /**
- * Durable, bounded lookup of npm `latest` manifests.
+ * Durable, bounded lookup of npm `latest` and catalog GitHub manifests.
  *
  * Failed requests are intentionally memory-only and short-lived: a mirror
  * outage must not become a day-long false "undeclared" result on disk.
@@ -267,7 +348,7 @@ export class DiscoveryManifestIndex {
     }
   }
 
-  private async fetchOne(name: string, registry: string, record = true): Promise<NpmManifestFacts | null> {
+  private async fetchOne(name: string, registry: string, record = true, readManifest?: () => Promise<unknown>): Promise<NpmManifestFacts | null> {
     this.load()
     const now = this.now()
     const cached = this.entries.get(name)
@@ -283,15 +364,15 @@ export class DiscoveryManifestIndex {
 
     const request = (async (): Promise<NpmManifestFacts | null> => {
       try {
-        const response = await this.withFetchPermit(async () => await this.fetcher(
-          `${registry}/${encodeURIComponent(name)}/latest`,
-          {
+        const value = await this.withFetchPermit(readManifest ?? (async () => {
+          const response = await this.fetcher(`${registry}/${encodeURIComponent(name)}/latest`, {
             signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
             headers: { accept: 'application/json', 'user-agent': 'dsh-market' },
-          },
-        ))
-        if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
-        const facts = manifestFacts(await response.json())
+          })
+          if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+          return await response.json()
+        }))
+        const facts = manifestFacts(value)
         if (record) {
           this.entries.set(name, { checkedAt: this.now(), facts })
           this.dirty = true
@@ -384,6 +465,23 @@ export class DiscoveryManifestIndex {
     }
     return result
   }
+
+  /** Catalog-approved GitHub sources, cached by both package path and selected archive. */
+  async lookupGitHub(sources: readonly GitHubManifestSource[]): Promise<Record<string, NpmManifestFacts | null>> {
+    const unique = [...new Map(sources.map(source => [source.url, source])).values()]
+    const result: Record<string, NpmManifestFacts | null> = {}
+    let next = 0
+    const worker = async (): Promise<void> => {
+      while (next < unique.length) {
+        const source = unique[next++]!
+        const key = `github:${source.url}\u0000${source.tarball ?? ''}`
+        result[source.url] = await this.fetchOne(key, '', true, () => githubManifest(source, this.fetcher))
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(this.concurrency, unique.length) }, worker))
+    if (this.dirty) { this.persist(); this.dirty = false }
+    return result
+  }
 }
 
 /**
@@ -407,6 +505,10 @@ export class DiscoveryManifestIndex {
  * installed one, which is what an update needs: suggesting a downgrade is not
  * an update.
  *
+ * `stableOnly` drops prereleases. The official Desktop refuses to move a
+ * stable install onto a prerelease by itself (#991), so offering one there is
+ * an enabled button that can only answer 409 (#1161).
+ *
  * @returns the version, or null when the packument cannot be read or nothing
  *   in the history declares itself compatible.
  */
@@ -417,6 +519,7 @@ export async function findCompatibleVersion(
   registry: string,
   fetcher: FetchLike = marketFetch,
   minimumVersionExclusive: string | null = null,
+  stableOnly = false,
 ): Promise<string | null> {
   let doc: unknown
   try {
@@ -433,6 +536,7 @@ export async function findCompatibleVersion(
   if (versions === null) return null
   const candidates = Object.keys(versions)
     .filter(version => isSemver(version)
+      && (!stableOnly || isStableReleaseVersion(version))
       && (minimumVersionExclusive === null || compareSemver(version, minimumVersionExclusive) > 0))
     .sort((left, right) => compareSemver(right, left))
   for (const version of candidates) {

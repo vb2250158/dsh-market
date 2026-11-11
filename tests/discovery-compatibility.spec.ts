@@ -28,6 +28,13 @@ function facts(over: Partial<NpmManifestFacts> = {}): NpmManifestFacts {
 }
 
 describe('deriveHostCompatibility', () => {
+  it('recognizes explicit equality peers and refuses hosts outside the exact pin', () => {
+    const declared = facts({ peerDependencies: { '@deepseek-ai/dsh-tools': '=0.2.0-rc.2' } })
+    expect(deriveHostCompatibility(declared, '0.2.0-rc.2', HOST_PACKAGES).status).toBe('compatible')
+    expect(deriveHostCompatibility(declared, '0.2.0-rc.1', HOST_PACKAGES).status).toBe('incompatible')
+    expect(deriveHostCompatibility(declared, '0.2.0-rc.3', HOST_PACKAGES).status).toBe('incompatible')
+  })
+
   it('uses engines.dsh and lockstep DSH peers while excluding Cordis and schemastery', () => {
     const result = deriveHostCompatibility(facts({
       enginesDsh: '>=0.1.1-rc.2',
@@ -102,6 +109,31 @@ describe('deriveHostCompatibility', () => {
     }), '0.1.2-alpha.2', HOST_PACKAGES)
     expect(malformed.status).toBe('unknown')
     expect(malformed.requirement).toContain('catalog:current')
+  })
+
+  it('judges a partial bound the way the gate does instead of calling it unknown', () => {
+    // `<0.3` is the connector-family shape satisfiesRange learned to read in
+    // #1130; discovery parsed only full X.Y.Z bounds and fell back to unknown.
+    const partial = facts({ peerDependencies: { '@deepseek-ai/dsh-tools': '>=0.1.5 <0.3' } })
+    const full = facts({ peerDependencies: { '@deepseek-ai/dsh-tools': '>=0.1.5 <0.3.0' } })
+    for (const host of ['0.1.2', '0.3.1']) {
+      expect(deriveHostCompatibility(partial, host, HOST_PACKAGES).status).toBe('incompatible')
+      expect(deriveHostCompatibility(full, host, HOST_PACKAGES).status).toBe('incompatible')
+    }
+    expect(deriveHostCompatibility(partial, '0.2.4', HOST_PACKAGES).status).toBe('compatible')
+    // `<0.3` ends before 0.3.0's prereleases, as node-semver's `<0.3.0-0` does.
+    expect(deriveHostCompatibility(partial, '0.3.0-rc.1', HOST_PACKAGES).status).toBe('incompatible')
+    expect(deriveHostCompatibility(facts({
+      peerDependencies: { '@deepseek-ai/dsh-tools': '>=0.2.0-rc.0 <0.3' },
+    }), '0.1.7-rc.2', HOST_PACKAGES).status).toBe('incompatible')
+  })
+
+  it('keeps a partial caret ceiling as lenient as a full one', () => {
+    // `^0.1` names the 0.1 line like `^0.1.0`: past that line is the #756
+    // break, still on it is not a confirmed mismatch.
+    const caret = facts({ peerDependencies: { '@deepseek-ai/dsh-tools': '^0.1' } })
+    expect(deriveHostCompatibility(caret, '0.2.0-rc.2', HOST_PACKAGES).status).toBe('incompatible')
+    expect(deriveHostCompatibility(caret, '0.1.9', HOST_PACKAGES).status).toBe('compatible')
   })
 
   it('keeps missing data, missing declarations, and an unknown host distinct', () => {
@@ -211,6 +243,29 @@ describe('DiscoveryManifestIndex', () => {
     })
     expect(await second.lookup(['plugin-a', 'plugin-b', 'plugin-c'], 'https://registry.example'))
       .toEqual(loaded)
+  })
+
+  it('retries a raw manifest read instead of reporting an unknown requirement (#1148)', async () => {
+    // The report measured exactly this: `raw.githubusercontent.com` answered
+    // ECONNRESET with no proxy and 200 through one while the catalog and the
+    // registry were fine. One miss used to end the read, and the card then
+    // said the host requirement was unknown although the release declares one.
+    const directory = mkdtempSync(join(tmpdir(), 'dshm-discovery-'))
+    directories.push(directory)
+    const cache = join(directory, '.dsh-market', 'discovery.json')
+    const urls: string[] = []
+    const flaky = async (url: string): Promise<Response> => {
+      urls.push(url)
+      if (urls.length === 1) throw new Error('read ECONNRESET')
+      return new Response(JSON.stringify({
+        version: '1.0.0', engines: { dsh: '0.2.2-rc.1' },
+      }), { status: 200 })
+    }
+    const index = new DiscoveryManifestIndex(cache, { fetcher: flaky, now: () => 1_000 })
+    const source = { url: 'https://github.com/acme/dsh-notes' } as never
+    const facts = (await index.lookupGitHub([source]))['https://github.com/acme/dsh-notes']!
+    expect(facts).toMatchObject({ enginesDsh: '0.2.2-rc.1' })
+    expect(urls[0]).toBe(urls[1])
   })
 
   it('does not persist a registry failure as an undeclared manifest', async () => {
@@ -349,6 +404,21 @@ describe('findCompatibleVersion (#581)', () => {
   const HOST = '0.1.5-rc.3'
   const packument = (versions: Record<string, Record<string, unknown>>): typeof fetch =>
     (async () => new Response(JSON.stringify({ versions }), { status: 200 })) as unknown as typeof fetch
+
+  it('finds the compatible dsh-sidenote release declared with an explicit equality union', () => {
+    const legacyRange = '=0.2.0-rc.2 || =0.2.1-rc.2 || =0.2.1-rc.3'
+    return expect(findCompatibleVersion(
+      'dsh-sidenote', '0.2.0-rc.2', new Set([...HOST_PACKAGES, '@deepseek-ai/dsh-client-ui-primitives']), 'https://registry.example',
+      packument({
+        '0.7.6': {
+          version: '0.7.6',
+          engines: { dsh: legacyRange },
+          peerDependencies: { '@deepseek-ai/dsh-client-ui-primitives': legacyRange },
+        },
+        '0.8.0': { version: '0.8.0', engines: { dsh: '>=0.2.1-rc.2 <0.2.2-0' } },
+      }),
+    )).resolves.toBe('0.7.6')
+  })
 
   it('returns the newest release whose own declaration this host satisfies', () => {
     return expect(findCompatibleVersion(

@@ -108,6 +108,7 @@ export declare function isUnpublishedHostPeer(pkg: string | undefined, profile: 
 export declare function withHoistRecovery(run: PluginRunner, profile: string, pluginArgs: string[], profileDirectory?: string, options?: {
     releaseAgeBypass?: boolean;
     marketFlags?: boolean;
+    preserveProfilePolicy?: boolean;
 }): Promise<InstallResult>;
 /**
  * The tail of the diagnostics file the dsh CLI pointed at, when it pointed at
@@ -162,12 +163,37 @@ export declare function pnpmNeverStarted(result: InstallResult): boolean;
  */
 export declare function pnpmRefusedYoungRelease(result: InstallResult): boolean;
 /**
+ * Whether an environment variable names the top-level fresh-release window
+ * and carries a plain non-negative integer.
+ *
+ * DSH Desktop sets `pnpm_config_minimum_release_age=0` for every pnpm call,
+ * so a numeric environment value is a window the market can follow — not an
+ * unverifiable external policy (#1053).
+ *
+ * Measured 2026-10-30 against a release published 8 hours earlier, with
+ * `minimumReleaseAge: 100000` + `minimumReleaseAgeStrict: true` in the
+ * workspace file (so a block or a pass is unmistakable):
+ *
+ *   - pnpm 11.7.0 and 12.16.1 honour `pnpm_config_minimum_release_age` — the
+ *     install goes through, i.e. the environment overrides even a strict
+ *     workspace policy — and ignore `npm_config_minimum_release_age`;
+ *   - pnpm 10.20.0 ignores the `pnpm_config_` spelling (the `npm_config_` one
+ *     is what it reads).
+ *
+ * That is why this value outranks the file here rather than merely adding to
+ * it: on the engines the Desktop ships, it IS the effective policy.
+ */
+export declare function isNumericReleaseAgeWindow(key: string, value: string | undefined): boolean;
+/**
  * The profile's fresh-release wait window in ms (#919).
  *
  * Reads `minimumReleaseAge` (minutes) from pnpm-workspace.yaml, then
- * `minimum-release-age` from `.npmrc`. A key that is present but not a
- * number returns null — callers must not invent a remaining wait. When
- * neither file names the key, pnpm's default 1440 minutes applies.
+ * `minimum-release-age` from `.npmrc`. A numeric environment window — the
+ * Desktop manager sets one for every pnpm call — takes precedence over both,
+ * because that is the value its pnpm actually uses (#1053). A key that is
+ * present but not a number returns null — callers must not invent a remaining
+ * wait. When neither file nor the environment names the key, pnpm's default
+ * 1440 minutes applies.
  */
 export declare function readMinimumReleaseAgeMs(profile: string, explicitDir?: string): number | null;
 /**
@@ -376,6 +402,30 @@ export declare function isStaleUpdate(check: {
  * node_modules yet (the fetcher rejects before materialization, #68).
  */
 export declare function parsePrepareNotAllowed(stdout: string, stderr: string): string | null;
+/**
+ * Undo the line wrapping of pnpm 12's boxed error text (#1156).
+ *
+ * pnpm 12 prints a failure as
+ *
+ *     Error: ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED
+ *
+ *       × adding a new package
+ *       ╰─▶ The git-hosted package "x@1.0.0" needs to execute build
+ *           scripts but is not in the "allowBuilds" allowlist.
+ *       help: …
+ *
+ * and wraps it at about 80 columns — through the middle of a sentence, and
+ * through the middle of a package key at a `/` or `-`. Every sentence this
+ * file matches then has a line break where its single space was, so the
+ * refusal was classified correctly and still yielded no package name, no
+ * key, and therefore no approve-and-retry button. Continuation lines are
+ * indented deeper than the line they continue; join them back, without a
+ * space when the break fell inside a token.
+ *
+ * Output that never wraps this way (pnpm 10/11, ndjson) has no such lines
+ * and comes back unchanged.
+ */
+export declare function unwrapPnpmErrors(text: string): string;
 /**
  * The allowBuilds key pnpm itself printed for a prepare refusal, when it
  * printed one (#698).

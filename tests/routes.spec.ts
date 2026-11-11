@@ -25,6 +25,8 @@ import { sameOrigin } from '../src/http.ts'
 import { readMarketState, writeMarketState } from '../src/hot.ts'
 import { configurePersistentLog, readPersistentLog } from '../src/log.ts'
 import * as orderApi from '../src/order.ts'
+import * as registryApi from '../src/registry.ts'
+import { DiscoveryManifestIndex } from '../src/discovery-compatibility.ts'
 import type { PluginCommandRuntime } from '../src/dsh-cli.ts'
 
 type RouteHandler = (request: IncomingMessage, response: ServerResponse) => void | Promise<void>
@@ -52,7 +54,12 @@ function mount(commandRuntime?: PluginCommandRuntime): { host: MarketHost; route
     loader: { entries: () => [] },
     plugin: () => ({ await: async () => undefined, dispose: async () => undefined }),
   }
-  mountMarketRoutes(host, { profile: 'web' }, commandRuntime)
+  // A pinned region: with `region` undefined the market starts a background
+  // probe that writes `.dsh-market/state.json` a few milliseconds later, on
+  // whatever machine runs the suite. Two tests here put a DIRECTORY at that
+  // path on purpose (an unreadable state file), and the probe's write landed
+  // in the middle of them — an EEXIST nobody could reproduce locally (#1144).
+  mountMarketRoutes(host, { profile: 'web', region: 'global' }, commandRuntime)
   return { host, routes }
 }
 
@@ -320,6 +327,41 @@ describe('body validation — 400 contracts', () => {
     expect(jsonBody(res).plugins).toEqual({})
   })
 
+  it('reads GitHub requirements only from current catalog entries, using their own archive', async () => {
+    const entry = { name: 'WhaleMaid', owner: 'owner', url: 'https://github.com/owner/whale/tree/main/packages/host',
+      tarball: 'https://github.com/owner/whale/releases/latest/download/full.tgz',
+      category: 'workflow', description: { en: 'Whale.' }, install: '', added: '2026-10-26' }
+    const registry = vi.spyOn(registryApi, 'loadRegistry').mockResolvedValue({
+      name: 'catalog', updated: '2026-10-26', count: 1, categories: {}, plugins: [entry],
+    })
+    const lookup = vi.spyOn(DiscoveryManifestIndex.prototype, 'lookupGitHub').mockResolvedValue({
+      [entry.url]: { version: '1.2.1', enginesDsh: '0.2.1-rc.2 || 0.2.1-rc.3', peerDependencies: {} },
+    })
+    try {
+      const res = await hit(routes, '/dsh-market/discovery-compatibility',
+        post('/dsh-market/discovery-compatibility', { packages: [], entries: [entry.url] }))
+      expect(res.status).toBe(200)
+      expect(jsonBody(res).plugins[entry.url]).toMatchObject({
+        basis: 'manifest', requirement: '0.2.1-rc.2 || 0.2.1-rc.3',
+      })
+      expect(lookup).toHaveBeenCalledWith([entry])
+      lookup.mockClear()
+      const foreign = await hit(routes, '/dsh-market/discovery-compatibility',
+        post('/dsh-market/discovery-compatibility', { packages: [], entries: ['https://github.com/other/unlisted'] }))
+      expect(foreign.status).toBe(400)
+      expect(lookup).not.toHaveBeenCalled()
+    } finally { registry.mockRestore(); lookup.mockRestore() }
+  })
+
+  it('bounds mixed GitHub/npm batches and refuses non-GitHub manifest URLs before lookup', async () => {
+    for (const entries of [['http://127.0.0.1/package.json'], ['https://github.com/o/r/tree/main/../secret'],
+      Array.from({ length: 64 }, (_, i) => `https://github.com/owner/plugin-${String(i)}`)]) {
+      const res = await hit(routes, '/dsh-market/discovery-compatibility',
+        post('/dsh-market/discovery-compatibility', { packages: ['plugin-a'], entries }))
+      expect(res.status).toBe(400)
+    }
+  })
+
   it('bundle-order refuses a null / non-object / non-string-array order', async () => {
     writeStandardProfile()
     // A well-formed array that is NOT a permutation (e.g. ['alpha']) is a 422
@@ -523,6 +565,24 @@ describe('GET /dsh-market/installed — local repository evidence', () => {
       repoHints: {},
     })
   })
+
+  it('reports the source of a plugin installed from a Release archive URL (#1147)', async () => {
+    // A plugin published only as a GitHub Release tarball installs as a plain
+    // https spec, which repoOfTarget deliberately refuses (that answer decides
+    // where future updates come from). Reporting nothing here left the client
+    // with no identity at all, so with a same-named catalog row present it
+    // could not say which one was installed: Discover kept offering Install
+    // and the Installed tab showed the bare package name.
+    const spec = 'https://github.com/StarWind97/dsh-fatfish-notes/releases/download/v0.6.0/dsh-fatfish-notes-0.6.0.tgz'
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { 'dsh-fatfish-notes': spec } }))
+
+    const res = await hit(routes, '/dsh-market/installed', { method: 'GET', url: '/dsh-market/installed' })
+    expect(res.status).toBe(200)
+    expect(jsonBody(res)).toMatchObject({
+      installed: { 'dsh-fatfish-notes': spec },
+      repoIdentities: { 'dsh-fatfish-notes': ['starwind97/dsh-fatfish-notes'] },
+    })
+  })
 })
 
 describe('GET /dsh-market/backup — a failure says why (#55)', () => {
@@ -541,7 +601,7 @@ describe('GET /dsh-market/backup — a failure says why (#55)', () => {
     expect(res.status).toBe(500)
     const body = JSON.parse(res.body) as { error: string }
     expect(body.error).toContain('配置文件超过 256 个')
-    expect(body.error).toContain('Export selected plugins instead')
+    expect(body.error).toContain('export selected plugins instead')
     expect(readPersistentLog(join(tmp, 'log.ndjson')).join('\n')).toContain('"event":"backup"')
   })
 
@@ -861,7 +921,7 @@ describe('POST /dsh-market/bundle-order', () => {
     // Synchronous up to the first await → the lock is already held.
     const snap = await hit(routes, '/dsh-market/snapshots', post('/dsh-market/snapshots', undefined))
     expect(snap.status).toBe(409)
-    expect(jsonBody(snap)).toEqual({ error: 'another plugin operation is running' })
+    expect(jsonBody(snap)).toEqual({ error: 'another plugin operation is running', busy: true })
 
     const order = await hit(routes, '/dsh-market/bundle-order', post('/dsh-market/bundle-order', { order: ['beta', 'alpha'] }))
     expect(order.status).toBe(409)
@@ -897,7 +957,7 @@ describe('POST /dsh-market/bundle-order', () => {
 
     const snap = await hit(routes, '/dsh-market/snapshots', post('/dsh-market/snapshots', undefined))
     expect(snap.status).toBe(409)
-    expect(jsonBody(snap)).toEqual({ error: 'another plugin operation is running' })
+    expect(jsonBody(snap)).toEqual({ error: 'another plugin operation is running', busy: true })
 
     const order = await hit(routes, '/dsh-market/bundle-order', post('/dsh-market/bundle-order', { order: ['beta', 'alpha'] }))
     expect(order.status).toBe(409)
@@ -905,7 +965,7 @@ describe('POST /dsh-market/bundle-order', () => {
     // update distinguishes the two locks in its message.
     const upd = await hit(routes, '/dsh-market/update', post('/dsh-market/update', { name: 'alpha' }))
     expect(upd.status).toBe(409)
-    expect(jsonBody(upd)).toEqual({ error: 'another install is already running' })
+    expect(jsonBody(upd)).toEqual({ error: 'another install is already running', busy: true })
   })
 
   it('restores the profile from the pre-write backup when the write throws (auto-rollback)', async () => {

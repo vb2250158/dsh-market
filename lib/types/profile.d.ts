@@ -325,6 +325,42 @@ export declare function bundlePatchInsertedIds(dir: string): string[];
  */
 export declare function bundleOptOutRowIds(dir: string): string[];
 /**
+ * Row ids a package's own patch sources decide with an EXPRESSION rather
+ * than a literal — `disabled: !!js …` (#1043). The bundle's default for
+ * these rows is whatever the condition evaluates to on the host that
+ * composes the profile, so no literal the market writes above the bundle
+ * layer can stand in for the user: force-writing `disabled: false` switches
+ * on a row the environment keeps off (a TUI row on a Desktop without the TUI
+ * services), which then holds the package pending at activation and fails
+ * the next install's check.
+ *
+ * Reads the same two patch sources as `bundleOptOutRowIds` above.
+ */
+export declare function bundleExpressionRowIds(dir: string): string[];
+/**
+ * Row ids the installed copy of a package DECLARES it inserts (#1012).
+ *
+ * The evidence half of `rowIdsForPackage`: the same two patch sources (the
+ * declared `dsh.bundle.patch`, one file or an ordered list, and the
+ * conventional root `cordis.patch.yml`), insert rows only, and — unlike that
+ * reader — no live loader rows.
+ *
+ * Live rows are exactly what this cannot use. A rename transaction asks the
+ * question twice: of the old package just before it is removed (whose rows are
+ * still live, but whose patch files are about to be the only copy left) and of
+ * the new package right after its first install (which has never been booted,
+ * so the loader has never heard of it). Only the package's own declaration can
+ * answer for both.
+ *
+ * That is the same question, and the same parser, as `renamePredecessor` asks
+ * on the install path — an install never boots the package either, so it
+ * compares declarations too and the two refusals agree on what "one plugin"
+ * means (#1012). Where they differ is the root `cordis.patch.yml`: see
+ * `declaredPatchRowIds` for why this reader covers it and that gate's
+ * declared-only reader does not.
+ */
+export declare function shippedInsertedRowIds(dir: string): string[];
+/**
  * Rows of one patch file. Exported because a package may ship its patch at
  * the conventional path INSTEAD of declaring `dsh.bundle.patch`, and the
  * patch layer has to read that one by the same rules — a second hand-rolled
@@ -336,13 +372,17 @@ export declare function bundleOptOutRowIds(dir: string): string[];
  * rows, but for "what does this bundle bring in" any row counts. `insertedIds`
  * is the subset under an `insert:` key (#147) — and "under `insert:`" is not
  * the same as "deeper than it", because a row's `config:` carries its payload
- * (#841).
+ * (#841). `expressionIds` (#1043) is the subset whose `disabled` is decided
+ * by an expression rather than a literal — a row the market must never
+ * answer with a literal of its own, because the host re-evaluates the
+ * condition on every compose and no user-layer value can stand in for it.
  */
 export declare function parsePatchRows(text: string): {
     names: string[];
     ids: string[];
     insertedIds: string[];
     disabledIds: string[];
+    expressionIds: string[];
 };
 /**
  * Where a package's bundle patches live, according to the package itself.
@@ -488,4 +528,24 @@ export declare function dropUnparseableBuildKeys(profile: string, explicitDir?: 
  *   needed no repair or could not be repaired, in which case it is left
  *   byte-for-byte as it was.
  */
+/**
+ * Remove one package's `minimumReleaseAgeExclude` rows (#1093).
+ *
+ * pnpm writes this key itself when it installs a version still inside the
+ * fresh-release wait, and it writes one row for the package plus one per
+ * platform subpackage. Uninstalling took the dependency out of the manifest
+ * and the lockfile but left those rows behind, pinned to versions of a package
+ * the profile no longer has. They are not only noise: they read as live policy
+ * to anyone diagnosing a release-age refusal months later.
+ *
+ * Only rows naming this package are dropped. A platform subpackage
+ * (`@typescript/typescript-darwin-arm64`) is a DIFFERENT package name, and
+ * nothing in the file says which main package it belongs to — guessing would
+ * delete policy that may still be in effect for something installed.
+ *
+ * @returns the entries removed, for the caller to log; empty when there is no
+ *   such block, no such row, or the file cannot be read exactly (in which case
+ *   it is left byte-for-byte as it was).
+ */
+export declare function dropReleaseAgeExcludes(profile: string, name: string, explicitDir?: string): string[];
 export declare function mergeDuplicateReleaseAgeExcludes(profile: string, explicitDir?: string): string[];

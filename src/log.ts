@@ -15,6 +15,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { redactHomePaths } from './log-redaction.ts'
+import { inProbe } from './probe-context.ts'
 
 export type LogLevel = 'info' | 'warn' | 'error'
 
@@ -56,6 +57,10 @@ function sanitize(text: string): string {
  * @param detail - free-form context; credentials and home paths are masked.
  */
 export function logEvent(level: LogLevel, event: string, detail: string): void {
+  // A drain probe replays a route only to capture its target. Writing the
+  // same "pinned to" lines a second time would claim an operation happened
+  // before the operation was even accepted.
+  if (inProbe()) return
   const entry = {
     at: new Date().toISOString(),
     level,
@@ -68,7 +73,9 @@ export function logEvent(level: LogLevel, event: string, detail: string): void {
   try {
     const line = `${JSON.stringify(entry)}\n`
     appendFileSync(persistentFile, line)
-    persistentBytes += line.length
+    // Bytes, not UTF-16 units: CJK detail is 3 bytes a character on disk,
+    // and the counter has to agree with `statSync().size` it started from.
+    persistentBytes += Buffer.byteLength(line)
     // Trimming only on mount left the cap unenforced for the life of a
     // process: 20k events grew the file to 3.2 MB in a measurement, and a
     // retry loop is exactly the situation that both logs hardest and never
@@ -92,7 +99,7 @@ function trimPersistentLog(file: string): void {
   let bytes = 0
   for (let index = lines.length - 1; index >= 0 && bytes <= PERSISTENT_MAX_BYTES / 2; index -= 1) {
     kept.unshift(`${lines[index]!}\n`)
-    bytes += lines[index]!.length + 1
+    bytes += Buffer.byteLength(lines[index]!) + 1
   }
   writeFileSync(file, kept.join(''))
   persistentBytes = bytes

@@ -70,6 +70,35 @@ export declare function resolveProfileEntry(profileDir: string, name: string): s
  */
 export declare function parseSimplePatch(patchText: string): HotRow[] | null;
 /**
+ * Which shape stopped `parseSimplePatch` — the CAUSE, not just "not plain".
+ *
+ * `parseSimplePatch` collapses five different inputs into one `null`: a
+ * `config` block, a `disabled`/`enabled` switch row, any other key (`inject`,
+ * a nested mapping), a row whose `name` never arrives, and a patch with no
+ * insert rows at all. Every caller that had to explain the refusal threw all
+ * five into one sentence written for the first, and told users their patch
+ * "contains config/expression rows" when it merely switched a row off
+ * (#1102). Naming the shape is the difference between a sentence the reader
+ * can act on and one they cannot (#813, AGENTS.md: 说不出来就别用一句话把
+ * 空缺填上).
+ */
+export type PatchBlocker = 'config' | 'disabled' | 'incomplete' | 'empty' | 'other';
+export interface PatchScan {
+    /** Insert rows read before the scan stopped; empty when it did not. */
+    rows: HotRow[];
+    /** null when the patch IS a plain insert list (`rows` is then non-empty). */
+    blocker: PatchBlocker | null;
+    /** The key that stopped the scan, when there is one to name. */
+    key?: string;
+}
+export declare function scanPatch(patchText: string): PatchScan;
+/**
+ * One sentence for a refusal that is only about the patch's shape, naming the
+ * cause and what happens next. Shared by the hot mount and the activation
+ * verdict so the two cannot drift apart on the same fact again.
+ */
+export declare function patchBlockerReason(blocker: PatchBlocker, key?: string): string;
+/**
  * Wipe leftover hot-mount inputs; call once when the market host starts.
  * `state.json` (disable choices + groups) deliberately survives.
  */
@@ -170,15 +199,34 @@ export interface MarketState {
      *
      * Off unless the user turned it on: the sidebar's global rows are the
      * host's own pages, and installing plugins is occasional, so a row nobody
-     * asked for would be a permanent fixture for an occasional task. The
-     * settings entry stays either way — it is the way in on hosts with no
-     * sidebar panels, and turning this off must never leave the market
+     * asked for would be a permanent fixture for an occasional task. The page
+     * entries are the defaults, and the last-door rule (#1015) — enforced by
+     * the route — is what keeps turning this off from leaving the market
      * unreachable.
      *
      * Omission preserves, an explicit value wins — the githubProxy contract,
      * because turning it off has to be expressible.
      */
     sidebarEntry?: boolean;
+    /**
+     * Whether the market still lists its own page in Settings (#1015).
+     *
+     * Absent means shown. Only an explicit `false` is stored, unlike
+     * `sidebarEntry`: this entry has always been on, and every host before
+     * 0.2.1 offers it as the only door, so an absent field is the ordinary
+     * case rather than an unanswered question. Turning it back on clears the
+     * field so a later default change still reaches users who never touched it.
+     */
+    settingsSection?: boolean;
+    /**
+     * Whether the market still adds its tab to the host's Plugins page
+     * (#1015). Absent means shown, on the same contract as
+     * {@link settingsSection}.
+     *
+     * A host that never declares the slot has no tab to hide; the saved
+     * answer is kept for the hosts that do.
+     */
+    pluginsTab?: boolean;
     /**
      * Packages the market removed from the profile's own declarations because
      * the build on disk can no longer compose (#663).
@@ -338,6 +386,22 @@ export declare function hotMount(ctx: HotContext, profileDir: string, packageNam
  * @returns names that were mounted.
  */
 export declare function mountClientOnlyDeps(ctx: HotContext, profileDir: string): Promise<string[]>;
+/**
+ * Package names the profile's OWN bundle layer already mounts.
+ *
+ * The shim predicate reads the profile manifest, so it can only see a package
+ * as a dependency; it cannot see that an in-box bundle mounts the same package
+ * under a row id of its own — `@deepseek-ai/dsh-web-app` ships
+ * `- id: connection` / `name: '@deepseek-ai/dsh-client-connection'` (#1137).
+ * Those packages also declare `dsh.client` and no `dsh.bundle`, so every
+ * existing predicate says "shim it". Only the row NAMES link the two, and a
+ * clean profile's bundles are the only place they are written down.
+ *
+ * A bundle whose declaration cannot be read contributes nothing, which keeps
+ * today's behaviour (shim, possibly duplicated) rather than silently dropping
+ * a client bundle that the bundle layer never mounts.
+ */
+export declare function bundleLayerTargets(profileDir: string, bundles: Iterable<string>): Set<string>;
 /**
  * Row ids and package names the user's own patch layer (cordis.patch.yml)
  * already contains. Line-wise scan on purpose: the file may hold structures

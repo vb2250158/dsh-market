@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { load } from 'js-yaml'
 import { hotMount, hotUnmount, listHotMounts, mountClientOnlyDeps, parseSimplePatch, resolveProfileEntry } from '../src/hot.ts'
 import { configurePersistentLog, readPersistentLog } from '../src/log.ts'
 
@@ -130,6 +131,28 @@ describe('hotMount reads every declared patch file (#792)', () => {
     }
   }
 
+  it('writes valid hot-mount YAML when the profile path contains an apostrophe (#1027)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dshm-hot-o'k-"))
+    try {
+      const name = 'quoted-plugin'
+      target(dir, name)
+      carrier(dir, 'quoted-carrier', './cordis.patch.yml', {
+        'cordis.patch.yml': `- insert:\n    - id: it's-quoted\n      name: ${name}\n`,
+      })
+      const result = await hotMount(ctx, dir, 'quoted-carrier')
+      expect(result.ok).toBe(true)
+      // The mocked Include never parses the generated YAML.
+      expect(mountedRows(dir)).toContain("o''k-")
+      expect(load(mountedRows(dir))).toEqual([{
+        id: "mkt-it's-quoted",
+        name: resolveProfileEntry(dir, name),
+      }])
+    } finally {
+      for (const mounted of listHotMounts()) await hotUnmount(mounted)
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('mounts rows from every file of an array declaration, in order', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'dshm-hot-'))
     try {
@@ -202,6 +225,21 @@ describe('hotMount: restart-only versus failed', () => {
     }
   })
 
+  // #1102: the refusal used to name a config block for every shape it could
+  // not replay, including this one — where nothing is configured and the
+  // plugin (like dsh-mnemon) only switches an existing row off.
+  it('names the switched-off row instead of inventing a config block', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dshm-hot-'))
+    try {
+      bundle(dir, 'swapper', '- id: ui-chat\n  disabled: true\n- insert:\n    - id: swap-chat\n      name: swapper\n')
+      const result = await hotMount(ctx, dir, 'swapper')
+      expect(String(result.reason)).toContain('disabled')
+      expect(String(result.reason)).not.toContain('config')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('does not mark an unreadable declaration as deferred — no restart can load it', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'dshm-hot-'))
     try {
@@ -236,6 +274,78 @@ describe('mountClientOnlyDeps vs the user patch layer (#58)', () => {
       const mounted = await mountClientOnlyDeps(ctx, dir)
       expect(mounted).toContain('dsh-free-plugin')
       expect(mounted).not.toContain('@deepseek-ai/dsh-client-ui-aqua')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+/**
+ * #1137: a client-only package can ALSO be mounted by the profile's own
+ * bundle layer, under a row id that only that bundle decides. It carries
+ * `dsh.client` and no `dsh.bundle` all the same, so every shim predicate says
+ * "shim it" — and the second fiber registers the same services again, which
+ * cordis refuses. The host logged `1 entry did not activate` while the market
+ * logged `live (client-only shim)`: the two halves disagreed about the same
+ * mount, and the market's record is the one the UI shows.
+ */
+describe('mountClientOnlyDeps vs packages the bundle layer already mounts (#1137)', () => {
+  /** A bundle package that mounts `target` under a row id of its own. */
+  function bundlePkg(dir: string, bundle: string, rows: string): void {
+    const root = join(dir, 'node_modules', ...bundle.split('/'))
+    mkdirSync(root, { recursive: true })
+    writeFileSync(join(root, 'package.json'), JSON.stringify({
+      name: bundle,
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }))
+    writeFileSync(join(root, 'cordis.patch.yml'), rows)
+  }
+
+  it('skips a package an in-box bundle already mounts; still shims the ones it does not', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dshm-hot-'))
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({
+        dependencies: {
+          // The shape from the report: a peer dependency of an uninstalled
+          // plugin, linked into the profile so it resolves.
+          '@deepseek-ai/dsh-client-connection': 'link:./host/node_modules/@deepseek-ai/dsh-client-connection',
+          'dsh-free-plugin': '^1.0.0',
+        },
+        dsh: { profile: { bundles: ['@deepseek-ai/dsh-web-app'] } },
+      }))
+      clientOnlyPkg(dir, '@deepseek-ai/dsh-client-connection')
+      clientOnlyPkg(dir, 'dsh-free-plugin')
+      // The row id is `connection`, not the package name — looking entries up
+      // by name is exactly what used to miss this.
+      bundlePkg(dir, '@deepseek-ai/dsh-web-app',
+        "- id: connection\n  name: '@deepseek-ai/dsh-client-connection'\n  inject: [webStartup]\n")
+
+      const mounted = await mountClientOnlyDeps(ctx, dir)
+      expect(mounted).not.toContain('@deepseek-ai/dsh-client-connection')
+      expect(mounted).toContain('dsh-free-plugin')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('reads the declared patch file, and does not count a commented-out row', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dshm-hot-'))
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({
+        dependencies: { 'dsh-real-plugin': '^1.0.0', 'dsh-commented-plugin': '^1.0.0' },
+        dsh: { profile: { bundles: ['@deepseek-ai/dsh-web-app'] } },
+      }))
+      clientOnlyPkg(dir, 'dsh-real-plugin')
+      clientOnlyPkg(dir, 'dsh-commented-plugin')
+      bundlePkg(dir, '@deepseek-ai/dsh-web-app',
+        "- insert:\n    - id: real\n      name: dsh-real-plugin\n"
+        + "# - id: commented\n#   name: dsh-commented-plugin\n")
+
+      const mounted = await mountClientOnlyDeps(ctx, dir)
+      expect(mounted).not.toContain('dsh-real-plugin')
+      // A row that is only a comment mounts nothing, so the shim is still the
+      // only thing that makes this package's client bundle reachable.
+      expect(mounted).toContain('dsh-commented-plugin')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

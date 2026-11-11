@@ -116,6 +116,63 @@ describe('official Electron profile runtime', () => {
     }
   })
 
+  it('lets a manager operation outlive its disposed instance, and the next instance waits for it (#1151)', async () => {
+    // The host reloads the market in the middle of the operation the market
+    // started, and its reconciliation waits for this instance's disposer.
+    // Waiting here for the operation — which waits for the reconciliation —
+    // was a cycle: routes already unmounted, the request never answered, the
+    // profile's write lock held until the host was restarted. Cancelling
+    // would also have aborted the user's update halfway.
+    const service = manager()
+    let settle: (value: { application: string; packageResult: { exitCode: number; output: string } }) => void = () => {}
+    service.installBundle.mockImplementationOnce(() => new Promise(resolve => { settle = resolve as typeof settle }))
+    const runtime = createOfficialDesktopRuntime(() => service, 'desktop', profile())
+    const running = runtime.runPlugin('desktop', ['add', 'example@2.0.0'])
+
+    const outcome = await Promise.race([
+      runtime.dispose().then(() => 'disposed'),
+      new Promise<string>(resolve => setTimeout(() => resolve('still waiting'), 300)),
+    ])
+    expect(outcome).toBe('disposed')
+    expect(service.cancelInstall).not.toHaveBeenCalled()
+
+    // The market the host mounts next must not take the manager for idle.
+    const next = createOfficialDesktopRuntime(() => service, 'desktop', profile())
+    expect(next.busy()).toBe(true)
+    await expect(next.runPlugin('desktop', ['add', 'other@1.0.0'])).resolves.toMatchObject({ busy: true })
+    expect(service.installBundle).toHaveBeenCalledTimes(1)
+    // Nor repair a journal record the running operation is still working on.
+    let repaired = false
+    const repair = next.repairPendingUpdates().then(report => { repaired = true; return report })
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(repaired).toBe(false)
+
+    settle({ application: 'restart-required', packageResult: { exitCode: 0, output: 'installed' } })
+    await expect(running).resolves.toMatchObject({ exitCode: 0 })
+    await repair
+    expect(repaired).toBe(true)
+    expect(next.busy()).toBe(false)
+    await next.dispose()
+  })
+
+  it('reports its own running operation so /status can wait on it (#1140)', async () => {
+    // The manager holds `active`/`repairing` for the whole of its own install.
+    // `/dsh-market/status` used to say `busy: false` the entire time, so the
+    // client's queue retried every 2s into a refusal and re-showed the
+    // "another operation is running" banner on each one.
+    const service = manager()
+    let settle: (value: { application: string; packageResult: { exitCode: number; output: string } }) => void = () => {}
+    service.installBundle.mockImplementationOnce(() => new Promise(resolve => { settle = resolve as typeof settle }))
+    const runtime = createOfficialDesktopRuntime(() => service, 'desktop', profile())
+    expect(runtime.busy()).toBe(false)
+    const running = runtime.runPlugin('desktop', ['add', 'example@2.0.0'])
+    expect(runtime.busy()).toBe(true)
+    settle({ application: 'restart-required', packageResult: { exitCode: 0, output: 'installed' } })
+    await running
+    expect(runtime.busy()).toBe(false)
+    await runtime.dispose()
+  })
+
   it('uses the current market mirror for installs, update targets and exact rollback targets (#862)', async () => {
     setActiveRegion('china')
     const service = manager()
@@ -173,6 +230,63 @@ describe('official Electron profile runtime', () => {
     expect(service.removeBundle.mock.calls[0]).toEqual(['example'])
     expect(runtime.cancelActive()).toBe(false)
     await runtime.dispose()
+  })
+
+  it('stops waiting when an ordinary uninstall never answers (#1066)', async () => {
+    // The update path has had these deadlines for a while; ordinary
+    // remove/add awaited the host forever. Reported: the panel stayed on
+    // "working", the profile's package.json.lock stayed held, and the disk
+    // had in fact been changed seconds earlier.
+    vi.useFakeTimers()
+    try {
+      const service = manager()
+      service.removeBundle.mockImplementationOnce(() => new Promise(() => {}))
+      const runtime = createOfficialDesktopRuntime(() => service, 'desktop', profile())
+
+      const removing = runtime.runPlugin('desktop', ['remove', 'example'])
+      await vi.advanceTimersByTimeAsync(300_001)
+      const result = await removing
+
+      expect(result.exitCode).toBe(1)
+      // Neither "nothing happened" nor "undo it": the manager may have
+      // written the change already.
+      expect(result.repairOnRestart).toBe(true)
+      // Names what happened, what the market did NOT do, and the next step —
+      // and does not borrow the update path's "its replacement never
+      // installed" sentence, which is nonsense on a plain uninstall.
+      expect(result.stderr).toContain('没有在限定时间内答复这次操作')
+      expect(result.stderr).toContain('did not answer this operation in time')
+      expect(result.stderr).not.toContain('新版本却还没装上')
+      await runtime.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps waiting while pnpm is retrying the registry rather than failing the removal at 90 s (#1057)', async () => {
+    // Reported: an update's removal was still in pnpm's own retry budget
+    // (`UND_ERR_CONNECT_TIMEOUT … Will retry in 10 seconds. 2 retries left`)
+    // when the old 90 s bound expired, so a transient became a permanent
+    // failure and the host's manager then rewrote the manifest from its stale
+    // snapshot. A removal that answers inside the retry budget must succeed.
+    vi.useFakeTimers()
+    try {
+      const service = manager()
+      let settle: ((result: { application: string }) => void) | undefined
+      service.removeBundle.mockImplementationOnce(() => new Promise(resolve => {
+        settle = resolve
+      }))
+      const runtime = createOfficialDesktopRuntime(() => service, 'desktop', profile())
+
+      const removing = runtime.runPlugin('desktop', ['remove', 'example'])
+      await vi.advanceTimersByTimeAsync(150_000)
+      settle?.({ application: 'applied' })
+
+      await expect(removing).resolves.toMatchObject({ exitCode: 0 })
+      await runtime.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('refuses another profile, absent service, and unsupported pnpm flags', async () => {
@@ -371,6 +485,27 @@ describe('official Electron profile runtime', () => {
       expect(result.stderr).not.toContain('minimum-release-age=0')
       expect(result.stderr).not.toMatch(/不能在自己的请求里更新自己|cannot update itself/)
       expect(result.stderr).toMatch(/没有换上|did not apply/)
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
+  it('names the pnpm that built node_modules when the overlay hits a store mismatch (#1100)', async () => {
+    const dir = profile()
+    installed(dir, 'dshmarket', '1.66.36')
+    writeFileSync(join(dir, 'node_modules', '.modules.yaml'), JSON.stringify({ packageManager: 'pnpm@10.34.9', storeDir: '/s/v10' }))
+    const service = manager()
+    service.installBundle.mockResolvedValueOnce({ application: 'failed', error: { code: 'already-installed' } })
+    const output = 'ERR_PNPM_UNEXPECTED_STORE\npnpm now wants to use the store at "/s/v11" to link dependencies.'
+    const runtime = createOfficialDesktopRuntime(
+      () => service, 'desktop', dir,
+      hostPnpmThatAdds(dir, `process.stderr.write(${JSON.stringify(output)}); process.exit(1)`),
+    )
+    try {
+      const result = await runtime.runPlugin('desktop', ['add', 'dshmarket@1.66.48'])
+      expect(result.exitCode).not.toBe(0)
+      expect(result.stderr).toContain('pnpm 10.34.9')
+      expect(result.stderr).toContain('写 storeDir 修不好')
     } finally {
       await runtime.dispose()
     }
@@ -587,7 +722,7 @@ describe('official Electron profile runtime', () => {
     const runtime = createOfficialDesktopRuntime(() => service, 'desktop', dir)
     try {
       const running = runtime.runPlugin('desktop', ['add', 'example@2.0.0'])
-      await vi.advanceTimersByTimeAsync(90_000)
+      await vi.advanceTimersByTimeAsync(300_000)
       const result = await running
       expect(result).toMatchObject({
         exitCode: 1,

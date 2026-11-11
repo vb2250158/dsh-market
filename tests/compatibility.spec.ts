@@ -48,6 +48,16 @@ describe('classifyPeer', () => {
     expect(verdict).toMatchObject({ kind: 'risk', risk: risk('aboveMax', { plugin: 'p', peer: 'dsh-invariants', range: '0.1.0-rc.6', resolved: '0.1.0-rc.7' }) })
   })
 
+  it('classifies explicit equality pins as exact lower and upper bounds', () => {
+    const range = '=0.2.0-rc.2'
+    expect(classifyPeer('p', 'dsh-tools', range, '0.2.0-rc.1', false))
+      .toMatchObject({ kind: 'risk', risk: { range, direction: 'belowMin' } })
+    expect(classifyPeer('p', 'dsh-tools', range, '0.2.0-rc.3', false))
+      .toMatchObject({ kind: 'risk', risk: { range, direction: 'aboveMax' } })
+    expect(classifyPeer('p', 'dsh-tools', range, '0.2.0-rc.2', false))
+      .toEqual({ kind: 'none' })
+  })
+
   it('flags an explicit upper bound when the resolved version exceeds it', () => {
     const verdict = classifyPeer('p', 'dsh-settings', '>=0.1.0-rc.7 <0.2.0', '0.2.0', false)
     expect(verdict).toMatchObject({ kind: 'risk', risk: risk('aboveMax', { plugin: 'p', peer: 'dsh-settings', range: '>=0.1.0-rc.7 <0.2.0', resolved: '0.2.0' }) })
@@ -73,6 +83,14 @@ describe('crossesImplicitCeiling', () => {
     // Still on the declared line — the leftover failure is the prerelease gate.
     expect(crossesImplicitCeiling('0.1.2-alpha.2', '^0.1.1-rc.2')).toBe(false)
     expect(crossesImplicitCeiling('0.1.9', '^0.1.1-rc.2')).toBe(false)
+  })
+
+  it('reads a partial caret or tilde as the line it names', () => {
+    expect(crossesImplicitCeiling('0.2.0-rc.2', '^0.1')).toBe(true)
+    expect(crossesImplicitCeiling('0.2.0-rc.2', '~0.1')).toBe(true)
+    expect(crossesImplicitCeiling('0.1.9', '^0.1')).toBe(false)
+    // `^1` and `~1` name a major, not a minor line.
+    expect(crossesImplicitCeiling('2.0.0', '^1')).toBe(false)
   })
 
   it('excludes sloppy ceilings, explicit bounds and exact pins', () => {

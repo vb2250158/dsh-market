@@ -9,8 +9,10 @@ import { createDesktopPluginRuntime, setHostPackageManager, type DesktopPnpmLike
 import { createOfficialDesktopRuntime, type OfficialPluginManagerLike } from './official-desktop.ts'
 import { isDshProfileName } from './profile.ts'
 import { setRequestGateSource, setTrustedHostsSource } from './http.ts'
+import { setLauncherInstallAnchorSource } from './dsh-install.ts'
 import { mountMarketRoutes, type HostPluginActivation, type MarketConfig, type MarketHost } from './routes.ts'
 import { installDesktopMarketSettings, installMarketSettings } from './settings.ts'
+import { MAX_AUTO_REPAIR_ATTEMPTS } from './pending-updates.ts'
 import type { AgentsServiceLike } from './agents.ts'
 
 export const name = 'dsh-market'
@@ -159,15 +161,19 @@ function agentsLookupOf(ctx: Context): () => AgentsServiceLike | undefined {
   return () => ctx.get('agents') as AgentsServiceLike | undefined
 }
 
+/** What an all-interfaces listener reports as its bind host; it names no machine. */
+const WILDCARD_BIND_HOSTS = new Set(['0.0.0.0', '::', '[::]'])
+
 /**
  * The deployment's declared authorities, read from the host (#729).
  *
- * DSH's own /api fence accepts loopback OR an authority the operator declared
- * (`dsh web --trusted-host <name>`, plus the LAN literals the CLI derives when
- * bound to 0.0.0.0). The market's routes are `exact` registrations on the bare
- * webServer, and exact matches win over that fence's prefix, so they never
- * pass through it — and a loopback-only rule of its own made every mutating
- * route 403 on any deployment reached by a name.
+ * DSH's own /api fence accepts loopback, the listener's bind IP literal, or an
+ * authority the operator declared (`dsh web --trusted-host <name>`). The
+ * market's routes are `exact` registrations on the bare webServer, and exact
+ * matches win over that fence's prefix, so they never pass through it — and a
+ * loopback-only rule of its own made every mutating route 403 on any deployment
+ * reached by a name. The source below therefore mirrors the host's fence: the
+ * declared `trustedHosts` plus the listener's own bind host from `webServer`.
  *
  * The `connection` service is optional: a host without it leaves the fence
  * exactly as it was, which is the behaviour every release so far has had.
@@ -194,9 +200,28 @@ export function useTrustedHosts(ctx: Context): () => void {
       warned = true
       console.warn('dsh-market: the host connection service is not available; the origin fence accepts loopback only')
     }
-    return Array.isArray(connection?.trustedHosts)
+    const hosts = Array.isArray(connection?.trustedHosts)
       ? connection.trustedHosts.filter((entry): entry is string => typeof entry === 'string')
       : []
+    // The host's own fence accepts the listener's bind IP independently of the
+    // declared trustedHosts list, so a deployment reached through its own bind
+    // address passed /api yet still 403s here. Mirror that acceptance as a
+    // port-less entry, with the same normalization the host applies (the zone
+    // id is an interface selector, not address text; a bare IPv6 literal needs
+    // brackets to survive the canonical-form parse). The webserver config
+    // already rejects anything that is not a concrete, non-wildcard IP literal
+    // at load, so the value is safe to trust.
+    const bindHost = (ctx.get('webServer') as { host?: unknown } | undefined)?.host
+    // Older hosts bind the all-interfaces literal itself, which no browser
+    // sends as a Host and which names no machine in particular: not an
+    // authority to trust. Newer ones refuse to load with it.
+    if (typeof bindHost === 'string' && bindHost !== '' && !WILDCARD_BIND_HOSTS.has(bindHost)) {
+      const zoneAt = bindHost.indexOf('%')
+      const address = zoneAt === -1 ? bindHost : bindHost.slice(0, zoneAt)
+      const entry = address.includes(':') && !address.startsWith('[') ? `[${address}]` : address
+      if (!hosts.includes(entry)) hosts.push(entry)
+    }
+    return hosts
   })
   // The same service carries the host's request gate (#603): its fence plus
   // its browser login, the check its own API runs. Read per request for the
@@ -216,9 +241,41 @@ export function useTrustedHosts(ctx: Context): () => void {
   }
 }
 
+/**
+ * Feed host detection the install anchor the launcher published.
+ *
+ * The CLI is located by walking `process.argv[1]` up to its package, and the
+ * official Desktop by Electron's resources directory. An embedded host — a
+ * packaged app that boots the dsh core tree in-process — has neither, so
+ * `dshHostInfo()` answered null there and every host-version surface read
+ * "unknown": Discover's compatibility filter (#473), the pre-install refusal
+ * (#404), and the exported log's `dsh host:` line (#426). The launcher does
+ * publish where its runtime is (`profileContext.installAnchor`), so hand
+ * that to detection. Read through a live source, not a mount-time copy:
+ * launchers may provide `profileContext` after the market mounts (the same
+ * timing problem the origins above handle), and a frozen value would answer
+ * "unknown" for the whole session on exactly those hosts.
+ *
+ * Exported for the specs that cover this wiring.
+ * @returns a restore function for the effect that installed it.
+ */
+export function useLauncherInstallAnchor(ctx: Context): () => void {
+  const previous = setLauncherInstallAnchorSource(() => {
+    const profileContext = ctx.get('profileContext') as ProfileContextLike | undefined
+    const anchor = profileContext?.installAnchor
+    return typeof anchor === 'string' ? anchor : null
+  })
+  return () => {
+    setLauncherInstallAnchorSource(previous)
+  }
+}
+
 export function apply(ctx: Context, config?: Config): void {
   ctx.inject(['webServer', 'loader'], (hostCtx: Context) => {
     const host = hostCtx as unknown as MarketEffectHost
+    // Before any branch mounts: every host-version surface reads detection
+    // through the anchor, so it has to be in place before those exist.
+    host.effect(() => useLauncherInstallAnchor(ctx), 'dsh-market: launcher install anchor')
     const desktopProfiles = ctx.get('desktopProfiles') as DesktopProfilesLike | undefined
     if (desktopProfiles === undefined) {
       // An explicit `profile:` in cordis.yml is the operator speaking and
@@ -297,7 +354,10 @@ export function apply(ctx: Context, config?: Config): void {
           const repairTimer = setTimeout(() => {
             void runtime.repairPendingUpdates().then(report => {
               if (report.reinstalled.length === 0 && report.failed.length === 0) return
-              console.warn(`dsh-market: ${report.reinstalled.length} interrupted update(s) reinstalled, ${report.failed.length} still pending`)
+              const abandoned = report.abandoned.length === 0
+                ? ''
+                : `, ${String(report.abandoned.length)} given up on after ${String(MAX_AUTO_REPAIR_ATTEMPTS)} starts — reinstall from Settings → Plugins: ${report.abandoned.join(', ')}`
+              console.warn(`dsh-market: ${String(report.reinstalled.length)} interrupted update(s) reinstalled, ${String(report.failed.length)} still pending${abandoned}`)
             })
           }, PENDING_UPDATE_REPAIR_DELAY_MS)
           repairTimer.unref?.()
