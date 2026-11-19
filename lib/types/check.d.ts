@@ -92,7 +92,7 @@ export interface ResidualDirectory {
     name: string;
     /** Path relative to the profile, for the diagnostics listing. */
     path: string;
-    kind: 'incomplete-package' | 'tmp-directory';
+    kind: 'incomplete-package' | 'tmp-directory' | 'empty-directory';
     /**
      * The profile still declares it. Then this is not junk: composition will
      * try to load it, and the bundle layers above already report why it fails.

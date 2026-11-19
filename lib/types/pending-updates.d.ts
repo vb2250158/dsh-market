@@ -103,6 +103,15 @@ export interface RepairManager {
             exitCode: number | null;
         };
     }>;
+    /**
+     * Optional so a minimal manager still works. Needed when the interrupted
+     * update died between its install being refused and its removal landing:
+     * the dependency line is still there, so `add` answers `already-installed`.
+     */
+    removeBundle?(name: string): Promise<{
+        application: string;
+        error?: unknown;
+    }>;
 }
 export interface RepairOptions {
     profile: string;
@@ -111,7 +120,9 @@ export interface RepairOptions {
     journal?: PendingUpdateJournal;
     timeoutMs?: number;
 }
-export type RepairFailureCause = 'version-changed' | 'refused' | 'not-composed' | 'timeout' | 'unknown' | 'abandoned';
+export type RepairFailureCause = 'version-changed' | 'refused' | 'not-composed' | 'timeout' | 'unknown' | 'abandoned'
+/** The reinstall did not run, but the build from before the update is installed and loaded. */
+ | 'kept-old';
 export interface RepairReport {
     /** Packages a previous start removed and this one put back. */
     reinstalled: string[];

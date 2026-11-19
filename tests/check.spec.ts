@@ -723,13 +723,45 @@ describe('user patch package resolution (#205)', () => {
     writeLoadablePackage(dir, 'healthy')
     // Every installed package is a symlink into the store; flagging those
     // would put every profile in existence on this list.
-    mkdirSync(join(dir, 'node_modules', '.pnpm', 'linked@1.0.0', 'node_modules', 'linked'), { recursive: true })
-    writeFileSync(join(dir, 'node_modules', '.pnpm', 'linked@1.0.0', 'node_modules', 'linked', 'package.json'), '{"name":"linked"}')
-    symlinkSync(join('..', '.pnpm', 'linked@1.0.0', 'node_modules', 'linked'), join(dir, 'node_modules', 'linked'), 'dir')
+    const storeLink = join('.pnpm', 'linked@1.0.0', 'node_modules', 'linked')
+    const target = join(dir, 'node_modules', storeLink)
+    mkdirSync(target, { recursive: true })
+    writeFileSync(join(target, 'package.json'), '{"name":"linked"}')
+    const link = join(dir, 'node_modules', 'linked')
+    // On Windows a real directory junction needs no developer-mode symlink privilege.
+    if (process.platform === 'win32') symlinkSync(target, link, 'junction')
+    else symlinkSync(join('..', storeLink), link, 'dir')
 
     const report = analyzeProfile(dir, { dshInstallDir: null, homeDir: join(tmp, 'empty-home') })
 
     expect(report.residuals).toEqual([])
+  })
+
+  it('judges scoped packages one by one instead of flagging the @scope root (#1261)', () => {
+    const dir = pdir()
+    writeProfile(dir, { name: 'web-profile', dependencies: { '@acme/declared': '^1.0.0' } })
+    const modules = join(dir, 'node_modules')
+    // Hoisted layout: scopes that hold in-use packages must never be listed.
+    for (const scope of ['@types', '@babel', '@acme', '@ai-sdk', '@noble', '@sinclair']) {
+      writeLoadablePackage(dir, `${scope}/ok`)
+      writeLoadablePackage(dir, `${scope}/two`)
+    }
+    // Empty scopes: safe to delete, and reported as such.
+    for (const scope of ['@empty-a', '@empty-b', '@empty-c']) mkdirSync(join(modules, scope), { recursive: true })
+    // A scope with one valid child and one broken child: only the child.
+    writeLoadablePackage(dir, '@mixed/good')
+    mkdirSync(join(modules, '@mixed', 'bad'), { recursive: true })
+    // A declared child without package.json is the bundle layers' to report.
+    mkdirSync(join(modules, '@acme', 'declared'), { recursive: true })
+
+    const report = analyzeProfile(dir, { dshInstallDir: null, homeDir: join(tmp, 'empty-home') })
+
+    expect(report.residuals).toEqual([
+      { name: '@empty-a', path: join('node_modules', '@empty-a'), kind: 'empty-directory', declared: false },
+      { name: '@empty-b', path: join('node_modules', '@empty-b'), kind: 'empty-directory', declared: false },
+      { name: '@empty-c', path: join('node_modules', '@empty-c'), kind: 'empty-directory', declared: false },
+      { name: '@mixed/bad', path: join('node_modules', '@mixed', 'bad'), kind: 'incomplete-package', declared: false },
+    ])
   })
 
   it('does not skip a broken nearer package directory for a healthy parent copy', () => {
