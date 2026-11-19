@@ -17,6 +17,7 @@
 .title{font-size:15px;line-height:22px;font-weight:600;margin:0;white-space:nowrap;color:var(--dsw-alias-label-primary,#1f2328)}
 .sub{flex:1 1 auto;min-width:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,#8b93a1);margin:0}
 .sidebarTip{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#5c6570)}
+.updateCheckNotice{display:flex;align-items:center;flex-wrap:wrap;gap:0 6px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#5c6570)}
 .submitLink{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,#8b93a1);text-decoration:none;white-space:nowrap}
 .submitLink:hover{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:underline}
 /* Wrap instead of clipping controls or the Tasks popover in narrow panels.
@@ -83,7 +84,7 @@
    ::before paints that strip in the same background and inherits the row's
    z-index, so the row covers what it cannot reach. Fixing it by removing the
    scroller's padding would re-space all five tabs to repair one. */
-.stickyHead{position:sticky;top:-1px;z-index:5;background:var(--dsw-alias-bg-base,#fff)}
+.stickyHead{position:sticky;top:-1px;z-index:5;background:var(--dshm-sticky-bg,var(--dsw-alias-bg-base,#fff))}
 .stickyHead::before{content:'';position:absolute;left:0;right:0;bottom:100%;height:14px;background:inherit;pointer-events:none}
 .cats{padding:0 4px 4px;margin:0 -4px 2px}
 .catsRow{display:flex;gap:6px;align-items:flex-start;position:relative}
@@ -271,6 +272,9 @@
    top-to-bottom, and lets each column close its own gaps. */
 .masonry{display:flex;align-items:flex-start;gap:10px}
 .masonryCol{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+/* Installed density: looser than Discover cards. */
+.masonryInstalled{gap:14px}
+.masonryInstalled .masonryCol{gap:14px}
 /* `.card` carries `align-self:start`, which under CSS grid means "do not
    stretch VERTICALLY to match a taller row-mate". In a flex COLUMN the same
    declaration addresses the other axis: it stops the card stretching
@@ -319,6 +323,9 @@
 .brokenPluginItem{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--dsw-alias-state-warn-tertiary,rgba(180,83,9,.2));border-radius:8px;background:var(--dsw-alias-state-warn-tertiary,rgba(180,83,9,.06));color:var(--dsw-alias-state-warn-primary,#b45309);font-size:12px;line-height:18px}
 .brokenPluginText{display:flex;flex-direction:column;gap:2px;min-width:0}
 .favoritesStaleBar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:0 0 8px;padding:8px 10px;border:1px solid var(--dsw-alias-state-warn-tertiary,rgba(180,83,9,.2));border-radius:8px;background:var(--dsw-alias-state-warn-tertiary,rgba(180,83,9,.06));color:var(--dsw-alias-state-warn-primary,#b45309);font-size:12px;line-height:18px}
+.favoritesStaleBar{flex-direction:column;align-items:stretch}
+.favoritesStaleRow{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.favoritesStaleName{min-width:0;overflow-wrap:anywhere}
 .favoritesStaleOnly{display:flex;flex-direction:column;align-items:flex-start;gap:10px}
 .themeGallery{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:stretch;gap:10px}
 .themeCard{display:flex;flex-direction:column;min-width:0;overflow:hidden;border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-lg,16px);background:var(--dsw-alias-bg-layer-1,#fff);transition:border-color 160ms cubic-bezier(.16,1,.3,1),box-shadow 160ms cubic-bezier(.16,1,.3,1),transform 160ms cubic-bezier(.16,1,.3,1)}
@@ -442,7 +449,7 @@
    chrome, written by MarketSection. */
 [data-dsh-market-plugins-tab="true"]:not([data-dsh-market-fullscreen="true"]) .head{
   position:sticky;z-index:6;top:var(--dshm-host-sticky-top,0px);
-  margin:0 -4px;padding:4px 4px 6px;background:var(--dsw-alias-bg-base,#fff)
+  margin:0 -4px;padding:4px 4px 6px;background:var(--dshm-sticky-bg,var(--dsw-alias-bg-base,#fff))
 }
 /* Second pin: the category row sits under the tab row. Search stays in
    the flow so the stuck chrome stays two market rows, not three.
@@ -451,7 +458,21 @@
 [data-dsh-market-plugins-tab="true"]:not([data-dsh-market-fullscreen="true"]) .cats{
   position:sticky;z-index:5;
   top:calc(var(--dshm-host-sticky-top,0px) + var(--dshm-plugins-head-height,0px));
-  background:var(--dsw-alias-bg-base,#fff)
+  background:var(--dshm-sticky-bg,var(--dsw-alias-bg-base,#fff))
+}
+/* Both rows paint a surface so cards scrolling under them are not read
+   through it. A theme is allowed to set `--dsw-alias-bg-base` transparent —
+   that is the host's own page-background token — and then no single colour
+   works: transparent at rest keeps the wallpaper, opaque once the row is
+   stuck keeps the cards off the tabs. Two hooks, each read from the cascade
+   and never declared here, so a theme supplies them (inline on the page
+   root, or any rule above the market) without fighting these selectors:
+   `--dshm-sticky-bg` for the resting surface, `--dshm-stuck-bg` for the
+   surface while `data-dshm-stuck` says the row is on its line (#1237).
+   With neither set, both fall back to exactly today's `--dsw-alias-bg-base`. */
+[data-dsh-market-plugins-tab="true"]:not([data-dsh-market-fullscreen="true"]) .head[data-dshm-stuck="true"],
+[data-dsh-market-plugins-tab="true"]:not([data-dsh-market-fullscreen="true"]) .cats[data-dshm-stuck="true"]{
+  background:var(--dshm-stuck-bg,var(--dshm-sticky-bg,var(--dsw-alias-bg-base,#fff)))
 }
 /* Explicit immersive mode: the normal Settings width remains the default,
    while the user can opt into a Wallpaper-style multi-column gallery. */
@@ -555,6 +576,8 @@
    version — most reports arrive as a photo of the screen. Selectable
    (not user-select:none) so it can also be copied into an issue. */
 .version{font-size:12px;line-height:20px;color:var(--dsw-alias-label-tertiary,#8b93a1);font-variant-numeric:tabular-nums;flex-shrink:0}
+.marketVersionGroup{display:inline-flex;align-items:center;gap:6px}
+.marketVersionWait{font-size:12px;line-height:20px;color:var(--dsw-alias-label-secondary,#5c6570)}
 .repoLink{font-size:12px;line-height:20px;color:var(--dsw-alias-label-tertiary,#8b93a1);text-decoration:none;flex-shrink:0}
 .repoLink:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}
 /* The note row (#347). The user's own text reads as theirs — slightly
@@ -745,7 +768,10 @@
 .irowHead{display:flex;align-items:flex-start;gap:8px;min-width:0}
 .irowHead .irowName{flex:1 1 0;min-width:0}
 .irowMenu{margin-left:auto;flex-shrink:0;margin-top:-4px;margin-right:-6px}
-.irowMeta{font-size:12px;line-height:18px;margin-top:2px;color:var(--dsw-alias-label-secondary,#6b7280)}
+.irowMeta{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;min-width:0;
+          font-size:12px;line-height:18px;margin-top:2px;color:var(--dsw-alias-label-secondary,#6b7280)}
+.irowMetaText{min-width:0}
+.irowMeta .notesLink{display:inline;margin:0;flex-shrink:0}
 .irowPath{display:flex;align-items:center;gap:6px;min-width:0;margin-top:6px}
 .irowPath .spec{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .irowPathIcon,.irowStatusIcon{display:inline-flex;flex-shrink:0;color:var(--dsw-alias-label-tertiary,#8b93a1)}
@@ -829,6 +855,7 @@
 .opHead{display:flex;align-items:center;gap:8px;padding:9px 14px;
         border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb)}
 .opPanelTitle{font-size:12.5px;font-weight:600}
+.opRepairTitle{padding:9px 14px 3px;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#667085)}
 .opCloseBtn.opCloseBtn{padding:0 6px;min-width:0;color:var(--dsw-alias-label-secondary,#6b7280)}
 .opAggregate{padding:9px 14px;border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);
              background:var(--dsw-alias-bg-layer-2,#f7f8fa)}
@@ -879,23 +906,88 @@
 .dangerArmed.dangerArmed{background:var(--dsw-alias-state-error-primary,#dc2626);border-color:var(--dsw-alias-state-error-primary,#dc2626);color:var(--dsw-alias-label-primary-foreground,#fff)}
 .retryBtn{margin-top:4px}
 .irow{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));
-      border-radius:var(--dsw-radius-xl,20px);padding:12px 14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+      border-radius:var(--dsw-radius-xl,20px);padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+/* Clear the version/path line above — head→meta stays tight; body starts a
+   new reading block. Column gap keeps desc / editor / foot evenly spaced. */
+.irowDescBand{display:flex;flex-direction:column;gap:10px;min-width:0;margin-top:10px}
+.irowDescBand .noteEdit{margin-top:0}
+/* Body copy is the reading layer — darker/larger than meta and wait hints.
+   CardDesc still stamps `.desc` (catalog 12px tertiary); override it here so
+   installed body and user notes share one reading size. `.noteMine` only
+   deepens color — same size as the author blurb, not a second type ramp. */
+.irowBody{display:flex;flex-direction:column;gap:10px;min-width:0;margin:0;
+          font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary,#5c6570)}
+.irowBody .irowDesc{flex:none;width:100%}
+.irowBody .desc{font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary,#5c6570)}
+.irowBody .noteMine{color:var(--dsw-alias-label-primary,#1f2328)}
+.irowBody .descMore{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,#8b93a1)}
+/* Body foot: DSH chip left (same .hostRequirement chrome as Discover), note
+   actions right. Chip stays content-sized — do not flex-grow the pill.
+   Spaced marks empty-body / editor rows for tests; descBand gap supplies air. */
+.irowFootRow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;min-width:0}
+.irowFootRow .hostRequirement{flex:0 1 auto;min-width:0}
+.irowNoteActions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px 10px;min-width:0;margin-left:auto}
+.irowNoteActionsSpaced{margin-top:0}
+.irowNoteActions .noteAdd,
+.irowNoteActions .noteToggle{margin-top:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,#8b93a1)}
+.irowNoteActions .noteAdd:hover,
+.irowNoteActions .noteToggle:hover{color:var(--dsw-alias-label-primary,#1f2328);text-decoration:none}
+/* Status band: quiet fill for incompat / reminder only — not held waits. */
+.irowStatusBand{
+  display:flex;flex-direction:column;gap:6px;min-width:0;
+  margin-top:2px;padding:10px 12px;border-radius:10px;
+  background:var(--dsw-alias-bg-module-platform,#f4f5f7);
+}
+.irowStatusBand .irowStatus{margin-top:0}
+.irowStatusBand .irowStatus + .irowStatus{margin-top:4px}
+.irowStatusMuted{color:var(--dsw-alias-label-secondary,#6b7280);font-size:12px;line-height:18px}
+.irowIncompat{display:flex;flex-direction:column;gap:4px;min-width:0}
+.irowIncompatTitle{font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary,#1f2328);font-weight:600}
+.irowIncompatBody{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#6b7280)}
 /* Everything packs left. Pushing the trailing controls right — whether with
    justify-content or an auto margin on the tag — made the switch's position
    depend on whether its neighbour rendered 更新 or 已是最新, so the switch
    sat at a different x on every row. Packed left, state and switch land at
    the same place regardless of what follows them. */
-.irowActions{display:flex;align-items:center;justify-content:flex-start;gap:8px;flex-wrap:wrap;min-width:0}
-/* The status tag and Uninstall travel together: nowrap so they never split
-   across lines, min-width:0 so the group can still shrink (the tag inside
-   ellipsizes) rather than forcing the whole row wider (#242). */
-.irowTrailing{display:inline-flex;align-items:center;gap:8px;flex-wrap:nowrap;flex-shrink:0;min-width:0}
+.irowActions{
+  display:flex;align-items:center;justify-content:flex-start;gap:8px;
+  /* Half-width masonry columns need wrap; trailing still stacks held hints. */
+  flex-wrap:wrap;min-width:0;
+  /* Card gap is 12px; pull the rule up so 「添加备注」does not float above it. */
+  margin-top:-6px;padding-top:12px;
+  border-top:.5px solid var(--dsw-alias-border-l2,#e5e7eb);
+}
+/* Trailing ops: held wait and update share one horizontal row (hint then button). */
+.irowTrailing{
+  display:inline-flex;flex-direction:column;align-items:flex-end;gap:4px;
+  flex-wrap:nowrap;flex-shrink:0;min-width:0;margin-left:auto;
+}
+.irowTrailingRow{display:inline-flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px 8px;min-width:0}
+/* Quiet wait before the update button (clock + short label); button stays rightmost. */
+.irowTrailingHint{
+  display:inline-flex;align-items:center;gap:4px;flex-shrink:0;
+  color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:11px;line-height:16px;
+  white-space:nowrap;
+}
+.irowTrailingHint svg{flex-shrink:0}
 .irowTrailing .metaTag{flex-shrink:1;min-width:0}
+/* Update stays outline — not primary. One step firmer ink/stroke so it reads
+   as a control on the card fill, without shouting on every outdated row. */
+.irowUpdateBtn.irowUpdateBtn{
+  color:var(--dsw-alias-label-primary,#1f2328);
+  border-color:var(--dsw-alias-border-l3,#b8bec8);
+  background:var(--dsw-alias-bg-layer-1,#fff);
+}
+.irowUpdateBtn.irowUpdateBtn:hover:not(:disabled){
+  border-color:var(--dsw-alias-label-secondary,#6b7280);
+  background:var(--dsw-alias-bg-module-platform,#f4f5f7);
+}
 .irowMissing{filter:grayscale(1);opacity:.5}
 .irow>.src,.irow>.owner{white-space:nowrap;flex-shrink:0}
 .irow button{white-space:nowrap;flex-shrink:0}
 .tabSearchRow{display:flex;align-items:center;gap:8px;padding:0 4px 10px}
 .tabSearch{flex:1;min-width:0}
+.groupBulkActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 4px 10px}
 /* Capability disclosure (#401). Quiet by design: these are facts beside the
    install button, not a warning banner — the one loud element is a red line,
    and it borrows the warning colour rather than inventing a severity scale. */
@@ -1228,6 +1320,13 @@
 .notesArrow{color:var(--dsw-alias-label-tertiary,#8b93a1)}
 .notesMeta{font-size:12px;line-height:18px;letter-spacing:.02em;text-transform:uppercase;color:var(--dsw-alias-label-secondary,#6b7280);display:flex;gap:6px;flex-wrap:wrap;align-items:baseline;margin-top:4px}
 .notesBody>.notesMeta:first-child{margin-top:0}
+.notesHistory,.notesHeld{display:flex;flex-direction:column;gap:8px;min-width:0}
+.notesHistory>.notesMeta:first-child,.notesHeld>.notesMeta:first-child{margin-top:0}
+.notesHeld:not(:first-child){padding-top:10px;border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb)}
+.notesEntry{border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);padding-bottom:8px}
+.notesEntry:last-child{border-bottom:none}
+.notesSummary{cursor:pointer;font-size:13px;line-height:20px;overflow-wrap:anywhere}
+.notesSummary+.notesRendered{margin-top:8px}
 .notesPre{margin:0;white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:20px;padding:10px 12px;background:var(--dsw-alias-bg-layer-2,#eef0f4);border-radius:8px;max-height:40vh;overflow:auto}
 /* markdown轻渲染的层级：标题、段落、引用、围栏代码、行内代码与链接 */
 .notesRendered{display:flex;flex-direction:column;gap:8px;min-width:0}
@@ -1287,3 +1386,35 @@
 .sourceRepo{display:inline-flex;align-self:flex-end;align-items:center;gap:2px;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary,#5c6570);text-decoration:none}
 .sourceRepo:hover{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:underline}
 .sourceRepo:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4f6ef7);outline-offset:2px;border-radius:4px}
+.updateChecks {
+  margin: 12px 0;
+  font-size: 13px;
+}
+.updateChecks summary { cursor: pointer; }
+.updateChecksSummary { margin-left: 8px; opacity: .7; }
+.updateChecksControls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.updateChecksToggle { display: inline-flex; align-items: center; gap: 8px; }
+.updateChecksHint { opacity: .7; margin: 8px 0; }
+.updateChecksList { list-style: none; padding: 0; margin: 12px 0; }
+.updateChecksList li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 0; }
+.updateChecksPackage { display: flex; flex-direction: column; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.updateChecksPackage > span { opacity: .7; font-size: 12px; }
+
+.updateChecksInterval { display: inline-flex; align-items: center; gap: 8px; }
+.updateChecksInterval select { color: inherit; background: var(--dsw-alias-bg-layer-1, #fff); border: 1px solid var(--dsw-alias-border-l2, #e5e7eb); border-radius: 6px; padding: 4px 8px; font: inherit; }
+
+/* "This entry has moved" line above the market in Settings. A statement, so no
+   warning colour; wraps under the text on a narrow panel. */
+.noticeFrame{display:flex;flex-direction:column;height:100%;min-height:0;min-width:0}
+.noticeFrameOff{display:contents}
+.noticeBody{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column}
+.moveNotice{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;flex:none;box-sizing:border-box;margin:0 0 8px;padding:8px 12px;border-radius:var(--dsw-radius-md,12px);background:var(--dsw-alias-bg-module-platform,#f4f5f7);color:var(--dsw-alias-label-secondary,#5c6570);font-size:12px;line-height:18px}
+.moveNoticeText{flex:1 1 220px;min-width:0}
+.sponsorMark{flex:none;flex-wrap:nowrap;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:20px;color:var(--dsw-alias-label-tertiary,#8b93a1)}
+.sponsorItem{display:inline-flex;align-items:center;gap:4px;color:inherit;text-decoration:none}
+.sponsorItem:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}
+.sponsorLogo{display:block;height:14px;width:auto;max-width:56px;border-radius:3px;background:#fff;object-fit:contain}
+.sponsorSlot{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;align-self:center;min-width:0;height:20px;overflow:hidden;padding-right:4px}
+/* A zero-width first item gives the mark a line to wrap away from: without it a
+   lone item too wide for the slot stays on the visible line and is cut in half. */
+.sponsorWrapFloor{flex:none;width:0;height:20px}

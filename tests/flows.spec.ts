@@ -12,13 +12,15 @@
  *                  the update logic WITHOUT publishing npm versions.
  * - registry.ts  → fixed curated registry (with a theme category)
  * - hot.ts       → in-memory mount table
- * - global fetch → fake npm/github APIs
+ * - global fetch → fake npm/github APIs; a request no stub answers is
+ *                  refused, never sent
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { load } from 'js-yaml'
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 // ---------------------------------------------------------------- FakeDsh
 // Mutable per-test state driving the fake executor and fake npm API.
@@ -629,6 +631,7 @@ const hot = vi.hoisted(() => ({
   /** The live source the routes installed, so a test can read what a spawn would. */
   buildEnvSource: undefined as (() => Readonly<Record<string, string>>) | undefined,
   failNext: false,
+  failStateWrite: undefined as (() => never) | undefined,
   /** The next hotMount refuses as "restart-only" (nothing was attempted). */
   deferNext: false,
 }))
@@ -675,6 +678,7 @@ vi.mock('../src/hot.ts', async (importOriginal) => ({
     updateExempt?: string[]
     buildEnv?: Record<string, string>
   }) => {
+    hot.failStateWrite?.()
     if (Object.prototype.hasOwnProperty.call(state, 'sidebarEntry')) hot.sidebarEntry = state.sidebarEntry
     // `true` is the default and is not persisted, exactly like the real
     // writer: it clears the stored OFF instead of pinning today's default.
@@ -698,6 +702,9 @@ vi.mock('../src/hot.ts', async (importOriginal) => ({
     if (state.updateExempt !== undefined) hot.updateExempt = state.updateExempt
   },
   listHotMounts: () => [...hot.mounts],
+  // Nothing in this fake tree can fail a child; the real tree is covered by hot-activation.spec.ts.
+  listLiveHotMounts: () => [...hot.mounts],
+  hotMountFailure: () => null,
   hotMount: (_ctx: unknown, _dir: string, name: string) => {
     if (hot.failNext) {
       hot.failNext = false
@@ -824,11 +831,15 @@ vi.mock('../src/verify.ts', async (importOriginal) => ({
 import { marketVersion, mountMarketRoutes } from '../src/routes.ts'
 import { RELEASE_AGE_OVERRIDE } from '../src/install.ts'
 import { resolveChannel } from '../src/channels.ts'
-import { profileDir } from '../src/profile.ts'
-import { runDshPlugin, type InstallResult } from '../src/dsh-cli.ts'
+import { addProfileBundle, profileDir } from '../src/profile.ts'
+import { runDshPlugin, type InstallResult, type PluginRunner } from '../src/dsh-cli.ts'
 import { createOfficialDesktopRuntime } from '../src/official-desktop.ts'
+import { PendingCheckoutLinks } from '../src/pending-checkout-links.ts'
+import * as checkoutLocks from '../src/pending-checkout-links.ts'
+import { readPersistentLog } from '../src/log.ts'
 import { routesFor } from '../src/regions.ts'
 import { setRequestGateSource, setTrustedHostsSource } from '../src/http.ts'
+import * as hotModule from '../src/hot.ts'
 import type { AgentsServiceLike } from '../src/agents.ts'
 import { FakeAgent, agentsService } from './drain-agent.ts'
 
@@ -987,12 +998,16 @@ beforeEach(() => {
   regionProbe.pending = null
   gateFacts.runtimeVersion = null
   hot.failNext = false
+  hot.failStateWrite = undefined
   bed = createTestbed()
   // The install route asks the registry for `latest` before a fresh npm add
-  // (#594). Answer from the fake registry so no test reaches the network;
-  // everything else goes to the real fetch, or to whatever a test stubs.
-  const realFetch = globalThis.fetch
-  vi.stubGlobal('fetch', vi.fn((input: unknown, init?: RequestInit) => {
+  // (#594). Answer from the fake registry. Anything else is refused the way
+  // an unreachable network refuses it, unless a test stubs it: this lane is
+  // offline (vitest.config.ts). Handing the rest to the real fetch sent
+  // `npm test` to registry.npmjs.org, github.com and raw.githubusercontent.com
+  // from update checks and acceleration probes, so what those specs saw
+  // depended on the machine's network rather than on the spec.
+  vi.stubGlobal('fetch', vi.fn((input: unknown) => {
     const m = /^https:\/\/registry\.(?:npmjs\.org|npmmirror\.com)\/(.+?)\/latest$/.exec(String(input))
     if (m !== null) {
       const pkg = fake.npm[decodeURIComponent(m[1]!)]
@@ -1000,7 +1015,7 @@ beforeEach(() => {
         ? new Response('{"error":"Not found"}', { status: 404 })
         : new Response(JSON.stringify({ version: pkg.latest }), { status: 200 }))
     }
-    return realFetch(input as string, init)
+    return Promise.reject(new TypeError(`unit lane is offline: no stub answers ${String(input)}`))
   }))
 })
 afterEach(() => {
@@ -1040,6 +1055,15 @@ function npmLockFixture(name: string, spec: string, version: string): string {
     '',
   ].join('\n')
 }
+
+describe('the unit lane stays offline', () => {
+  it('refuses a request no stub answers instead of sending it', async () => {
+    // `.invalid` never resolves, so the old pass-through failed here too, only
+    // after a DNS lookup and with the real fetch's error. The point is who
+    // answers: the beforeEach stub, without anything leaving the machine.
+    await expect(globalThis.fetch('https://example.invalid/unstubbed')).rejects.toThrow(/unit lane is offline/)
+  })
+})
 
 describe('flat Desktop host consumers (#553)', () => {
   const resourcesDescriptor = Object.getOwnPropertyDescriptor(process, 'resourcesPath')
@@ -2423,7 +2447,7 @@ describe('install flow', () => {
 
   it('retargets a collection repo to its contained plugins via #path: (#18)', async () => {
     fake.repos['github:o/skin-pack'] = {
-      name: 'skin-pack', manifest: { name: 'skin-pack', private: true }, junkChildren: ['whale-skin'],
+      name: 'skin-pack', manifest: { name: 'skin-pack', private: true, workspaces: ['whale-skin'] }, junkChildren: ['whale-skin'],
     }
     fake.repos['github:o/skin-pack#path:/whale-skin'] = {
       name: 'whale-skin', manifest: { dsh: {}, main: 'index.js' }, artifacts: ['index.js'],
@@ -2432,6 +2456,38 @@ describe('install flow', () => {
     expect(r.status).toBe(200)
     expect(installedSpec('whale-skin')).toBeDefined()
     expect(installedSpec('skin-pack')).toBeUndefined()
+  })
+
+  it.each([false, true])('refuses a workspace root listed as a different package before pnpm add (archive fallback %s, #1208)', async (archiveFallback) => {
+    const url = 'https://github.com/zjukop3/dsh-verify-kit'
+    const archive = `${url}/releases/download/v0.1.3/dsh-citelint.tgz`
+    const manifest = { name: 'dsh-verify-kit', version: '0.0.0', private: true, workspaces: ['packages/*'] }
+    const commit = 'a'.repeat(40)
+    const manifestUrl = `https://raw.githubusercontent.com/zjukop3/dsh-verify-kit/${commit}/package.json`
+    registryModule.loadRegistry.mockResolvedValueOnce({
+      ...REGISTRY,
+      plugins: [{ ...REGISTRY.plugins[0]!, url, name: 'dsh-citelint', npm: null, ...(archiveFallback ? { tarball: archive } : {}) }],
+    })
+    fake.tarballWithoutIntegrity = archiveFallback
+    fake.repos['github:zjukop3/dsh-verify-kit'] = { name: manifest.name, manifest }
+    const request = vi.fn(async (input: string) => {
+      if (input === `${url}/info/refs?service=git-upload-pack`) {
+        return new Response(`# service=git-upload-pack\n${commit} HEAD\0capabilities`)
+      }
+      if (input === manifestUrl) return Response.json(manifest)
+      throw new Error(`unexpected upstream request: ${input}`)
+    })
+    vi.stubGlobal('fetch', request)
+    const before = readFileSync(join(fake.profileDir, 'package.json'), 'utf8')
+
+    const result = await bed.dispatch('POST', '/dsh-market/install', { url, force: true })
+
+    expect(result.status).toBe(400)
+    expect(result.json.error).toMatch(/dsh-verify-kit.*dsh-citelint/)
+    expect(request.mock.calls.map(([input]) => input)).toContain(manifestUrl)
+    expect(fake.calls.filter(args => args.includes('add')).map(args => args.at(-1))).toEqual(archiveFallback ? [archive] : [])
+    expect(readFileSync(join(fake.profileDir, 'package.json'), 'utf8')).toBe(before)
+    expect(existsSync(join(fake.profileDir, 'node_modules', manifest.name))).toBe(false)
   })
 
   it('inspects the current dsh-excel-chat bundle after collection retargeting', async () => {
@@ -2909,6 +2965,41 @@ describe('update flow — no npm publishing required', () => {
     expect(listed.json.brokenPlugins['dsh-loop']).toMatchObject({ spec: specBefore, reason: 'incomplete-build-cancelled' })
   })
 
+  it('clears the removed-declaration notice by the package it reinstalled, not the catalog display name (#1164)', async () => {
+    // The reporter's entry has BOTH names and they differ: the catalog row is
+    // `dsh-genui` (the GitHub repo's casing) while the package is
+    // `@changfenhuang/dsh-genui`. Records are keyed by the profile dependency
+    // name, so `clearBrokenPlugin(entry.name)` after a successful reinstall
+    // hit a key that was never there — a silent no-op that left the spent
+    // notice on screen through page reloads, DSH restarts and a market
+    // upgrade, with no `update-reinstalled` in the log.
+    fake.npm['@changfenhuang/dsh-genui'] = { latest: '1.4.0', versions: { '1.4.0': { manifest: { dsh: {}, main: 'lib/index.js' }, artifacts: ['lib/index.js'] } } }
+    const first = await bed.dispatch('POST', '/dsh-market/install', { url: 'https://github.com/omdsh-dev/dsh-genui' })
+    expect(first.json.ok).toBe(true)
+
+    // Reach the record the way the reporter did — a cancel mid-swap, which
+    // drops the declaration and files the notice under the PACKAGE name.
+    fake.npm['@changfenhuang/dsh-genui'].latest = '1.5.0'
+    fake.npm['@changfenhuang/dsh-genui'].versions['1.5.0'] = { manifest: { dsh: {}, main: 'lib/index.js' }, artifacts: ['lib/index.js'] }
+    fake.cancelNext = true
+    fake.cancelClears = { name: '@changfenhuang/dsh-genui', cleared: ['package.json', 'lib/index.js'] }
+    const cancelledRun = await bed.dispatch('POST', '/dsh-market/update', { name: '@changfenhuang/dsh-genui' })
+    expect(cancelledRun.json).toMatchObject({ ok: false, cancelled: true })
+    const broken = (await bed.dispatch('GET', '/dsh-market/installed')).json.brokenPlugins as Record<string, unknown>
+    expect(broken['@changfenhuang/dsh-genui']).toBeTruthy()
+
+    // Reinstalling from the market is the designed way out of that notice.
+    const again = await bed.dispatch('POST', '/dsh-market/install', { url: 'https://github.com/omdsh-dev/dsh-genui' })
+    expect(again.json.ok).toBe(true)
+    const after = (await bed.dispatch('GET', '/dsh-market/installed')).json.brokenPlugins as Record<string, unknown>
+    expect(after['@changfenhuang/dsh-genui']).toBeUndefined()
+    // The clear ran with the PACKAGE key, which is what `update-reinstalled`
+    // names — the pre-fix run logged nothing at all, because
+    // clearBrokenPlugin() returned before writing anything.
+    expect((await bed.dispatch('GET', '/dsh-market/logs')).text).toContain('update-reinstalled')
+    expect((await bed.dispatch('GET', '/dsh-market/logs')).text).toContain('@changfenhuang/dsh-genui: installed again')
+  })
+
   it('leaves an ordinary cancel alone when the previous build can still load (#663)', async () => {
     // The common cancel: stopped before the swap. Nothing is dropped, nothing
     // is restored — the user's choice stands exactly as before.
@@ -2999,6 +3090,29 @@ describe('update flow — no npm publishing required', () => {
     // disk, `/dsh-market/status` still reporting 1.11.3, an unchanged boot
     // id, and this route calling it hot-loaded in the same response.
     expect(r.json.activation['dsh-loop']).toMatchObject({ state: 'restart', hot: false })
+  })
+
+  it('drops the release-age exclude row of the version an update replaced (#1093)', async () => {
+    // The uninstall side was fixed first; an update leaves the same orphan: the
+    // row for the old version outlives it. Another package's row stays.
+    const workspacePath = join(fake.profileDir, 'pnpm-workspace.yaml')
+    writeFileSync(workspacePath, [
+      'minimumReleaseAge: 1440',
+      'minimumReleaseAgeExclude:',
+      '  - dsh-loop@1.0.0',
+      '  - other@2.0.0',
+      '',
+    ].join('\n'))
+    advanceNpmLatest('1.2.0')
+
+    const r = await bed.dispatch('POST', '/dsh-market/update', { name: 'dsh-loop' })
+
+    expect(r.status).toBe(200)
+    expect(r.json.ok).toBe(true)
+    const workspace = readFileSync(workspacePath, 'utf8')
+    expect(workspace).not.toContain('dsh-loop@1.0.0')
+    expect(workspace).toContain('other@2.0.0')
+    expect(workspace).toContain('minimumReleaseAge: 1440')
   })
 
   it('keeps saying "restart to apply" on every later listing, not only in the reply', async () => {
@@ -3276,6 +3390,113 @@ describe('update flow — no npm publishing required', () => {
     expect(error).not.toContain('minimumReleaseAgeExclude')
   })
 
+  describe('another release in the profile is inside the safety wait (#1252)', () => {
+    /** A Desktop-shaped bed: pnpm refuses on a lockfile entry that is not the plugin asked for. */
+    function desktopRefusing(stderr: () => string, adds: string[][]): void {
+      bed.dispose()
+      bed = createTestbed({}, {
+        runPlugin: async (_profile, args) => {
+          if (args[0] === 'add') adds.push(args)
+          return { exitCode: 1, timedOut: false, stdout: '', stderr: stderr(), cancelled: false, wroteNothing: false }
+        },
+        acceptsMarketPnpmFlags: false,
+        probePnpm: () => Promise.resolve(true),
+        provisionPnpm: () => Promise.resolve({ ok: true }),
+        cancelActive: () => false,
+      })
+    }
+    /** The lockfile really pins the refused entry, as pnpm's does; a blocker the lockfile no longer holds is dropped. */
+    function pinInLockfile(entry = 'dsh-mobile-plugin@0.5.71'): void {
+      const file = join(fake.profileDir, 'pnpm-lock.yaml')
+      writeFileSync(file, `${existsSync(file) ? readFileSync(file, 'utf8') : ''}\npackages:\n  ${entry}:\n    resolution: {integrity: sha512-x}\n`)
+    }
+    const refusal = (publishedAt: string) =>
+      `✗ Lockfile failed supply-chain policy check (229 entries in 3.8s)\n[ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION] 1 lockfile entries failed verification:\n  dsh-mobile-plugin@0.5.71 was published at ${publishedAt},\n  within the minimumReleaseAge cutoff`
+
+    afterEach(() => { vi.useRealTimers() })
+
+    it('learns the blocker from the first refusal and does not run pnpm for the next update', async () => {
+      advanceNpmLatest('1.2.0')
+      const adds: string[][] = []
+      const published = new Date(Date.now() - 2 * 3_600_000).toISOString()
+      desktopRefusing(() => refusal(published), adds)
+      pinInLockfile()
+
+      // Before any failure nothing is known: the update is offered.
+      const before = await bed.dispatch('GET', '/dsh-market/updates?force=1')
+      expect(before.json.updates['dsh-loop']).toMatchObject({ updateAvailable: true })
+      expect(before.json.updates['dsh-loop'].profileBlocked).toBeUndefined()
+
+      const first = await bed.dispatch('POST', '/dsh-market/update', { name: 'dsh-loop' })
+      expect(first.status).toBe(502)
+      expect(first.json).toMatchObject({
+        failureCode: 'PROFILE_RELEASE_BLOCKED',
+        profileBlocked: { name: 'dsh-mobile-plugin', version: '0.5.71' },
+      })
+      expect(adds).toHaveLength(1)
+
+      // The second click is answered without touching pnpm.
+      const second = await bed.dispatch('POST', '/dsh-market/update', { name: 'dsh-loop' })
+      expect(second.status).toBe(409)
+      expect(second.json).toMatchObject({ failureCode: 'PROFILE_RELEASE_BLOCKED' })
+      const [zh, en] = String(second.json.error).split(' / ')
+      expect(zh).toMatch(/要等 dsh-mobile-plugin 0\.5\.71 满安全等待期（约 \d\d-\d\d \d\d:\d\d）后才能更新/)
+      expect(en).toContain('dsh-mobile-plugin 0.5.71')
+      expect(adds).toHaveLength(1)
+
+      // The check stops offering what cannot start, and says why.
+      const after = await bed.dispatch('GET', '/dsh-market/updates')
+      expect(after.json.updates['dsh-loop']).toMatchObject({
+        updateAvailable: false,
+        profileBlocked: { name: 'dsh-mobile-plugin', version: '0.5.71' },
+      })
+      // ...and it is the profile's fact, not the plugin's: no per-target hold on it.
+      expect(after.json.updates['dsh-loop'].heldUpdate).toBeUndefined()
+      expect(installedSpec('dsh-loop')).toBe('^1.0.0')
+    })
+
+    it('lets the update through again once the wait has ended', async () => {
+      advanceNpmLatest('1.2.0')
+      const adds: string[][] = []
+      const published = new Date(Date.now() - 2 * 3_600_000).toISOString()
+      desktopRefusing(() => refusal(published), adds)
+      pinInLockfile()
+      expect((await bed.dispatch('POST', '/dsh-market/update', { name: 'dsh-loop' })).status).toBe(502)
+      expect((await bed.dispatch('POST', '/dsh-market/update', { name: 'dsh-loop' })).status).toBe(409)
+      expect(adds).toHaveLength(1)
+
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(Date.parse(published) + 24 * 3_600_000 + 1000)
+      const listed = await bed.dispatch('GET', '/dsh-market/updates')
+      expect(listed.json.updates['dsh-loop'].profileBlocked).toBeUndefined()
+      const retry = await bed.dispatch('POST', '/dsh-market/update', { name: 'dsh-loop' })
+      expect(retry.status).toBe(502)
+      expect(adds).toHaveLength(2)
+    })
+
+    it('says the time is unknown rather than inventing one', async () => {
+      advanceNpmLatest('1.2.0')
+      const adds: string[][] = []
+      desktopRefusing(() => refusal('sometime-yesterday'), adds)
+      pinInLockfile()
+      expect((await bed.dispatch('POST', '/dsh-market/update', { name: 'dsh-loop' })).status).toBe(502)
+      const second = await bed.dispatch('POST', '/dsh-market/update', { name: 'dsh-loop' })
+      expect(second.status).toBe(409)
+      expect(String(second.json.error)).toContain('时间未知')
+      expect(second.json.profileBlocked).toMatchObject({ name: 'dsh-mobile-plugin', readyAt: null })
+      expect(adds).toHaveLength(1)
+    })
+
+    it('does not hold updates on a host whose one-shot bypass gets through', async () => {
+      advanceNpmLatest('1.2.0')
+      fake.youngLockfile = true
+      const first = await bed.dispatch('POST', '/dsh-market/update', { name: 'dsh-loop' })
+      expect(first.status, JSON.stringify(first.json)).toBe(200)
+      const listed = await bed.dispatch('GET', '/dsh-market/updates?force=1')
+      expect(listed.json.updates['dsh-loop'].profileBlocked).toBeUndefined()
+    })
+  })
+
   it('reports the host refusal code as failureCode, not just as text (#909)', async () => {
     // The desktop manager refuses a self-update before pnpm runs and the
     // bridge now carries its code (market-self-update). The route has to put
@@ -3357,6 +3578,46 @@ describe('update flow — no npm publishing required', () => {
     expect(String(r.json.error)).toContain('bundle-in-use')
     const after = JSON.parse(readFileSync(join(fake.profileDir, 'package.json'), 'utf8')) as { dsh?: { profile?: { bundles?: string[] } } }
     // The plugin still loads on the next boot; the failure is unchanged.
+    expect(after.dsh?.profile?.bundles).toContain('dsh-loop')
+  })
+
+  it('answers RESTART_REQUIRED, keeps the dropped row, and says what to do when the host wants a restart first (#1253)', async () => {
+    advanceNpmLatest('1.2.0')
+    const seeded = readManifestAt(fake.profileDir)
+    writeFileSync(join(fake.profileDir, 'package.json'), JSON.stringify({
+      ...seeded,
+      dsh: { ...seeded.dsh, profile: { ...seeded.dsh?.profile, bundles: ['dsh-loop'] } },
+    }))
+    bed.dispose()
+    bed = createTestbed({}, {
+      runPlugin: async (_profile, args) => {
+        if (args[0] === 'add') {
+          const manifestPath = join(fake.profileDir, 'package.json')
+          const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { dsh?: { profile?: { bundles?: string[] } } }
+          manifest.dsh!.profile!.bundles = []
+          writeFileSync(manifestPath, JSON.stringify(manifest))
+          return {
+            exitCode: 1, timedOut: false, stdout: '', cancelled: false, wroteNothing: true,
+            stderr: '这一轮只能更新到这里。重启后再点「全部更新」继续。 / This run can only go this far. Restart, then click Update all to continue.',
+            refusalCode: 'bundle-in-use', needsRestart: true,
+          }
+        }
+        return { exitCode: 0, timedOut: false, stdout: '', stderr: '', cancelled: false }
+      },
+      acceptsMarketPnpmFlags: false,
+      probePnpm: () => Promise.resolve(true),
+      provisionPnpm: () => Promise.resolve({ ok: true }),
+      cancelActive: () => false,
+    })
+
+    const r = await bed.dispatch('POST', '/dsh-market/update', { name: 'dsh-loop' })
+
+    expect(r.status).toBe(502)
+    expect(r.json).toMatchObject({ ok: false, failureCode: 'RESTART_REQUIRED' })
+    expect(String(r.json.error)).toContain('重启后再点「全部更新」继续')
+    expect(String(r.json.error)).not.toContain('bundle-in-use')
+    // The row the host dropped before refusing is still put back (#935).
+    const after = JSON.parse(readFileSync(join(fake.profileDir, 'package.json'), 'utf8')) as { dsh?: { profile?: { bundles?: string[] } } }
     expect(after.dsh?.profile?.bundles).toContain('dsh-loop')
   })
 
@@ -3628,6 +3889,32 @@ describe('update flow — no npm publishing required', () => {
     // implementation of the inputs precisely so they cannot drift.
     const single = await bed.dispatch('GET', '/dsh-market/api/v1/updates?name=dsh-loop&force=1')
     expect(single.json.package).toMatchObject(summary.json.packages[0])
+  })
+
+  it('reports update check failure to the market and retries the first ordinary check after recovery (#1200)', async () => {
+    advanceNpmLatest('1.2.0')
+    const path = '/dsh-market/updates'
+    const v1 = '/dsh-market/api/v1/updates?name=dsh-loop'
+    const fetchHealthy = globalThis.fetch
+    vi.stubGlobal('fetch', (url: RequestInfo | URL, init?: RequestInit) => String(url).endsWith('/dsh-loop/latest')
+      ? Promise.resolve(new Response(null, { status: 503 }))
+      : fetchHealthy(url, init))
+
+    const failed = await bed.dispatch('GET', path)
+    expect(failed.status).toBe(200)
+    expect(failed.json.updates['dsh-loop']).toMatchObject({ checkFailed: true, updateAvailable: false })
+    const versioned = await bed.dispatch('GET', v1)
+    expect(versioned.status).toBe(200)
+    expect(versioned.json.package).toEqual({
+      name: 'dsh-loop', source: 'npm', installedVersion: '1.0.0', latestVersion: null,
+      updateAvailable: false, channelSwitch: null,
+    })
+
+    vi.stubGlobal('fetch', fetchHealthy)
+    const recovered = await bed.dispatch('GET', path)
+    expect(recovered.status).toBe(200)
+    expect(recovered.json.updates['dsh-loop']).toMatchObject({ latest: '1.2.0', updateAvailable: true })
+    expect(recovered.json.updates['dsh-loop'].checkFailed).toBeUndefined()
   })
 
   it('says nothing is updatable rather than staying silent when it is true', async () => {
@@ -5941,6 +6228,505 @@ describe('theme flow', () => {
 })
 
 describe('local-dev restore flow', () => {
+  function linkedArchiveFixture(profileDirectory = fake.profileDir, specType: 'link' | 'file' = 'link') {
+    const name = 'dsh-prebuilt'
+    const release = 'https://github.com/o/dsh-prebuilt/releases/download/v1.0.0/dsh-prebuilt.tgz'
+    const checkout = join(profileDirectory, '..', `${basename(profileDirectory)}-prebuilt-checkout`)
+    const nodeModules = join(profileDirectory, 'node_modules')
+    const link = join(nodeModules, name)
+    const manifest = join(profileDirectory, 'package.json')
+    const lockfile = join(profileDirectory, 'pnpm-lock.yaml')
+    const previousLock = "lockfileVersion: '9.0'\nimporters: {}\n"
+    const localSpec = `${specType}:${checkout}`
+    const original = { name, version: '0.9.0', main: 'index.js', dsh: {}, repository: 'https://github.com/o/dsh-prebuilt' }
+    mkdirSync(checkout, { recursive: true })
+    mkdirSync(nodeModules, { recursive: true })
+    writeFileSync(join(checkout, 'package.json'), JSON.stringify(original))
+    writeFileSync(join(checkout, 'index.js'), 'local edits')
+    symlinkSync(checkout, link, process.platform === 'win32' ? 'junction' : 'dir')
+    writeFileSync(manifest, JSON.stringify({ dependencies: { [name]: localSpec } }))
+    writeFileSync(lockfile, previousLock)
+    fake.tarballs[release] = {
+      name,
+      manifest: { name, version: '1.0.0', main: 'index.js', dsh: {} },
+      artifacts: ['index.js'],
+    }
+    return { name, release, checkout, link, manifest, lockfile, previousLock, localSpec, original }
+  }
+
+  function useCheckoutRunner(runPlugin: PluginRunner, profileDirectory?: string) {
+    bed.dispose()
+    bed = createTestbed({ profileDirectory }, {
+      runPlugin: (profile, args) => args[0] === 'store' ? runDshPlugin(profile, args) : runPlugin(profile, args),
+      acceptsMarketPnpmFlags: false,
+      probePnpm: () => Promise.resolve(true),
+      provisionPnpm: () => Promise.resolve({ ok: true }),
+      cancelActive: () => false,
+    })
+  }
+
+  it('disconnects the profile junction before switching a linked checkout to a release archive', async () => {
+    const { name, release, checkout, link, original } = linkedArchiveFixture()
+    const junctionsAtAdd: boolean[] = []
+    useCheckoutRunner(async (profile, args) => {
+      if (args[0] === 'add' && args.includes(release)) {
+        const linked = lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() === true
+        junctionsAtAdd.push(linked)
+        if (linked) {
+          // Record the unsafe node before the test double can reach the checkout.
+          return { exitCode: 1, timedOut: false, stdout: '', stderr: 'linked checkout reached the package manager', cancelled: false }
+        }
+      }
+      return await runDshPlugin(profile, args)
+    })
+
+    const result = await bed.dispatch('POST', '/dsh-market/update', { name, restore: true })
+
+    expect(junctionsAtAdd).toEqual([false])
+    expect(result.status, String(result.json.error ?? '')).toBe(200)
+    expect(lstatSync(link).isSymbolicLink()).toBe(false)
+    expect(JSON.parse(readFileSync(join(link, 'package.json'), 'utf8')).version).toBe('1.0.0')
+    expect(readFileSync(join(checkout, 'index.js'), 'utf8')).toBe('local edits')
+    expect(JSON.parse(readFileSync(join(checkout, 'package.json'), 'utf8'))).toEqual(original)
+  })
+
+  it('disconnects a junction recreated before pnpm retries a locked profile file', async () => {
+    const { name, release, checkout, link } = linkedArchiveFixture()
+    const calls = vi.fn<PluginRunner>()
+      .mockImplementationOnce(async () => {
+        expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+        symlinkSync(checkout, link, process.platform === 'win32' ? 'junction' : 'dir')
+        return {
+          exitCode: 1, timedOut: false, stdout: '', cancelled: false,
+          stderr: "EPERM: operation not permitted, rename 'C:\\p\\desktop\\pnpm-lock.yaml.3015012533' -> 'C:\\p\\desktop\\pnpm-lock.yaml'",
+        }
+      })
+      .mockImplementationOnce(async (profile, args) => {
+        expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+        return runDshPlugin(profile, args)
+      })
+    useCheckoutRunner(calls)
+
+    const result = await bed.dispatch('POST', '/dsh-market/update', { name, restore: true })
+
+    expect(result.status, String(result.json.error ?? '')).toBe(200)
+    expect(calls.mock.calls.map(([, args]) => args)).toEqual([['add', release], ['add', release]])
+    expect(lstatSync(link).isDirectory()).toBe(true)
+    expect(readFileSync(join(checkout, 'index.js'), 'utf8')).toBe('local edits')
+  })
+
+  it.each([
+    ['pre-install refusal', { wroteNothing: true, cancelled: false }],
+    ['cancelled install', { cancelled: true }],
+  ])('reconnects the checkout after a %s', async (_label, outcome) => {
+    const { name, checkout, link, localSpec } = linkedArchiveFixture()
+    const calls = vi.fn(async (): Promise<InstallResult> => {
+      expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+      return { exitCode: 1, timedOut: false, stdout: '', stderr: 'fixture refusal', ...outcome }
+    })
+    useCheckoutRunner(calls)
+
+    const result = await bed.dispatch('POST', '/dsh-market/update', { name, restore: true })
+
+    expect(result.status).toBe(outcome.cancelled ? 200 : 502)
+    if (outcome.cancelled) expect(result.json.cancelled).toBe(true)
+    expect(calls).toHaveBeenCalledOnce()
+    expect(installedSpec(name)).toBe(localSpec)
+    expect(lstatSync(link).isSymbolicLink()).toBe(true)
+    expect(readlinkSync(link)).toBe(checkout)
+    expect(readFileSync(join(checkout, 'index.js'), 'utf8')).toBe('local edits')
+  })
+
+  it.each([false, true])('reconnects a partially replaced checkout when the original manifest is retained: %s', async (retainManifest) => {
+    const { name, release, checkout, link, localSpec, manifest, lockfile, previousLock } = linkedArchiveFixture()
+    const calls = vi.fn(async (profile: string, args: string[]): Promise<InstallResult> => {
+      expect(args).toEqual(['add', release])
+      expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+      const landed = await runDshPlugin(profile, args)
+      expect(landed.exitCode).toBe(0)
+      expect(lstatSync(link).isDirectory()).toBe(true)
+      writeFileSync(lockfile, JSON.stringify({
+        lockfileVersion: '9.0',
+        importers: { '.': { dependencies: { [name]: { specifier: release, version: release } } } },
+      }))
+      if (retainManifest) writeFileSync(manifest, JSON.stringify({ dependencies: { [name]: localSpec } }))
+      return { ...landed, exitCode: 1, stderr: 'fixture application failure after pnpm wrote the archive' }
+    })
+    useCheckoutRunner(calls)
+
+    const result = await bed.dispatch('POST', '/dsh-market/update', { name, restore: true })
+
+    expect(result.status, String(result.json.error ?? '')).toBe(502)
+    expect(result.json.error ?? '').not.toContain('could not be restored')
+    expect(calls).toHaveBeenCalledOnce()
+    expect(installedSpec(name)).toBe(localSpec)
+    expect(readlinkSync(link)).toBe(checkout)
+    expect(readFileSync(lockfile, 'utf8')).toBe(previousLock)
+    expect(readFileSync(join(checkout, 'index.js'), 'utf8')).toBe('local edits')
+  })
+
+  it('reports a partial cancellation when an occupied slot cannot be proven to belong to the switch', async () => {
+    const { name, checkout, link, localSpec, lockfile, previousLock } = linkedArchiveFixture()
+    useCheckoutRunner(async () => {
+      expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+      mkdirSync(link)
+      writeFileSync(join(link, 'marker'), 'independent profile contents')
+      return { exitCode: 1, timedOut: false, stdout: '', stderr: '', cancelled: true }
+    })
+
+    const result = await bed.dispatch('POST', '/dsh-market/update', { name, restore: true })
+
+    expect(result.status).toBe(200)
+    expect(result.json).toMatchObject({ cancelled: true, partial: true, changed: [name] })
+    expect(result.json.error).toContain('another entry occupies the profile package path')
+    expect(installedSpec(name)).toBe(localSpec)
+    expect(readFileSync(lockfile, 'utf8')).toBe(previousLock)
+    expect(readFileSync(join(link, 'marker'), 'utf8')).toBe('independent profile contents')
+    expect(readFileSync(join(checkout, 'index.js'), 'utf8')).toBe('local edits')
+  })
+
+  it.each([false, true])('recovers a saved checkout at startup only while the same source is declared: %s', async (changed) => {
+    const { name, checkout, link, localSpec, lockfile, previousLock, manifest } = linkedArchiveFixture()
+    const recorded = new PendingCheckoutLinks(fake.profileDir)
+    useCheckoutRunner(async () => {
+      expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+      expect(recorded.list()).toEqual([{ name, spec: localSpec, rawTarget: checkout }])
+      return {
+        exitCode: 1, timedOut: true, stdout: '', stderr: 'fixture wait ran out',
+        cancelled: false, repairOnRestart: true,
+      }
+    })
+
+    const result = await bed.dispatch('POST', '/dsh-market/update', { name, restore: true })
+
+    expect(result.status).toBe(502)
+    expect(result.json.error).toContain('Check the installed source once it finishes.')
+    expect(installedSpec(name)).toBe(localSpec)
+    expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+    expect(readFileSync(lockfile, 'utf8')).toBe(previousLock)
+    expect(readFileSync(join(checkout, 'index.js'), 'utf8')).toBe('local edits')
+    if (changed) writeFileSync(manifest, JSON.stringify({ dependencies: { [name]: '^9.0.0' } }))
+    bed.dispose()
+    bed = createTestbed()
+
+    expect(recorded.list()).toEqual([])
+    expect(installedSpec(name)).toBe(changed ? '^9.0.0' : localSpec)
+    if (changed) expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+    else expect(readlinkSync(link)).toBe(checkout)
+  })
+
+  it.each([true, false])('stops checking a corrupt native run record after 30 seconds (source exists: %s)', async sourceExists => {
+    const { name, checkout, link, localSpec } = linkedArchiveFixture()
+    const recorded = new PendingCheckoutLinks(fake.profileDir)
+    const nativeRun = join(fake.profileDir, '.plugin-manager', 'run.json')
+    recorded.record({ name, spec: localSpec, rawTarget: readlinkSync(link) })
+    unlinkSync(link)
+    mkdirSync(dirname(nativeRun), { recursive: true })
+    writeFileSync(nativeRun, '{bad json')
+    if (!sourceExists) renameSync(checkout, checkout + '-moved')
+    bed.dispose()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    try {
+      bed = createTestbed()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(readFileSync(nativeRun, 'utf8')).toBe('{bad json')
+      unlinkSync(nativeRun)
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+      expect(recorded.list()).toHaveLength(1)
+      expect(readFileSync(join(sourceExists ? checkout : checkout + '-moved', 'index.js'), 'utf8')).toBe('local edits')
+      expect((await bed.dispatch('GET', '/dsh-market/status')).json.checkoutRecovery).toEqual({
+        checking: false,
+        entries: [{ name, reason: 'package-run', sourceExists }],
+      })
+
+      bed.dispose()
+      if (!sourceExists) renameSync(checkout + '-moved', checkout)
+      bed = createTestbed()
+      expect(readlinkSync(link)).toBe(checkout)
+      expect(recorded.list()).toEqual([])
+    } finally {
+      bed.dispose()
+      vi.useRealTimers()
+    }
+  })
+
+  it.each(['after the limit', 'after disposal'])('rejects a late host writer callback %s', async when => {
+    const { name, checkout, link, localSpec } = linkedArchiveFixture()
+    const recorded = new PendingCheckoutLinks(fake.profileDir)
+    const lock = join(fake.profileDir, 'package.json.lock')
+    recorded.record({ name, spec: localSpec, rawTarget: readlinkSync(link) })
+    unlinkSync(link)
+    writeFileSync(lock, String(process.pid))
+    const release = Promise.withResolvers<void>()
+    const called = vi.fn()
+    const helper = vi.spyOn(checkoutLocks, 'loadHostProfileLock').mockResolvedValue(async (_file, action) => {
+      called()
+      await release.promise
+      return await action()
+    })
+    bed.dispose()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    try {
+      bed = createTestbed()
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(called).toHaveBeenCalledOnce()
+      expect((await bed.dispatch('GET', '/dsh-market/status')).json.checkoutRecovery).toEqual({
+        checking: true, entries: [],
+      })
+      if (when === 'after disposal') bed.dispose()
+      else {
+        await vi.advanceTimersByTimeAsync(25_000)
+        expect((await bed.dispatch('GET', '/dsh-market/status')).json.checkoutRecovery).toEqual({
+          checking: false, entries: [{ name, reason: 'writer-lock', sourceExists: true }],
+        })
+      }
+      release.resolve()
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(called).toHaveBeenCalledOnce()
+      expect(readFileSync(lock, 'utf8')).toBe(String(process.pid))
+      expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+      expect(recorded.list()).toHaveLength(1)
+      expect(readFileSync(join(checkout, 'index.js'), 'utf8')).toBe('local edits')
+    } finally {
+      release.resolve()
+      bed.dispose()
+      helper.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
+  it('reports the missing host lock helper once and leaves a residual writer lock alone', async () => {
+    const { name, checkout, link, localSpec } = linkedArchiveFixture()
+    const recorded = new PendingCheckoutLinks(fake.profileDir)
+    const lock = join(fake.profileDir, 'package.json.lock')
+    const log = join(fake.profileDir, '.dsh-market', 'log.ndjson')
+    const exitedPid = '2147483647\n'
+    recorded.record({ name, spec: localSpec, rawTarget: readlinkSync(link) })
+    unlinkSync(link)
+    writeFileSync(lock, exitedPid)
+    const helper = vi.spyOn(checkoutLocks, 'loadHostProfileLock').mockResolvedValue(null)
+    bed.dispose()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    try {
+      bed = createTestbed()
+      await vi.advanceTimersByTimeAsync(50_000)
+      expect(readFileSync(lock, 'utf8')).toBe(exitedPid)
+      expect(helper).toHaveBeenCalledOnce()
+      expect(readPersistentLog(log).filter(line => line.includes('host checkout lock helper unavailable'))).toHaveLength(1)
+      expect((await bed.dispatch('GET', '/dsh-market/status')).json.checkoutRecovery).toEqual({
+        checking: false, entries: [{ name, reason: 'writer-lock', sourceExists: true }],
+      })
+      expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+      expect(recorded.list()).toHaveLength(1)
+
+      unlinkSync(lock)
+      bed.dispose()
+      bed = createTestbed()
+      expect(readlinkSync(link)).toBe(checkout)
+      expect(recorded.list()).toEqual([])
+      expect(helper).toHaveBeenCalledOnce()
+    } finally {
+      bed.dispose()
+      helper.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
+  it('holds a disconnected checkout through the official manager deadline and reconnects after native work settles', async () => {
+    const { name, checkout, link, localSpec, release } = linkedArchiveFixture()
+    const recorded = new PendingCheckoutLinks(fake.profileDir)
+    let settle: (outcome: { application: string; error?: unknown }) => void = () => {}
+    const install = vi.fn(() => new Promise<{ application: string; error?: unknown }>(resolve => { settle = resolve }))
+    const runtime = createOfficialDesktopRuntime(() => ({
+      installBundle: install,
+      removeBundle: async () => ({ application: 'failed' }),
+      cancelInstall: async () => {},
+    }), 'web', fake.profileDir)
+    vi.useFakeTimers()
+    try {
+      bed.dispose()
+      bed = createTestbed({}, runtime)
+      const update = bed.dispatch('POST', '/dsh-market/update', { name, restore: true })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(install).toHaveBeenCalledExactlyOnceWith(release, expect.anything())
+      expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+      // The manager never answers, so the route gives up at the market's
+      // bound — one margin past the two phases, and past the host's own
+      // ten-minute pnpm watchdog so the host can still state its own failure
+      // first (#1250). This call is not an update, so the bound is the single
+      // install phase.
+      await vi.advanceTimersByTimeAsync(660_001)
+      expect((await update).status).toBe(502)
+      expect(runtime.packageWritesSettled?.()).toBe(false)
+
+      bed.dispose()
+      bed = createTestbed({}, runtime)
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+      expect(recorded.list()).toHaveLength(1)
+
+      const nativeRun = join(fake.profileDir, '.plugin-manager', 'run.json')
+      mkdirSync(dirname(nativeRun), { recursive: true })
+      writeFileSync(nativeRun, JSON.stringify({ pid: process.pid, grouped: false }))
+      settle({ application: 'failed', error: { code: 'cancelled' } })
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(runtime.packageWritesSettled?.()).toBe(true)
+      expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+      rmSync(nativeRun)
+      await vi.advanceTimersByTimeAsync(1_000)
+
+      expect(readlinkSync(link)).toBe(checkout)
+      expect(installedSpec(name)).toBe(localSpec)
+      expect(recorded.list()).toEqual([])
+    } finally {
+      settle({ application: 'failed' })
+      vi.useRealTimers()
+      await runtime.dispose()
+    }
+  })
+
+  it('leaves the checkout untouched when another writer holds the native profile lock', async () => {
+    const { name, checkout, link, localSpec } = linkedArchiveFixture()
+    const writerLock = join(fake.profileDir, 'package.json.lock')
+    writeFileSync(writerLock, String(process.pid))
+    const run = vi.fn(runDshPlugin)
+    useCheckoutRunner(run)
+
+    const result = await bed.dispatch('POST', '/dsh-market/update', { name, restore: true })
+
+    expect(result.status).toBe(409)
+    expect(result.json.busy).toBe(true)
+    expect(run).not.toHaveBeenCalled()
+    expect(readFileSync(writerLock, 'utf8')).toBe(String(process.pid))
+    expect(readlinkSync(link)).toBe(checkout)
+    expect(installedSpec(name)).toBe(localSpec)
+    expect(new PendingCheckoutLinks(fake.profileDir).list()).toEqual([])
+  })
+
+  it('leaves a junction alone when the real profile dependency is file:', async () => {
+    const { name, link, localSpec } = linkedArchiveFixture(fake.profileDir, 'file')
+    const calls = vi.fn(async (): Promise<InstallResult> => {
+      expect(lstatSync(link).isSymbolicLink()).toBe(true)
+      return { exitCode: 1, timedOut: false, stdout: '', stderr: 'fixture refusal', cancelled: false, wroteNothing: true }
+    })
+    useCheckoutRunner(calls)
+
+    const result = await bed.dispatch('POST', '/dsh-market/update', { name, restore: true })
+
+    expect(result.status).toBe(502)
+    expect(calls).toHaveBeenCalledOnce()
+    expect(installedSpec(name)).toBe(localSpec)
+    expect(lstatSync(link).isSymbolicLink()).toBe(true)
+  })
+
+  it('checks the actual profile directory and preserves a different profile junction', async () => {
+    const defaultProfile = linkedArchiveFixture()
+    const override = join(fake.profileDir, '..', 'desktop-override')
+    const active = linkedArchiveFixture(override)
+    const calls = vi.fn(async (): Promise<InstallResult> => {
+      expect(lstatSync(active.link, { throwIfNoEntry: false })).toBeUndefined()
+      expect(lstatSync(defaultProfile.link).isSymbolicLink()).toBe(true)
+      return { exitCode: 1, timedOut: false, stdout: '', stderr: 'fixture refusal', cancelled: false, wroteNothing: true }
+    })
+    useCheckoutRunner(calls, override)
+
+    const result = await bed.dispatch('POST', '/dsh-market/update', { name: active.name, restore: true })
+
+    expect(result.status).toBe(502)
+    expect(calls).toHaveBeenCalledOnce()
+    expect(readlinkSync(active.link)).toBe(active.checkout)
+    expect(readlinkSync(defaultProfile.link)).toBe(defaultProfile.checkout)
+  })
+
+  it('rejects a changed dependency record before detaching any checkout link', async () => {
+    const { name, checkout, link, manifest } = linkedArchiveFixture()
+    const calls = vi.fn(runDshPlugin)
+    useCheckoutRunner(calls)
+    registryModule.loadRegistry.mockImplementationOnce(async () => {
+      writeFileSync(manifest, JSON.stringify({ dependencies: { [name]: '^2.0.0' } }))
+      return REGISTRY
+    })
+
+    const result = await bed.dispatch('POST', '/dsh-market/update', { name, restore: true })
+
+    expect(result.status).toBe(409)
+    expect(result.json.targetChanged).toBe(true)
+    expect(calls).not.toHaveBeenCalled()
+    expect(readlinkSync(link)).toBe(checkout)
+    expect(installedSpec(name)).toBe('^2.0.0')
+  })
+
+  it('does not overwrite a new checkout created during a refused switch', async () => {
+    const { name, checkout, link, manifest } = linkedArchiveFixture()
+    const next = join(checkout, '..', 'replacement-checkout')
+    mkdirSync(next, { recursive: true })
+    writeFileSync(join(next, 'marker'), 'independent local work')
+    useCheckoutRunner(async () => {
+      expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+      symlinkSync(next, link, process.platform === 'win32' ? 'junction' : 'dir')
+      writeFileSync(manifest, JSON.stringify({ dependencies: { [name]: `link:${next}` } }))
+      return { exitCode: 1, timedOut: false, stdout: '', stderr: 'fixture refusal', cancelled: false, wroteNothing: true }
+    })
+
+    const result = await bed.dispatch('POST', '/dsh-market/update', { name, restore: true })
+
+    expect(result.status).toBe(502)
+    expect(readlinkSync(link)).toBe(next)
+    expect(installedSpec(name)).toBe(`link:${next}`)
+    expect(readFileSync(join(next, 'marker'), 'utf8')).toBe('independent local work')
+    expect(readFileSync(join(checkout, 'index.js'), 'utf8')).toBe('local edits')
+  })
+
+  it.each([false, true])('preserves another plugin installed while switching (manager already started: %s)', async (started) => {
+    const { name, checkout, link, manifest, lockfile, localSpec } = linkedArchiveFixture()
+    const other = 'other-plugin'
+    const otherSpec = '^1.2.0'
+    const otherLock = JSON.stringify({
+      lockfileVersion: '9.0',
+      importers: { '.': { dependencies: { [other]: { specifier: otherSpec, version: '1.2.0' } } } },
+    })
+    function installOtherPlugin() {
+      writeFileSync(manifest, JSON.stringify({
+        dependencies: { [name]: localSpec, [other]: otherSpec },
+        dsh: { profile: { bundles: [other] } },
+      }))
+      writeFileSync(lockfile, otherLock)
+    }
+    if (!started) {
+      registryModule.loadRegistry.mockImplementationOnce(async () => {
+        installOtherPlugin()
+        return REGISTRY
+      })
+    }
+    useCheckoutRunner(async (profile, args) => {
+      if (started) {
+        installOtherPlugin()
+        return { exitCode: 1, timedOut: false, stdout: '', stderr: '', cancelled: true }
+      }
+      const landed = await runDshPlugin(profile, args)
+      expect(landed.exitCode).toBe(0)
+      return { ...landed, exitCode: 1, stderr: 'fixture failure after writing the archive' }
+    })
+
+    const result = await bed.dispatch('POST', '/dsh-market/update', { name, restore: true })
+
+    expect(installedSpec(other)).toBe(otherSpec)
+    expect(JSON.parse(readFileSync(manifest, 'utf8')).dsh.profile.bundles).toContain(other)
+    expect(readFileSync(lockfile, 'utf8')).toBe(otherLock)
+    expect(installedSpec(name)).toBe(localSpec)
+    expect(readFileSync(join(checkout, 'index.js'), 'utf8')).toBe('local edits')
+    if (started) {
+      expect(result.status).toBe(200)
+      expect(result.json).toMatchObject({ cancelled: true, partial: true })
+      expect(result.json.error).toContain('other profile dependencies or bundle rows changed')
+      expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined()
+    } else {
+      expect(result.status).toBe(502)
+      expect(readlinkSync(link)).toBe(checkout)
+    }
+  })
+
   it('refuses a plain update on a link: spec, and restore:true swaps it to the catalog', async () => {
     fake.npm['dsh-loop'] = {
       latest: '1.0.0',
@@ -6107,6 +6893,11 @@ describe('local-dev restore flow', () => {
   })
 
   it('keeps the market development link local', async () => {
+    const checkout = join(fake.profileDir, '..', 'dshmarket-dev')
+    const link = join(fake.profileDir, 'node_modules', 'dshmarket')
+    mkdirSync(checkout, { recursive: true })
+    mkdirSync(dirname(link), { recursive: true })
+    symlinkSync(checkout, link, process.platform === 'win32' ? 'junction' : 'dir')
     writeFileSync(join(fake.profileDir, 'package.json'), JSON.stringify({
       dependencies: { dshmarket: 'link:../dshmarket-dev' },
     }))
@@ -6114,9 +6905,10 @@ describe('local-dev restore flow', () => {
     expect(r.status).toBe(400)
     expect(String(r.json.error)).toMatch(/local development link/)
     expect(installedSpec('dshmarket')).toBe('link:../dshmarket-dev')
+    expect(readlinkSync(link)).toBe(checkout)
   })
 
-  it('rolls a #path: restore back to the local spec when the catalog build introduces risks', async () => {
+  it.each([false, true])('rolls a #path: restore back only while its checkout is present (moved: %s)', async (moved) => {
     fake.repos['github:o/theme-a'] = {
       name: 'theme-a',
       manifest: { dsh: {}, main: 'index.js', peerDependencies: { '@deepseek-ai/dsh-settings': '^0.1.0-rc.7' } },
@@ -6132,11 +6924,9 @@ describe('local-dev restore flow', () => {
     writeFileSync(join(fake.profileDir, 'package.json'), JSON.stringify({
       dependencies: { 'theme-a': `link:${checkout}` },
     }))
-    mkdirSync(join(fake.profileDir, 'node_modules', 'theme-a'), { recursive: true })
-    writeFileSync(join(fake.profileDir, 'node_modules', 'theme-a', 'package.json'), JSON.stringify({
-      name: 'theme-a', version: '1.0.0', main: 'index.js', dsh: {},
-      repository: { type: 'git', url: 'https://github.com/o/theme-a.git', directory: 'packages/skin' },
-    }))
+    const link = join(fake.profileDir, 'node_modules', 'theme-a')
+    mkdirSync(dirname(link), { recursive: true })
+    symlinkSync(checkout, link, process.platform === 'win32' ? 'junction' : 'dir')
     const hostPeerDir = join(fake.profileDir, 'node_modules', '@deepseek-ai', 'dsh-settings')
     mkdirSync(hostPeerDir, { recursive: true })
     writeFileSync(join(hostPeerDir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-settings', version: '0.1.0-rc.6' }))
@@ -6146,10 +6936,21 @@ describe('local-dev restore flow', () => {
     expect(restored.json.compatibility).toMatchObject({ code: 'soft-incompatible' })
     expect(installedSpec('theme-a')).toContain('#path:/packages/skin')
 
+    if (moved) renameSync(checkout, `${checkout}-moved`)
     const rollback = await bed.dispatch('POST', '/dsh-market/rollback', { rollbackId: restored.json.compatibility.rollbackId })
+    if (moved) {
+      expect(rollback.status).toBe(502)
+      expect(rollback.json.rolledBack).toBe(false)
+      expect(rollback.json.detail).toContain('the original checkout has no loadable entry')
+      expect(installedSpec('theme-a')).toContain('#path:/packages/skin')
+      expect(lstatSync(link).isDirectory()).toBe(true)
+      expect(existsSync(join(link, 'index.js'))).toBe(true)
+      return
+    }
     expect(rollback.status).toBe(200)
     expect(rollback.json.rolledBack).toBe(true)
     expect(installedSpec('theme-a')).toBe(`link:${checkout}`)
+    expect(readlinkSync(link)).toBe(checkout)
   })
 })
 
@@ -7673,6 +8474,619 @@ describe('bundle-layer uninstall live-disable (#37)', () => {
   })
 })
 
+describe('a `disabled: !!js` guard survives the toggle (#1175)', () => {
+  const tui = '@deepseek-harness-tui/dsh-tui'
+  const manifestPath = (): string => join(profileDir('web'), 'package.json')
+
+  /** A loader entry the running host would hold for one row. */
+  function entry(name: string, id: string | number, disabled: boolean | null): Testbed['loaderEntries'][number] {
+    const row: Testbed['loaderEntries'][number] = {
+      options: { id, name, disabled } as never,
+      fiber: disabled === true ? undefined : {},
+      update: vi.fn(async (next: { disabled: boolean | null }) => {
+        row.options.disabled = next.disabled
+        row.fiber = next.disabled === true ? undefined : {}
+      }),
+    }
+    return row
+  }
+
+  /** Write an installed package whose bundle patch is `patch`, and declare it. */
+  function seedPackage(name: string, patch: string[]): void {
+    const dir = profileDir('web')
+    const pkgDir = join(dir, 'node_modules', name)
+    mkdirSync(pkgDir, { recursive: true })
+    writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({
+      name, version: '1.0.0', type: 'module',
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }, null, 2))
+    writeFileSync(join(pkgDir, 'cordis.patch.yml'), `${patch.join('\n')}\n`)
+    writeFileSync(manifestPath(), JSON.stringify({
+      dependencies: { [name]: '1.0.0' },
+      dsh: { profile: { bundles: [name] } },
+    }, null, 2))
+  }
+
+  /**
+   * dsh-tui's real shape: insert rows whose `disabled` is an expression over
+   * the host's own loader tree, plus a foreign row it reconfigures — the
+   * second part is what makes the package a carrier.
+   */
+  const tuiPatch = (): string[] => [
+    '- insert:',
+    '    - id: dsh-tui-storage',
+    `      name: '${tui}/storage'`,
+    '    - id: dsh-tui-storage-domain',
+    `      name: '${tui}/storage-domain'`,
+    '      disabled: !!js "[...ctx.loader.entries()].some(entry => entry.options.id === \'storage-domain\')"',
+    '- id: preset-standard',
+    '  inject: [dshTuiHost]',
+  ]
+
+  it('does not drive a carrier\'s rows up: the swap needs one composition', async () => {
+    bed.dispose()
+    seedPackage(tui, tuiPatch())
+    bed = createTestbed()
+    const guarded = entry(`${tui}/storage-domain`, 'dsh-tui-storage-domain', true)
+    const plain = entry(`${tui}/storage`, 'dsh-tui-storage', true)
+    bed.loaderEntries.push(guarded, plain)
+
+    const on = await bed.dispatch('POST', '/dsh-market/toggle', { name: tui, enabled: true })
+
+    expect(on.status).toBe(200)
+    // A carrier switch always lands on the next composition, and the reply
+    // says so — which is the only reason it is safe to skip the live half.
+    expect(on.json.restart).toBe(true)
+    // The reproducer: enabling used to call `update({ disabled: null })` on
+    // the guarded row, the row mounted a second copy of the host's
+    // storage-domain, and dsh exited with `storage form 'domain' is already
+    // mounted`.
+    expect(guarded.update).not.toHaveBeenCalled()
+    expect(guarded.options.disabled).toBe(true)
+    expect(plain.update).not.toHaveBeenCalled()
+  })
+
+  it('preserves an explicit user-disabled component through the package off/on round trip (#1150 remaining)', async () => {
+    const name = 'dsh-audit-components'
+    bed.dispose()
+    seedPackage(name, [
+      '- insert:',
+      '    - id: default-panel',
+      `      name: '${name}'`,
+      '    - id: optional-panel',
+      `      name: '${name}/optional'`,
+      '    - id: preferred-opt-in',
+      `      name: '${name}/opt-in'`,
+      '      disabled: true',
+    ])
+    const path = join(profileDir('web'), 'cordis.patch.yml')
+    const userPatch = '- id: optional-panel\n  disabled: true\n  config:\n    preference: user-keeps-this\n'
+      + '- id: preferred-opt-in\n  disabled: false\n'
+    writeFileSync(path, userPatch)
+    bed = createTestbed()
+    const primary = entry(name, 'default-panel', null)
+    const optional = entry(`${name}/optional`, 'optional-panel', true)
+    const optIn = entry(`${name}/opt-in`, 'preferred-opt-in', false)
+    const other = entry('dsh-independent', 'independent', null)
+    bed.loaderEntries.push(primary, optional, optIn, other)
+    const initialRequest = await bed.dispatch('GET', '/dsh-market/installed')
+    const initial = {
+      packageDisabled: initialRequest.json.patchDisabled.includes(name),
+      active: [primary, optional, optIn].map(row => row.fiber !== undefined),
+      patch: readFileSync(path, 'utf8'),
+    }
+    const off = await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: false })
+    const whileOff = {
+      status: off.status,
+      active: [primary, optional, optIn].map(row => row.fiber !== undefined),
+      patch: readFileSync(path, 'utf8'),
+    }
+    const on = await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: true })
+    const after = {
+      status: on.status,
+      active: [primary, optional, optIn].map(row => row.fiber !== undefined),
+      patch: readFileSync(path, 'utf8'),
+    }
+    expect(initial.packageDisabled).toBe(false)
+    expect(whileOff.active).toEqual([false, false, false])
+    expect(after.status).toBe(200)
+    expect(after.active).toEqual(initial.active)
+    expect(whileOff.patch.startsWith(userPatch)).toBe(true)
+    expect(after.patch).toBe(initial.patch)
+    expect(on.json.activation[name].state).toBe('live')
+    expect(other.update).not.toHaveBeenCalled()
+    expect(other.fiber).toBeDefined()
+  })
+
+  it('keeps a guarded row and a user-disabled component off through off, off, on, and restores the user patch byte for byte (#1150)', async () => {
+    const name = 'dsh-rev-guard'
+    bed.dispose()
+    seedPackage(name, [
+      '- insert:',
+      '    - id: rev-main',
+      `      name: '${name}'`,
+      '    - id: rev-user-off',
+      `      name: '${name}/user-off'`,
+      '    - id: rev-guarded',
+      `      name: '${name}/guarded'`,
+      '      disabled: !!js "[...ctx.loader.entries()].some(entry => entry.options.id === \'x\')"',
+    ])
+    const path = join(profileDir('web'), 'cordis.patch.yml')
+    const userPatch = '- id: rev-user-off\n  disabled: true\n  config:\n    keep: me\n'
+    writeFileSync(path, userPatch)
+    bed = createTestbed()
+    const main = entry(name, 'rev-main', null)
+    const userOff = entry(`${name}/user-off`, 'rev-user-off', true)
+    const guarded = entry(`${name}/guarded`, 'rev-guarded', true)
+    bed.loaderEntries.push(main, userOff, guarded)
+    expect((await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: false })).status).toBe(200)
+    expect((await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: false })).status).toBe(200)
+    const off = readFileSync(path, 'utf8')
+    expect((off.match(/package-switch/g) ?? []).length).toBeLessThanOrEqual(2)
+    expect((await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: true })).status).toBe(200)
+    expect(readFileSync(path, 'utf8')).toBe(userPatch)
+    expect(main.fiber).toBeDefined()
+    expect(userOff.fiber).toBeUndefined()
+    expect(guarded.fiber).toBeUndefined()
+    const calls = guarded.update.mock.calls.map(c => (c[0] as { disabled: boolean | null }).disabled)
+    expect(calls.filter(v => v !== true)).toEqual([])
+    const listing = await bed.dispatch('GET', '/dsh-market/installed')
+    expect(listing.json.patchDisabled).not.toContain(name)
+  })
+
+  it.each(['ordinary', 'carrier', 'group'])('refuses a read-only component patch before leaving a %s switch half-off (#1225)', async (kind) => {
+    const name = 'dsh-audit-off-write'
+    bed.dispose()
+    seedPackage(name, [
+      '- insert:',
+      '    - id: audit-off-main',
+      `      name: '${name}'`,
+      '    - id: audit-off-extra',
+      `      name: '${name}/extra'`,
+      ...(kind === 'carrier' ? ['- id: preset-standard', '  inject: [auditCarrier]'] : []),
+    ])
+    const path = join(profileDir('web'), 'cordis.patch.yml')
+    const userPatch = '- id: audit-off-extra\n  disabled: true\n  config:\n    keep: true\n'
+    writeFileSync(path, userPatch)
+    const manifest = readManifestAt(fake.profileDir)
+    const previousBundles = ['dsh-before', name, 'dsh-after']
+    manifest.dsh = { profile: { bundles: previousBundles } }
+    writeFileSync(manifestPath(), JSON.stringify(manifest))
+    bed = createTestbed()
+    const main = entry(name, 'audit-off-main', null)
+    const extra = entry(`${name}/extra`, 'audit-off-extra', true)
+    bed.loaderEntries.push(main, extra)
+    if (kind === 'group') {
+      await bed.dispatch('POST', '/dsh-market/groups', { action: 'create', name: 'components' })
+      await bed.dispatch('POST', '/dsh-market/groups', { action: 'set-members', name: 'components', members: [name] })
+    }
+    const request = (enabled: boolean) => kind === 'group'
+      ? bed.dispatch('POST', '/dsh-market/groups', { action: 'toggle', name: 'components', enabled })
+      : bed.dispatch('POST', '/dsh-market/toggle', { name, enabled })
+    chmodSync(path, 0o444)
+    try {
+      const refusal = await request(false)
+      expect({
+        status: refusal.status,
+        disabled: hot.disabled.has(name),
+        main: main.fiber !== undefined,
+        bundles: readManifestAt(fake.profileDir).dsh?.profile?.bundles,
+        patch: readFileSync(path, 'utf8'),
+      }).toEqual({
+        status: kind === 'group' ? 400 : 502,
+        disabled: false,
+        main: true,
+        bundles: previousBundles,
+        patch: userPatch,
+      })
+      if (kind === 'group') {
+        expect(refusal.json.error).toContain('文件不可写')
+        expect(refusal.json.restartMembers).toEqual([])
+      } else {
+        expect(refusal.json.patchWrite).toMatchObject({ ok: false })
+        expect(refusal.json.reason).toContain('文件不可写')
+        expect(refusal.json.restart).toBe(false)
+      }
+    } finally {
+      chmodSync(path, 0o644)
+    }
+    expect((await request(false)).status).toBe(200)
+    expect(hot.disabled.has(name)).toBe(true)
+    expect(readManifestAt(fake.profileDir).dsh?.profile?.bundles).toEqual(['dsh-before', 'dsh-after'])
+    expect(readFileSync(path, 'utf8')).toContain('package-switch ' + name)
+    if (kind === 'carrier') expect(main.update).not.toHaveBeenCalled()
+
+    bed.dispose()
+    bed = createTestbed()
+    expect((await bed.dispatch('GET', '/dsh-market/installed')).json.disabled).toContain(name)
+    expect((await request(true)).status).toBe(200)
+    expect(hot.disabled.has(name)).toBe(false)
+    expect(readFileSync(path, 'utf8')).toBe(userPatch)
+  })
+
+  it.each(['unchanged', 'unrelated bundle edit', 'external patch edit'])('compensates a failed state write with %s (#1225)', async (change) => {
+    const name = 'dsh-audit-state-fault'
+    bed.dispose()
+    seedPackage(name, [
+      '- insert:',
+      '    - id: state-main',
+      '      name: ' + name,
+      '    - id: state-extra',
+      '      name: ' + name + '/extra',
+    ])
+    const patchPath = join(fake.profileDir, 'cordis.patch.yml')
+    const lock = join(fake.profileDir, 'package.json.lock')
+    const userPatch = '\uFEFF- id: state-extra\n  disabled: true\n  config:\n    keep: true\n'
+    writeFileSync(patchPath, userPatch)
+    const bundles = ['dsh-before', name, 'dsh-after']
+    const manifest = readManifestAt(fake.profileDir)
+    manifest.dsh = { profile: { bundles } }
+    writeFileSync(manifestPath(), JSON.stringify(manifest))
+    bed = createTestbed()
+    const main = entry(name, 'state-main', null)
+    bed.loaderEntries.push(main, entry(name + '/extra', 'state-extra', true))
+    let checked: { locked: boolean; bundles?: string[]; patch: string } | undefined
+    let editorPatch: string | undefined
+    hot.failStateWrite = () => {
+      const manifest = readManifestAt(fake.profileDir)
+      checked = { locked: existsSync(lock), bundles: manifest.dsh?.profile?.bundles, patch: readFileSync(patchPath, 'utf8') }
+      if (change === 'unrelated bundle edit') {
+        manifest.dependencies = { ...manifest.dependencies, 'dsh-external': '2.0.0' }
+        manifest.dsh = { profile: { bundles: ['dsh-before', 'dsh-after', 'dsh-external'] } }
+        writeFileSync(manifestPath(), JSON.stringify(manifest))
+      }
+      if (change === 'external patch edit') {
+        editorPatch = checked.patch + '- id: external-edit\n  disabled: true\n'
+        writeFileSync(patchPath, editorPatch)
+      }
+      throw new Error('injected state write refusal')
+    }
+    let refusal
+    try {
+      refusal = await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: false })
+    } finally {
+      hot.failStateWrite = undefined
+    }
+    expect(refusal.status).toBe(502)
+    expect(refusal.json.restart).toBe(false)
+    expect(checked).toMatchObject({ locked: true, bundles: ['dsh-before', 'dsh-after'] })
+    expect(checked?.patch).toContain('package-switch ' + name)
+    expect(main.update).not.toHaveBeenCalled()
+    expect(main.fiber).toBeDefined()
+    expect(hot.disabled.has(name)).toBe(false)
+    expect(existsSync(lock)).toBe(false)
+    const manifestAfter = readManifestAt(fake.profileDir)
+    if (change === 'unrelated bundle edit') {
+      expect(manifestAfter.dsh?.profile?.bundles).toEqual([...bundles, 'dsh-external'])
+      expect(manifestAfter.dependencies?.['dsh-external']).toBe('2.0.0')
+    } else {
+      expect(manifestAfter.dsh?.profile?.bundles).toEqual(bundles)
+    }
+    expect(readFileSync(patchPath, 'utf8')).toBe(editorPatch ?? userPatch)
+    if (change === 'external patch edit') {
+      expect(refusal.json.reason).toContain('配置没能恢复')
+    } else {
+      expect(refusal.json.reason).toContain('保存停用状态失败')
+    }
+  })
+
+  it('removes a carrier with all its own components off and preserves those choices (#1225)', async () => {
+    bed.dispose()
+    seedPackage(tui, tuiPatch())
+    const patchPath = join(fake.profileDir, 'cordis.patch.yml')
+    const before = '- id: dsh-tui-storage\n  disabled: true\n- id: dsh-tui-storage-domain\n  disabled: true\n'
+    writeFileSync(patchPath, before)
+    bed = createTestbed()
+    const main = entry(tui + '/storage', 'dsh-tui-storage', true)
+    const extra = entry(tui + '/storage-domain', 'dsh-tui-storage-domain', true)
+    bed.loaderEntries.push(main, extra)
+    const off = await bed.dispatch('POST', '/dsh-market/toggle', { name: tui, enabled: false })
+    expect(off.status).toBe(200)
+    expect(off.json.restart).toBe(true)
+    expect(readManifestAt(fake.profileDir).dsh?.profile?.bundles).toEqual([])
+    const after = readFileSync(patchPath, 'utf8')
+    expect(after.startsWith(before)).toBe(true)
+    expect(after.match(/package-switch/g)).toHaveLength(1)
+    bed.dispose()
+    bed = createTestbed()
+    const on = await bed.dispatch('POST', '/dsh-market/toggle', { name: tui, enabled: true })
+    expect(on.status).toBe(502)
+    expect(on.json.reason).toContain('官方插件')
+    expect(readFileSync(patchPath, 'utf8')).toBe(after)
+    expect(readManifestAt(fake.profileDir).dsh?.profile?.bundles).toEqual([])
+    expect(main.update).not.toHaveBeenCalled()
+    expect(extra.update).not.toHaveBeenCalled()
+  })
+
+  it('keeps a grouped partial result when one member still needs a user component selection (#1225)', async () => {
+    bed.dispose()
+    const blocked = 'dsh-audit-off-choice'
+    const peer = 'dsh-audit-group-peer'
+    seedPackage(blocked, [
+      '- insert:',
+      '    - id: group-1',
+      '      name: ' + blocked,
+      '    - id: group-2',
+      '      name: ' + blocked + '/extra',
+    ])
+    const patchPath = join(fake.profileDir, 'cordis.patch.yml')
+    const userPatch = '- id: group-1\n  disabled: true\n- id: group-2\n  disabled: true\n'
+    writeFileSync(patchPath, userPatch)
+    const manifest = readManifestAt(fake.profileDir)
+    manifest.dependencies = { ...manifest.dependencies, [peer]: '1.0.0' }
+    writeFileSync(manifestPath(), JSON.stringify(manifest))
+    hot.disabled.add(peer)
+    bed = createTestbed()
+    const main = entry(blocked, 'group-1', true)
+    const extra = entry(blocked + '/extra', 'group-2', true)
+    bed.loaderEntries.push(main, extra)
+    await bed.dispatch('POST', '/dsh-market/groups', { action: 'create', name: 'audit' })
+    await bed.dispatch('POST', '/dsh-market/groups', { action: 'set-members', name: 'audit', members: [blocked, peer] })
+    const off = await bed.dispatch('POST', '/dsh-market/toggle', { name: blocked, enabled: false })
+    expect(off.status).toBe(200)
+    expect(hot.disabled.has(blocked)).toBe(false)
+    const result = await bed.dispatch('POST', '/dsh-market/groups', { action: 'toggle', name: 'audit', enabled: true })
+    expect(result.status).toBe(400)
+    expect(result.json).toMatchObject({ partial: true, disabled: [], restartMembers: [] })
+    expect(result.json.error).toContain('官方插件')
+    expect(main.update).not.toHaveBeenCalled()
+    expect(extra.update).not.toHaveBeenCalled()
+    expect(readFileSync(patchPath, 'utf8')).toBe(userPatch)
+  })
+
+  it.each([true, false])('restores the explicit disabled=%s of numeric component ID 42 (#1225)', async (disabled) => {
+    const name = 'dsh-audit-numeric-choice'
+    bed.dispose()
+    seedPackage(name, [
+      '- insert:',
+      '    - id: numeric-main',
+      `      name: '${name}'`,
+      '    - id: 42',
+      `      name: '${name}/extra'`,
+      ...(disabled ? [] : ['      disabled: true']),
+    ])
+    const path = join(profileDir('web'), 'cordis.patch.yml')
+    const userPatch = `- id: 42\n  disabled: ${String(disabled)}\n  config:\n    keep: true\n`
+    writeFileSync(path, userPatch)
+    bed = createTestbed()
+    const main = entry(name, 'numeric-main', null)
+    const extra = entry(`${name}/extra`, 42, disabled)
+    bed.loaderEntries.push(main, extra)
+    expect((await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: false })).status).toBe(200)
+    expect((await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: true })).status).toBe(200)
+    expect({
+      main: main.fiber !== undefined,
+      extra: extra.fiber !== undefined,
+      patch: readFileSync(path, 'utf8'),
+    }).toEqual({ main: true, extra: !disabled, patch: userPatch })
+  })
+
+  it.each(['completes', 'coalesces off and on', 'waits past the deadline', 'fails the peer gate'])('never hot-mounts a second copy when the host %s (#1225)', async (outcome) => {
+    const name = 'dsh-audit-native-replay'
+    const coalesced = outcome === 'coalesces off and on'
+    bed.dispose()
+    seedPackage(name, [
+      '- insert:',
+      '    - id: replay-main',
+      '      name: ' + name,
+      '    - id: 42',
+      '      name: ' + name + '/extra',
+      ...(coalesced ? [] : ['      disabled: true']),
+    ])
+    const path = join(fake.profileDir, 'cordis.patch.yml')
+    const userPatch = '- id: 42\n  disabled: ' + String(coalesced) + '\n  config:\n    keep: true\n'
+    writeFileSync(path, userPatch)
+    bed = createTestbed({ hostReplayWaitMs: outcome === 'completes' ? 900 : 50 })
+    const main = entry(name, 'replay-main', null)
+    const extra = entry(name + '/extra', 42, coalesced)
+    bed.loaderEntries.push(main, extra)
+    expect((await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: false })).status).toBe(200)
+    // The real Desktop HMR removes the stopped bundle's rows while it is
+    // out of the manifest. Only the host can restore their full settings.
+    if (!coalesced) bed.loaderEntries.length = 0
+    const offPatch = readFileSync(path, 'utf8')
+    let primaryTimer: ReturnType<typeof setTimeout> | undefined
+    let secondaryTimer: ReturnType<typeof setTimeout> | undefined
+    try {
+      if (outcome === 'fails the peer gate') {
+        const file = join(fake.profileDir, 'node_modules', name, 'package.json')
+        const manifest = JSON.parse(readFileSync(file, 'utf8'))
+        manifest.peerDependencies = { '@deepseek-ai/dsh': '^0.1.0-rc.6' }
+        writeFileSync(file, JSON.stringify(manifest))
+        gateFacts.runtimeVersion = '0.2.0'
+        await bed.dispatch('POST', '/dsh-market/groups', { action: 'create', name: 'replay' })
+        await bed.dispatch('POST', '/dsh-market/groups', { action: 'set-members', name: 'replay', members: [name] })
+        const result = await bed.dispatch('POST', '/dsh-market/groups', { action: 'toggle', name: 'replay', enabled: true })
+        expect(result.status).toBe(400)
+        expect(result.json.disabled).toContain(name)
+        expect(result.json.error).toContain('开了也不会生效')
+        expect(readManifestAt(fake.profileDir).dsh?.profile?.bundles).not.toContain(name)
+        expect(readFileSync(path, 'utf8')).toBe(offPatch)
+      } else {
+        if (outcome === 'completes') {
+          primaryTimer = setTimeout(() => bed.loaderEntries.push(entry(name, 'replay-main', null)), 10)
+          secondaryTimer = setTimeout(() => bed.loaderEntries.push(entry(name + '/extra', 42, false)), 70)
+        }
+        const result = await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: true })
+        expect(result.status).toBe(200)
+        expect(result.json.restart).toBe(outcome === 'waits past the deadline')
+        if (coalesced) {
+          expect(main.fiber).toBeDefined()
+          expect(extra.fiber).toBeUndefined()
+        }
+        if (outcome === 'completes') expect(result.json.activation[name].state).toBe('live')
+        expect(readFileSync(path, 'utf8')).toBe(userPatch)
+      }
+      expect(hot.mounts).not.toContain(name)
+    } finally {
+      clearTimeout(primaryTimer)
+      clearTimeout(secondaryTimer)
+    }
+  })
+
+  it.each([false, true])('keeps all user-disabled components with a stored market OFF flag = %s (#1225)', async (staleOff) => {
+    const name = 'dsh-audit-user-all-off'
+    bed.dispose()
+    seedPackage(name, [
+      '- insert:',
+      '    - id: all-off-main',
+      `      name: '${name}'`,
+      '    - id: all-off-extra',
+      `      name: '${name}/extra'`,
+    ])
+    const path = join(profileDir('web'), 'cordis.patch.yml')
+    const userPatch = '- id: all-off-main\n  disabled: true\n  config:\n    keep: true\n- id: all-off-extra\n  disabled: true\n'
+    writeFileSync(path, userPatch)
+    if (staleOff) hot.disabled.add(name)
+    bed = createTestbed()
+    const main = entry(name, 'all-off-main', true)
+    const extra = entry(`${name}/extra`, 'all-off-extra', true)
+    bed.loaderEntries.push(main, extra)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const reply = await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: true })
+    expect({
+      status: reply.status,
+      active: [main, extra].map(row => row.fiber !== undefined),
+      patch: readFileSync(path, 'utf8'),
+    }).toEqual({ status: 502, active: [false, false], patch: userPatch })
+    expect(reply.json.reason).toContain('官方插件')
+    expect(reply.json.restart).toBe(false)
+    expect(hot.disabled.has(name)).toBe(staleOff)
+  })
+
+  it('restores a legacy whole-package disable without inventing prior component settings (#1150)', async () => {
+    const name = 'dsh-audit-legacy'
+    bed.dispose()
+    seedPackage(name, [
+      '- insert:',
+      '    - id: main-legacy',
+      `      name: '${name}'`,
+      '    - id: extra-legacy',
+      `      name: '${name}/extra'`,
+    ])
+    const path = join(profileDir('web'), 'cordis.patch.yml')
+    writeFileSync(path, '- id: main-legacy\n  disabled: true\n- id: extra-legacy\n  disabled: true\n')
+    hot.disabled.add(name)
+    bed = createTestbed()
+    const primary = entry(name, 'main-legacy', true)
+    const optional = entry(`${name}/extra`, 'extra-legacy', true)
+    bed.loaderEntries.push(primary, optional)
+    // Let the boot replay finish before requesting an enable.
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const on = await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: true })
+    expect(on.status).toBe(200)
+    expect(on.json.disabled).not.toContain(name)
+    expect(primary.fiber).toBeDefined()
+    expect(optional.fiber).toBeDefined()
+    expect(load(readFileSync(path, 'utf8'))).toEqual([])
+  })
+
+  it.each([false, true])('keeps a default-off component off through a full switch with explicit default override = %s (#1150)', async (explicit) => {
+    const name = 'dsh-audit-default'
+    bed.dispose()
+    seedPackage(name, [
+      '- insert:',
+      '    - id: main-default',
+      `      name: '${name}'`,
+      '    - id: opt-in-default',
+      `      name: '${name}/opt-in'`,
+      '      disabled: true',
+    ])
+    const path = join(profileDir('web'), 'cordis.patch.yml')
+    const userPatch = explicit ? '- id: opt-in-default\n  disabled: true\n' : '[]\n'
+    writeFileSync(path, userPatch)
+    bed = createTestbed()
+    const primary = entry(name, 'main-default', null)
+    const optIn = entry(`${name}/opt-in`, 'opt-in-default', true)
+    bed.loaderEntries.push(primary, optIn)
+
+    expect((await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: false })).status).toBe(200)
+    expect((await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: true })).status).toBe(200)
+    expect(primary.fiber).toBeDefined()
+    expect(optIn.fiber).toBeUndefined()
+    expect(readFileSync(path, 'utf8')).toBe(userPatch)
+  })
+
+  it('restores from the owned patch overlays even if the market state was lost (#1150)', async () => {
+    const name = 'dsh-audit-recovered'
+    bed.dispose()
+    seedPackage(name, [
+      '- insert:',
+      '    - id: recovered-main',
+      `      name: '${name}'`,
+      '    - id: recovered-extra',
+      `      name: '${name}/extra'`,
+    ])
+    const path = join(profileDir('web'), 'cordis.patch.yml')
+    const userPatch = '- id: recovered-extra\n  disabled: true\n'
+    writeFileSync(path, userPatch)
+    bed = createTestbed()
+    bed.loaderEntries.push(entry(name, 'recovered-main', null), entry(`${name}/extra`, 'recovered-extra', true))
+    expect((await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: false })).status).toBe(200)
+
+    // An independent Market instance boots without the previous disable set.
+    // The profile still owns the only temporary block it needs to remove.
+    bed.dispose()
+    hot.disabled.clear()
+    bed = createTestbed()
+    expect((await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: true })).status).toBe(200)
+    expect(readFileSync(path, 'utf8')).toBe(userPatch)
+    expect((await bed.dispatch('GET', '/dsh-market/installed')).json.patchDisabled).not.toContain(name)
+  })
+
+  it('still switches on the rows of a non-carrier that carries no guard', async () => {
+    const ordinary = 'dsh-guarded'
+    bed.dispose()
+    seedPackage(ordinary, [
+      '- insert:',
+      `    - id: ${ordinary}`,
+      `      name: '${ordinary}'`,
+      '    - id: dsh-guarded-extra',
+      `      name: '${ordinary}/extra'`,
+      '      disabled: !!js "process.platform === \'win32\'"',
+    ])
+    bed = createTestbed()
+    const plain = entry(ordinary, ordinary, true)
+    const guarded = entry(`${ordinary}/extra`, 'dsh-guarded-extra', true)
+    bed.loaderEntries.push(plain, guarded)
+
+    const on = await bed.dispatch('POST', '/dsh-market/toggle', { name: ordinary, enabled: true })
+
+    expect(on.status).toBe(200)
+    // The row the environment keeps off stays off; the rest of the package
+    // still comes up in this process.
+    expect(guarded.update).not.toHaveBeenCalled()
+    expect(guarded.options.disabled).toBe(true)
+    expect(plain.options.disabled).toBeNull()
+    expect(plain.fiber).toBeDefined()
+  })
+
+  it('leaves an expression-guarded row with a numeric YAML id off while enabling its sibling', async () => {
+    const name = 'dsh-guarded-number'
+    bed.dispose()
+    seedPackage(name, [
+      '- insert:',
+      '    - id: ordinary-row',
+      `      name: '${name}'`,
+      '    - id: 42',
+      `      name: '${name}/guarded'`,
+      '      disabled: !!js "true"',
+    ])
+    bed = createTestbed()
+    const ordinary = entry(name, 'ordinary-row', true)
+    const guarded = entry(`${name}/guarded`, 42, true)
+    bed.loaderEntries.push(ordinary, guarded)
+
+    const on = await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: true })
+
+    expect(on.status).toBe(200)
+    expect(ordinary.fiber).toBeDefined()
+    expect(guarded.update).not.toHaveBeenCalled()
+    expect(guarded.options.disabled).toBe(true)
+    expect(guarded.fiber).toBeUndefined()
+  })
+})
+
 describe('generic enable/disable toggle (#60)', () => {
   function installNpm(name: string, dsh: Record<string, unknown> = {}): Promise<void> {
     fake.npm[name] = {
@@ -8017,6 +9431,47 @@ describe('generic enable/disable toggle (#60)', () => {
     expect(listed.json.disabled).not.toContain('dsh-patchy')
   })
 
+  it('keeps a default-on Desktop bundle component enabled after the official page enables it (#1196)', async () => {
+    const { userPatch, entry } = await installPatchy()
+    const profile = profileDir('web')
+    const rowId = 'patchy-component'
+    const name = 'dsh-patchy'
+    writeFileSync(join(profile, 'node_modules', name, 'cordis.patch.yml'), `- insert:\n    - id: ${rowId}\n      name: ${name}\n`)
+    Object.assign(entry.options, { id: `include:${rowId}` })
+    bed.loaderEntries.push({
+      options: { id: 'include', name: 'cordis:include', config: { path: join(profile, 'cordis.yml') } } as never,
+      update: vi.fn(async () => {}),
+    })
+
+    const off = await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: false })
+    expect(off.status).toBe(200)
+    expect(off.json.disabled).toContain(name)
+    expect(entry.fiber).toBeUndefined()
+
+    // The official package switch first selects the bundle. Its component
+    // switch then compacts an id/disabled-only override against the bundle's
+    // default. It changes the flag in place when the override carries a name.
+    expect(addProfileBundle(profile, name)).toBe(true)
+    const offPatch = readFileSync(userPatch, 'utf8')
+    const rows = load(offPatch) as { id: string; disabled: boolean; name?: string }[]
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ id: rowId, disabled: true })
+    const compacted = Object.keys(rows[0]!).every(key => key === 'id' || key === 'disabled')
+    const onPatch = compacted ? '[]\n' : offPatch.replace('disabled: true', 'disabled: false')
+    writeFileSync(userPatch, onPatch)
+    entry.options.disabled = null
+    entry.fiber = {}
+    ;(entry.update as ReturnType<typeof vi.fn>).mockClear()
+    bed.emit('internal/plugin', { entry })
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(pushedDown(entry)).toBe(false)
+    expect(entry.fiber).toBeDefined()
+    expect(hot.disabled.has(name)).toBe(false)
+    expect((await bed.dispatch('GET', '/dsh-market/installed')).json.disabled).not.toContain(name)
+    expect(load(onPatch)).toEqual([{ id: rowId, name, disabled: false }])
+  })
+
   it('follows the switch through on, off, on when the row has more keys than the flag (#1099)', async () => {
     // DSH's own plugin page writes the flag after the keys a row already has.
     // The market kept answering "on" here while the listing still said off,
@@ -8029,7 +9484,11 @@ describe('generic enable/disable toggle (#60)', () => {
     const expectOn = async (on: { status: number; json: any }) => {
       expect(on.status).toBe(200)
       expect(on.json.activation['dsh-patchy'].state).toBe('live')
-      expect(readFileSync(userPatch, 'utf8').endsWith('- id: dsh-patchy\n  disabled: false\n')).toBe(true)
+      const patch = readFileSync(userPatch, 'utf8')
+      expect(patch.startsWith(own)).toBe(true)
+      const rows = load(patch) as unknown[]
+      expect(rows).toHaveLength(2)
+      expect(rows[1]).toMatchObject({ id: 'dsh-patchy', disabled: false })
       const listed = await bed.dispatch('GET', '/dsh-market/installed')
       expect(listed.json.patchDisabled).not.toContain('dsh-patchy')
       expect(listed.json.patchForced).toContain('dsh-patchy')
@@ -8041,7 +9500,12 @@ describe('generic enable/disable toggle (#60)', () => {
     const off = await bed.dispatch('POST', '/dsh-market/toggle', { name: 'dsh-patchy', enabled: false })
     expect(off.status).toBe(200)
     expect(off.json.activation['dsh-patchy'].state).toBe('disabled')
-    expect(readFileSync(userPatch, 'utf8').endsWith('- id: dsh-patchy\n  disabled: true\n')).toBe(true)
+    const offPatch = readFileSync(userPatch, 'utf8')
+    expect(offPatch.startsWith(own)).toBe(true)
+    expect(load(offPatch)).toEqual([
+      { id: 'dsh-patchy', name: 'dsh-patchy', inject: ['tools'], disabled: true },
+      { id: 'dsh-patchy', name: 'dsh-patchy', disabled: true },
+    ])
     const listedOff = await bed.dispatch('GET', '/dsh-market/installed')
     expect(listedOff.json.patchDisabled).toContain('dsh-patchy')
     expect(listedOff.json.patchForced).not.toContain('dsh-patchy')
@@ -8069,16 +9533,22 @@ describe('generic enable/disable toggle (#60)', () => {
     const off = await bed.dispatch('POST', '/dsh-market/toggle', { name: 'dsh-patchy', enabled: false })
     expect(off.status).toBe(200)
     // Its own row, written below the stale one; the stale row is untouched.
-    expect(readFileSync(userPatch, 'utf8')).toBe(`${stale}- id: dsh-patchy\n  disabled: true\n`)
+    const offPatch = readFileSync(userPatch, 'utf8')
+    expect(offPatch.startsWith(stale)).toBe(true)
+    expect(load(offPatch)).toEqual([
+      { id: 'dsh-patchy', name: 'old-package-name', disabled: false },
+      { id: 'dsh-patchy', name: 'dsh-patchy', disabled: true },
+    ])
     const listedOff = await bed.dispatch('GET', '/dsh-market/installed')
     expect(listedOff.json.patchDisabled).toContain('dsh-patchy')
   })
 
-  it('still keeps a plugin off when nothing outside the market re-enabled it', async () => {
+  it.each(['present', 'missing'])('keeps a plugin off without an outside enable when the patch is %s', async (patch) => {
     // The guard exists because DSH's own overlay can re-update an entry
     // during activation and wipe the runtime flag; that must still be undone.
-    const { entry } = await installPatchy()
+    const { userPatch, entry } = await installPatchy()
     await bed.dispatch('POST', '/dsh-market/toggle', { name: 'dsh-patchy', enabled: false })
+    if (patch === 'missing') rmSync(userPatch)
     entry.options.disabled = null
     entry.fiber = {}
     ;(entry.update as ReturnType<typeof vi.fn>).mockClear()
@@ -8261,12 +9731,30 @@ describe('generic enable/disable toggle (#60)', () => {
     const manifestPath = join(profileDir('web'), 'package.json')
     const bundlesNow = (): string[] => JSON.parse(readFileSync(manifestPath, 'utf8')).dsh?.profile?.bundles ?? []
 
-    // Turn it off first, so the enable below has a real stack entry to add.
-    const off = await bed.dispatch('POST', '/dsh-market/toggle', { name: 'dsh-patchy', enabled: false })
-    expect(off.status).toBe(200)
-    expect(bundlesNow()).not.toContain('dsh-patchy')
-    expect(readFileSync(userPatch, 'utf8')).toContain('- id: dsh-patchy\n  disabled: true\n')
+    const initialManifest = readManifestAt(profileDir('web'))
+    initialManifest.dsh = { profile: { bundles: [...new Set([...bundlesNow(), 'dsh-patchy'])] } }
+    writeFileSync(manifestPath, JSON.stringify(initialManifest))
 
+    // The new OFF refuses the invalid row before changing any layer.
+    writeFileSync(userPatch, '[]\n')
+    const beforeOff = readFileSync(userPatch, 'utf8')
+    const off = await bed.dispatch('POST', '/dsh-market/toggle', { name: 'dsh-patchy', enabled: false })
+    expect(off.status).toBe(502)
+    expect(off.json.restart).toBe(false)
+    expect(bundlesNow()).toContain('dsh-patchy')
+    expect(readFileSync(userPatch, 'utf8')).toBe(beforeOff)
+
+    // The previous OFF switch did write only the first row. Open that
+    // historical profile independently to keep exercising ON rollback.
+    const legacyPatch = "- id: dsh-patchy\n  disabled: true\n  name: 'dsh-patchy' # dsh-market\n"
+    const legacyManifest = readManifestAt(profileDir('web'))
+    legacyManifest.dsh = { profile: { bundles: bundlesNow().filter(name => name !== 'dsh-patchy') } }
+    writeFileSync(manifestPath, JSON.stringify(legacyManifest))
+    writeFileSync(userPatch, legacyPatch)
+    bed.dispose()
+    hot.disabled.add('dsh-patchy')
+    bed = createTestbed()
+    bed.loaderEntries.length = 0
     const on = await bed.dispatch('POST', '/dsh-market/toggle', { name: 'dsh-patchy', enabled: true })
     expect(on.status).toBe(502)
     expect(on.json.ok).toBe(false)
@@ -8274,8 +9762,9 @@ describe('generic enable/disable toggle (#60)', () => {
     expect(bundlesNow()).not.toContain('dsh-patchy')
     // …the row it flipped first is disabled again, and no force-enable block
     // is left behind for the row it could not reach…
-    expect(readFileSync(userPatch, 'utf8')).toContain('- id: dsh-patchy\n  disabled: true\n')
-    expect(readFileSync(userPatch, 'utf8')).not.toContain('disabled: false')
+    const rolledBackPatch = readFileSync(userPatch, 'utf8')
+    expect(load(rolledBackPatch)).toEqual([{ id: 'dsh-patchy', name: 'dsh-patchy', disabled: true }])
+    expect(rolledBackPatch).toContain('# dsh-market')
     // …and the plugin is still the market's to describe as off (#575).
     expect(on.json.activation['dsh-patchy'].state).toBe('disabled')
   })
@@ -8311,6 +9800,52 @@ describe('generic enable/disable toggle (#60)', () => {
     bed.loaderEntries.push(entry)
     return { userPatch: join(profileDir('web'), 'cordis.patch.yml'), entry }
   }
+
+  it('refuses a group switch during a failed install without splitting the carrier layers (#1228)', async () => {
+    const { userPatch, entry } = await installSwap()
+    expect(addProfileBundle(fake.profileDir, 'dsh-swap')).toBe(true)
+    await bed.dispatch('POST', '/dsh-market/groups', { action: 'create', name: 'work' })
+    await bed.dispatch('POST', '/dsh-market/groups', { action: 'set-members', name: 'work', members: ['dsh-swap'] })
+    fake.npm['dsh-loop'] = {
+      latest: '1.0.0',
+      versions: { '1.0.0': { manifest: { dsh: {}, main: 'lib/index.js' }, artifacts: ['lib/index.js'] } },
+    }
+    const manifestPath = join(fake.profileDir, 'package.json')
+    const patchNow = (): string | null => existsSync(userPatch) ? readFileSync(userPatch, 'utf8') : null
+    let release!: () => void
+    fake.gate = new Promise<void>(resolve => { release = resolve })
+    fake.failNextAddStderrOnce = 'test: install failed'
+    fake.failNextAddStderrTimes = 2
+    const install = bed.dispatch('POST', '/dsh-market/install', { url: 'https://github.com/o/dsh-loop' })
+    try {
+      await vi.waitFor(() => expect(fake.running).toBe(true))
+      const manifestBefore = readFileSync(manifestPath, 'utf8')
+      const patchBefore = patchNow()
+      const disabledBefore = new Set(hot.disabled)
+      const single = await bed.dispatch('POST', '/dsh-market/toggle', { name: 'dsh-swap', enabled: false })
+      const group = await bed.dispatch('POST', '/dsh-market/groups', { action: 'toggle', name: 'work', enabled: false })
+      expect.soft(single.status).toBe(409)
+      expect.soft(group.status).toBe(409)
+      expect.soft(group.json).toMatchObject({ busy: true })
+      expect.soft(readFileSync(manifestPath, 'utf8')).toBe(manifestBefore)
+      expect.soft(patchNow()).toBe(patchBefore)
+      expect.soft(hot.disabled).toEqual(disabledBefore)
+      expect.soft(entry.update).not.toHaveBeenCalled()
+    } finally {
+      release()
+      fake.gate = null
+      expect((await install).status).toBe(502)
+    }
+    // The failed install restores the carrier declaration. Its replacement
+    // must not also have been disabled by an overlapping group request.
+    expect(readManifestAt(fake.profileDir).dsh?.profile?.bundles).toContain('dsh-swap')
+    expect(patchNow() ?? '').not.toContain('swap-chat')
+    expect(hot.disabled.has('dsh-swap')).toBe(false)
+    const retry = await bed.dispatch('POST', '/dsh-market/groups', { action: 'toggle', name: 'work', enabled: false })
+    expect(retry.status).toBe(200)
+    expect(readManifestAt(fake.profileDir).dsh?.profile?.bundles ?? []).not.toContain('dsh-swap')
+    expect(patchNow()).toContain('swap-chat')
+  })
 
   it('does not stop a swapping bundle\'s rows while the rows it replaced are still off (#1010)', async () => {
     // The CLI Worker plugin disables the stock `ui-*` rows and brings its own.
@@ -8872,6 +10407,44 @@ describe('custom groups (#60)', () => {
     const off = await bed.dispatch('POST', '/dsh-market/groups', { action: 'toggle', name: 'looks', enabled: false })
     expect(off.status).toBe(200)
     expect(hot.disabled.has('theme-a')).toBe(true)
+  })
+
+  it.each([
+    { phase: 'classification' },
+    { phase: 'activation' },
+  ])('holds the group lock during theme $phase and releases it after completion (#1228)', async ({ phase }) => {
+    for (const name of ['theme-a', 'theme-b']) {
+      fake.repos[`github:o/${name}`] = { name, manifest: { dsh: {}, main: 'index.js' }, artifacts: ['index.js'] }
+      expect((await bed.dispatch('POST', '/dsh-market/install', { url: `https://github.com/o/${name}` })).status).toBe(200)
+    }
+    await bed.dispatch('POST', '/dsh-market/groups', { action: 'create', name: 'looks' })
+    await bed.dispatch('POST', '/dsh-market/groups', { action: 'set-members', name: 'looks', members: ['theme-a'] })
+    let release!: () => void
+    let entered!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const started = new Promise<void>(resolve => { entered = resolve })
+    // activateTheme classifies themes again after the route's first lookup.
+    if (phase === 'activation') registryModule.loadRegistry.mockResolvedValueOnce(REGISTRY)
+    registryModule.loadRegistry.mockImplementationOnce(async () => {
+      entered()
+      await gate
+      return REGISTRY
+    })
+    const toggle = bed.dispatch('POST', '/dsh-market/groups', { action: 'toggle', name: 'looks', enabled: true })
+    let competing: Awaited<ReturnType<Testbed['dispatch']>> | undefined
+    let result: Awaited<ReturnType<Testbed['dispatch']>> | undefined
+    try {
+      await started
+      competing = await bed.dispatch('POST', '/dsh-market/snapshots', {})
+    } finally {
+      release()
+      result = await toggle
+    }
+    expect.soft(competing?.status).toBe(409)
+    expect.soft(competing?.json).toMatchObject({ busy: true })
+    expect(result.status).toBe(200)
+    expect(hot.mounts).toEqual(['theme-a'])
+    expect((await bed.dispatch('POST', '/dsh-market/snapshots', {})).status).toBe(200)
   })
 })
 
@@ -9863,6 +11436,7 @@ describe('favorites (#414)', () => {
     hot.favorites = Array.from({ length: 500 }, (_, index) => `https://github.com/o/p-${index}`)
     const add = await bed.dispatch('POST', '/dsh-market/favorite', { url: 'https://github.com/o/one-more', favorited: true })
     expect(add.status).toBe(400)
+    expect(add.json).toMatchObject({ code: 'FAVORITES_LIMIT_REACHED', limit: 500 })
     expect(hot.favorites).toHaveLength(500)
   })
 
@@ -10158,6 +11732,68 @@ describe('a pinned install is judged on its own release, not on latest (#581)', 
     // with nothing to search for.
     expect(refused.json.hostIncompatible).toMatchObject({ version: '1.0.0', requirement: '>=99.0.0', npmName: 'dsh-loop' })
     expect(fake.calls.filter(call => call[0] === 'add')).toEqual([])
+  })
+
+  it('offers a young compatible update on a CLI host, where the update can install it', async () => {
+    // The CLI update retries once with --config.minimum-release-age=0 (#39),
+    // so a release inside the wait still installs. Calling it "held" there
+    // disabled the dialog's Update button for an update that works.
+    const pkg = { dsh: {}, main: 'lib/index.js' }
+    fake.npm['dsh-loop'] = { latest: '1.0.0', versions: { '1.0.0': { manifest: pkg, artifacts: ['lib/index.js'] }, '1.2.0': { manifest: pkg, artifacts: ['lib/index.js'] } } }
+    expect((await bed.dispatch('POST', '/dsh-market/install', { url: 'https://github.com/o/dsh-loop', version: '1.0.0' })).status).toBe(200)
+    writeFileSync(join(fake.profileDir, 'pnpm-workspace.yaml'), 'minimumReleaseAge: 1440\nminimumReleaseAgeIgnoreMissingTime: false\n')
+    fake.npm['dsh-loop'].latest = '1.2.0'
+    fake.releaseHold = { mature: '1.0.0', strict: true }
+    fake.calls = []
+    const young = new Date(Date.now() - 3_600_000).toISOString()
+    const old = new Date(Date.now() - 72 * 3_600_000).toISOString()
+    const release = (version: string) => manifest(version, version === '2.0.0' ? '>=99.0.0' : `>=${HOST_VERSION}`)
+    vi.stubGlobal('fetch', vi.fn(async (input: unknown) => {
+      const url = String(input)
+      if (url.endsWith('/dsh-loop/latest')) return new Response(JSON.stringify(release('2.0.0')))
+      if (/\/dsh-loop(?:\?t=\d+)?$/.test(url)) return new Response(JSON.stringify({
+        'dist-tags': { latest: '2.0.0' },
+        versions: { '1.0.0': release('1.0.0'), '1.2.0': release('1.2.0'), '2.0.0': release('2.0.0') },
+        time: { '1.0.0': old, '1.2.0': young, '2.0.0': young },
+      }))
+      const exact = /\/dsh-loop\/(\d+\.\d+\.\d+)$/.exec(url)
+      if (exact) return new Response(JSON.stringify(release(exact[1]!)))
+      return new Response('{}', { status: 404 })
+    }))
+
+    const found = await bed.dispatch('POST', '/dsh-market/find-compatible', { npmName: 'dsh-loop', upgradeOnly: true })
+    expect(found.json).toMatchObject({ compatibleVersion: '1.2.0', maturity: null })
+    const updated = await bed.dispatch('POST', '/dsh-market/update', { name: 'dsh-loop', compatVersion: '1.2.0' })
+    expect(updated.status, JSON.stringify(updated.json)).toBe(200)
+    expect(installedSpec('dsh-loop')).toBe('^1.2.0')
+
+    // The Desktop manager has no bypass, so there the dialog keeps the wait.
+    bed.dispose()
+    bed = createTestbed({ desktopHost: true })
+    writeFileSync(join(fake.profileDir, 'pnpm-workspace.yaml'), 'minimumReleaseAge: 1440\nminimumReleaseAgeIgnoreMissingTime: false\n')
+    const onDesktop = await bed.dispatch('POST', '/dsh-market/find-compatible', { npmName: 'dsh-loop' })
+    expect(onDesktop.json.maturity).toMatchObject({ version: '1.2.0', held: true, installable: false })
+  })
+
+  it('does not report a landed install as failed when the host reloaded the market while it was checking', async () => {
+    // A plugin with its own host half can make the host reload the market
+    // before this request finishes. The old instance throws "inactive
+    // context" from then on; the package is already installed, and the new
+    // instance reports its real state, so the answer must not be a 500.
+    const pkg = { dsh: {}, main: 'lib/index.js' }
+    fake.npm['dsh-loop'] = { latest: '1.0.0', versions: { '1.0.0': { manifest: pkg, artifacts: ['lib/index.js'] } } }
+    bed.loaderEntries.push({
+      options: { id: 'other' },
+      get fiber() {
+        bed.dispose()
+        throw new Error('cannot get required service "loader" in inactive context')
+      },
+    } as never)
+
+    const answer = await bed.dispatch('POST', '/dsh-market/install', { url: 'https://github.com/o/dsh-loop', version: '1.0.0' })
+    expect(answer.status, JSON.stringify(answer.json)).toBe(200)
+    expect(answer.json).toMatchObject({ ok: true, marketReloaded: true })
+    expect(installedSpec('dsh-loop')).toBe('^1.0.0')
   })
 })
 
@@ -10548,8 +12184,10 @@ describe('Agent-safe drain mode (#411)', () => {
     } finally { drainBed.dispose() }
   })
 
-  it('keeps one mutation lane while a deferred operation waits', async () => {
+  it('keeps one mutation lane for updates and group switches while a deferred operation waits (#1228)', async () => {
     await seedInstalledLoop()
+    await bed.dispatch('POST', '/dsh-market/groups', { action: 'create', name: 'work' })
+    await bed.dispatch('POST', '/dsh-market/groups', { action: 'set-members', name: 'work', members: ['dsh-loop'] })
     advanceLatest('1.2.0')
     const agent = new FakeAgent('main', 'running')
     const drainBed = createTestbed({}, undefined, agentsService([agent]))
@@ -10560,6 +12198,13 @@ describe('Agent-safe drain mode (#411)', () => {
       expect(second.status).toBe(409)
       expect(second.json.failureCode).toBe('OPERATION_BUSY')
       expect(second.json.agentsBusy).toBeUndefined()
+
+      const before = readFileSync(join(fake.profileDir, 'package.json'), 'utf8')
+      const group = await drainBed.dispatch('POST', '/dsh-market/groups', { action: 'toggle', name: 'work', enabled: false })
+      expect.soft(group.status).toBe(409)
+      expect.soft(group.json).toMatchObject({ busy: true, failureCode: 'OPERATION_BUSY' })
+      expect.soft(readFileSync(join(fake.profileDir, 'package.json'), 'utf8')).toBe(before)
+      expect.soft(hot.disabled.has('dsh-loop')).toBe(false)
 
       agent.finishTurn()
       await settled(drainBed, String(accepted.json.operationId))
@@ -10699,7 +12344,7 @@ describe('Agent-safe drain mode (#411)', () => {
       const completed = await settled(drainBed, String(accepted.json.operationId))
       expect(completed.state).toBe('failed')
       // This text comes from the status event; the later gate words it differently.
-      expect(completed.failure).toMatchObject({ code: 'AGENT_BARRIER_LOST', message: expect.stringContaining('started work') })
+      expect(completed.failure).toMatchObject({ code: 'AGENT_BARRIER_LOST', message: expect.stringContaining('等会话空闲后再试') })
       expect(fake.calls.length).toBe(callsBefore)
       expect(installedSpec('dsh-loop')).toBe('^1.0.0')
     } finally { drainBed.dispose() }
@@ -11083,7 +12728,12 @@ describe('catalog-owned floating release archives', () => {
   })
   afterEach(() => { registryModule.loadRegistry.mockImplementation(() => Promise.resolve(REGISTRY)) })
 
-  it('lists and applies a published complete package without switching to npm or source', async () => {
+  it.each([
+    original,
+    'https://github.com/o/whale/releases/download/v1.0.0/full-1.0.0.tgz',
+  ])('lists and applies a published complete package from %s', async spec => {
+    writeFileSync(join(fake.profileDir, 'package.json'), JSON.stringify({ dependencies: { 'dsh-whale': spec }, dsh: { profile: { bundles: ['dsh-whale'] } } }))
+    fake.tarballs[spec] = fake.tarballs[original]!
     const page = await bed.dispatch('GET', '/dsh-market/updates?force=1')
     expect(page.json.updates['dsh-whale']).toMatchObject({ latest: '2.0.0', updateAvailable: true })
     const single = await bed.dispatch('GET', '/dsh-market/api/v1/updates?name=dsh-whale&force=1')
@@ -11136,12 +12786,12 @@ describe('boot replay carrier safety', () => {
   }
 
   /** Build a real carrier package: own gate insert plus a foreign inject row. */
-  function seedCarrier(): void {
+  function seedCarrier(name = carrierName, extraRow = false, gateName = `${name}/gate`): void {
     const dir = profileDir('web')
-    const pkgDir = join(dir, 'node_modules', carrierName)
+    const pkgDir = join(dir, 'node_modules', name)
     mkdirSync(pkgDir, { recursive: true })
     writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({
-      name: carrierName,
+      name,
       version: '1.0.0',
       type: 'module',
       dsh: { bundle: { patch: './cordis.patch.yml' } },
@@ -11149,16 +12799,78 @@ describe('boot replay carrier safety', () => {
     writeFileSync(join(pkgDir, 'cordis.patch.yml'), [
       '- insert:',
       '    - id: carrier-gate',
-      `      name: '${carrierName}/gate'`,
+      `      name: '${gateName}'`,
+      ...(extraRow ? ['    - id: carrier-native', `      name: '${name}/native'`] : []),
       '- id: preset-standard',
       '  inject: [carrierGateService]',
       '',
     ].join('\n'))
     writeFileSync(profileManifestPath(), JSON.stringify({
-      dependencies: { [carrierName]: '1.0.0' },
-      dsh: { profile: { bundles: [carrierName] } },
+      dependencies: { [name]: '1.0.0' },
+      dsh: { profile: { bundles: [name] } },
     }, null, 2))
   }
+
+  it.each([
+    { name: carrierName, gateName: carrierName, extraRow: false },
+    { name: carrierName, gateName: `${carrierName}/gate`, extraRow: false },
+    { name: '@example/dsh-carrier-gate', gateName: '@example/dsh-carrier-gate/gate', extraRow: true },
+  ])('keeps $gateName enabled after the official page enables its components (#1242)', async ({ name, gateName, extraRow }) => {
+    bed.dispose()
+    seedCarrier(name, extraRow, gateName)
+    bed = createTestbed()
+    bed.loaderEntries.push(makeEntry(gateName, 'carrier-gate'))
+    if (extraRow) bed.loaderEntries.push(makeEntry(`${name}/native`, 'carrier-native'))
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const off = await bed.dispatch('POST', '/dsh-market/toggle', { name, enabled: false })
+    expect(off.status).toBe(200)
+    expect(hot.disabled.has(name)).toBe(true)
+    expect(readManifestAt(profileDir('web')).dsh?.profile?.bundles).not.toContain(name)
+    const userPatch = join(profileDir('web'), 'cordis.patch.yml')
+    const offPatch = readFileSync(userPatch, 'utf8')
+    const rows = load(offPatch) as { id: string; disabled: boolean; name?: string }[]
+    expect(rows).toHaveLength(extraRow ? 2 : 1)
+    expect(rows.every(row => row.disabled === true)).toBe(true)
+
+    // The official package switch restores the bundle. Its component
+    // switch removes id/disabled-only overrides against a default-on row,
+    // but preserves a named override and flips its literal flag (#1196).
+    addProfileBundle(profileDir('web'), name)
+    const compacted = rows.every(row => Object.keys(row).every(key => key === 'id' || key === 'disabled'))
+    writeFileSync(userPatch, compacted ? '[]\n' : offPatch.replaceAll('disabled: true', 'disabled: false'))
+
+    // The next market instance must follow that explicit enable instead of
+    // replaying its old disable list and deleting the restored carrier.
+    bed.dispose()
+    bed = createTestbed()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(readManifestAt(profileDir('web')).dsh?.profile?.bundles).toContain(name)
+    expect(hot.disabled.has(name)).toBe(false)
+  })
+
+  it('recovers a legacy carrier disable only after an explicit market enable', async () => {
+    bed.dispose()
+    seedCarrier()
+    const userPatch = join(profileDir('web'), 'cordis.patch.yml')
+    writeFileSync(userPatch, '- id: carrier-gate\n  disabled: true\n')
+    hot.disabled = new Set([carrierName])
+    bed = createTestbed()
+    bed.loaderEntries.push(makeEntry(`${carrierName}/gate`, 'carrier-gate'))
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(readManifestAt(profileDir('web')).dsh?.profile?.bundles).not.toContain(carrierName)
+    expect(hot.disabled.has(carrierName)).toBe(true)
+
+    const on = await bed.dispatch('POST', '/dsh-market/toggle', { name: carrierName, enabled: true })
+    expect(on.status).toBe(200)
+    expect(on.json.ok).toBe(true)
+    expect(load(readFileSync(userPatch, 'utf8'))).toEqual([])
+    bed.dispose()
+    bed = createTestbed()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(readManifestAt(profileDir('web')).dsh?.profile?.bundles).toContain(carrierName)
+    expect(hot.disabled.has(carrierName)).toBe(false)
+  })
 
   it('removes a disabled carrier from the bundle stack instead of disabling its gate (#938)', async () => {
     bed.dispose()

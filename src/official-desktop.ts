@@ -30,6 +30,8 @@ interface ManagedResult {
    * must not try to "restore" it through the same stuck manager.
    */
   repairOnRestart?: boolean
+  /** The refusal is the host's restart-first state, not a plugin in use (#1253). */
+  needsRestart?: boolean
 }
 
 /**
@@ -51,9 +53,24 @@ interface ManagedResult {
  * snapshot two minutes later. A deadline is here to end an infinite wait, not
  * to race pnpm's retry budget — a transient that resolves by itself must not
  * turn into a permanent failure.
+ *
+ * Their length is also not ours to pick: every call bounded here has the
+ * host's own silence watchdog inside it (#1250). The plugin manager kills a
+ * pnpm child that prints nothing for ten minutes (`idleTimeoutMs` of
+ * `@deepseek-ai/dsh-plugin-manager`, the default #817 was reported against)
+ * and answers `dsh: pnpm printed nothing for 600000ms and was terminated` —
+ * the sentence `classifyPnpmFailure` turns into "the network stalled, nothing
+ * was installed" (`./pnpm-compat.ts`). A market bound at or under that
+ * instant is not a backstop for a silent host; it is the thing that decides
+ * the answer, and the host's own diagnosis is replaced by
+ * `operation-incomplete` — "the change may already be on disk", said about a
+ * profile that a killed pnpm had not touched.
  */
-const REMOVE_DEADLINE_MS = 300_000
-const INSTALL_DEADLINE_MS = 300_000
+const HOST_IDLE_WATCHDOG_MS = 600_000
+/** Long enough for the host to turn a killed child into its answer. */
+const DEADLINE_MARGIN_MS = 60_000
+const REMOVE_DEADLINE_MS = HOST_IDLE_WATCHDOG_MS + DEADLINE_MARGIN_MS
+const INSTALL_DEADLINE_MS = HOST_IDLE_WATCHDOG_MS + DEADLINE_MARGIN_MS
 /**
  * The bound around a whole `add`, which may be an update and therefore holds
  * two bounded phases in a row. It has to stay strictly longer than their sum:
@@ -62,7 +79,7 @@ const INSTALL_DEADLINE_MS = 300_000
  * "the update did not finish" and started being reported as the plain
  * operation refusal (#928's spec caught it).
  */
-const OPERATION_DEADLINE_MS = REMOVE_DEADLINE_MS + INSTALL_DEADLINE_MS
+const OPERATION_DEADLINE_MS = REMOVE_DEADLINE_MS + INSTALL_DEADLINE_MS + DEADLINE_MARGIN_MS
 
 export interface OfficialPluginManagerLike {
   installBundle(spec: string, options?: { requestId?: string; registry?: string }): Promise<ManagedResult>
@@ -262,6 +279,17 @@ function interrupted(): ManagedResult {
   return { application: 'failed', error: { code: 'update-incomplete' }, repairOnRestart: true }
 }
 
+/**
+ * A manager call the market stopped waiting for.
+ *
+ * Neither "nothing happened" nor "undo it": the manager may have written the
+ * change already, so the next start reconciles against disk instead of the
+ * market inventing an answer here (#1066).
+ */
+function unanswered(): ManagedResult {
+  return { application: 'failed', error: { code: 'operation-incomplete' }, repairOnRestart: true }
+}
+
 /** What an update needs to journal itself and to be repaired later. */
 interface UpdateContext {
   profile: string
@@ -378,11 +406,15 @@ async function installOrReinstall(
   options: { requestId?: string; registry?: string },
   context?: UpdateContext,
 ): Promise<ManagedResult> {
-  const install = (): Promise<ManagedResult> => manager.installBundle(spec, options)
+  const install = (): Promise<ManagedResult> => trackManagerWrite(manager.installBundle(spec, options))
   let first: ManagedResult
   try {
-    first = await install()
+    // Bounded like every other manager call: a plain install the host never
+    // answers used to be bounded only by the whole-operation backstop, which
+    // has to cover remove-then-install and is therefore twice as long (#1250).
+    first = await withDeadline(install(), INSTALL_DEADLINE_MS, `install ${spec}`)
   } catch (error) {
+    if (error instanceof DeadlineExceeded) return unanswered()
     if (managementCode(error) !== 'already-installed') throw error
     first = { application: 'failed', error }
   }
@@ -407,7 +439,7 @@ async function installOrReinstall(
   progress.lastLine = '先移除旧版本，桌面端才能装新版本 / Removing the old version so the desktop app can install the new one'
   let removed: ManagedResult
   try {
-    removed = await withDeadline(manager.removeBundle(name), REMOVE_DEADLINE_MS, `remove ${name}`)
+    removed = await withDeadline(trackManagerWrite(manager.removeBundle(name)), REMOVE_DEADLINE_MS, `remove ${name}`)
   } catch (error) {
     if (error instanceof DeadlineExceeded) return interrupted()
     if (record !== undefined) context?.journal.finish(record.id)
@@ -416,6 +448,12 @@ async function installOrReinstall(
   if (removed.application === 'failed' || removed.application === 'cancelled') {
     // Nothing was unloaded, so there is nothing for a later start to repair.
     if (record !== undefined) context?.journal.finish(record.id)
+    // An update already landed behind a restart in this process, and the
+    // host now says `bundle-in-use` for a plugin it put back itself (#1253).
+    // It is the same wait for a restart, not a plugin that is really in use.
+    if (removed.application === 'failed' && managementCode(removed.error) === 'bundle-in-use' && restartPending()) {
+      return { ...removed, needsRestart: true }
+    }
     return removed
   }
   if (record !== undefined) context?.journal.mark(record.id, 'installing')
@@ -428,6 +466,7 @@ async function installOrReinstall(
       return installed
     }
     if (record !== undefined) context?.journal.finish(record.id)
+    if (installed.application === 'restart-required') markRestartPending()
     return installed
   } catch (error) {
     if (error instanceof DeadlineExceeded) return interrupted()
@@ -447,7 +486,44 @@ async function installOrReinstall(
  * The slot lives on `globalThis` because a reload may evaluate this module
  * again, which a module-level variable would not survive.
  */
+const RESTART_SLOT = Symbol.for('dshmarket.officialDesktop.restartPending')
+
+/**
+ * Whether an update in THIS host process already settled behind a restart.
+ * On the global like the slots below: a market reload keeps the process, and
+ * the process is what has to restart.
+ */
+function restartPending(): boolean {
+  return (globalThis as { [RESTART_SLOT]?: boolean })[RESTART_SLOT] === true
+}
+function markRestartPending(): void {
+  (globalThis as { [RESTART_SLOT]?: boolean })[RESTART_SLOT] = true
+}
+/** Test seam: a new host process starts with nothing pending. */
+export function forgetRestartPending(): void {
+  delete (globalThis as { [RESTART_SLOT]?: boolean })[RESTART_SLOT]
+}
+
+/** What the user reads when the host asks for a restart before the next update (#1253). */
+const RESTART_FIRST_MESSAGE = '这一轮只能更新到这里。重启后再点「全部更新」继续。 / This run can only go this far. Restart, then click Update all to continue.'
+
 const OPERATION_SLOT = Symbol.for('dshmarket.officialDesktop.operation')
+const WRITE_SLOT = Symbol.for('dshmarket.officialDesktop.packageWrites')
+
+/** Keep the native promises across a market reload, including after a route deadline. */
+function pendingManagerWrites(): Set<Promise<ManagedResult>> {
+  const processState = globalThis as { [WRITE_SLOT]?: Set<Promise<ManagedResult>> }
+  return processState[WRITE_SLOT] ??= new Set()
+}
+
+function trackManagerWrite(work: Promise<ManagedResult>): Promise<ManagedResult> {
+  const pending = pendingManagerWrites()
+  pending.add(work)
+  const remove = () => pending.delete(work)
+  void work.then(remove, remove)
+  return work
+}
+
 interface RunningOperation { done: Promise<unknown> }
 function runningOperation(): RunningOperation | undefined {
   return (globalThis as { [OPERATION_SLOT]?: RunningOperation })[OPERATION_SLOT]
@@ -591,20 +667,13 @@ export function createOfficialDesktopRuntime(
       const deadline = command === 'remove' ? REMOVE_DEADLINE_MS : OPERATION_DEADLINE_MS
       operation = withDeadline(
         command === 'remove'
-          ? manager.removeBundle(target)
+          ? trackManagerWrite(manager.removeBundle(target))
           : installOrReinstall(manager, spec, options, updateContext),
         deadline,
         `${command} ${target}`,
       ).catch((error: unknown) => {
         if (!(error instanceof DeadlineExceeded)) throw error
-        return {
-          application: 'failed' as const,
-          // Neither "nothing happened" nor "undo it": the manager may have
-          // written the change already. The next start reconciles against
-          // disk instead of the market inventing an answer here.
-          repairOnRestart: true,
-          error: { code: 'operation-incomplete' },
-        }
+        return unanswered()
       })
     } catch (error) {
       progress.active = false
@@ -626,7 +695,7 @@ export function createOfficialDesktopRuntime(
         result.packageResult?.output ?? '',
         result.application === 'overridden' ? 'the plugin manager kept this change, but another layer overrides whether it is enabled' : '',
       ].filter(Boolean).join('\n')
-      const message = ok ? '' : detail(result.error)
+      const message = ok ? '' : result.needsRestart === true ? RESTART_FIRST_MESSAGE : detail(result.error)
       if (!ok) progress.error = message
       // The manager never settled: the profile may be half-updated, so this
       // is neither "nothing happened" nor something the route can restore
@@ -650,6 +719,7 @@ export function createOfficialDesktopRuntime(
         // The manager's own code, kept machine-readable (#909): a client can
         // tell a self-update refusal from an ordinary failure.
         ...(ok ? {} : { refusalCode: managementCode(result.error) }),
+        ...(result.needsRestart === true ? { needsRestart: true } : {}),
       }
     }, (error): InstallResult => {
       const message = detail(error)
@@ -695,6 +765,7 @@ export function createOfficialDesktopRuntime(
     runPlugin,
     repairPendingUpdates,
     busy,
+    packageWritesSettled: () => pendingManagerWrites().size === 0,
     probePnpm: async () => managerLookup() !== undefined,
     provisionPnpm: async () => ({ ok: managerLookup() !== undefined, hint: 'Use the official desktop plugin manager' }),
     cancelActive: () => {

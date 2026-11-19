@@ -4,6 +4,7 @@
  * pending-restart bookkeeping in sessionStorage.
  */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactElement, type ReactNode, type Ref } from 'react'
+import { SPONSORS } from './sponsors.generated.ts'
 import { createPortal } from 'react-dom'
 import {
   Button,
@@ -42,25 +43,63 @@ import css from './Market.module.css'
 import { MARK_BLOCK_RADIUS, MARK_BLOCK_SIZE, MARK_GRID_BLOCKS, MARK_PLUG_BLOCK, MARK_VIEW_BOX } from './market-mark.ts'
 import { CommentsModal } from './CommentsModal.tsx'
 import { SearchInput } from './SearchInput.tsx'
+import { DiscoveryScan } from './discovery-scan.ts'
 import { downloadStatistic, downloadStatsText, starStatsText } from './download-stats.ts'
 import { OperationsPanel } from './OperationsPanel.tsx'
 import { applyRecovery, fetchRecovery, initialKeep, RecoveryPanel, watchRestart, type RecoveryView } from './RecoveryPanel.tsx'
 import { HostRecoveryBanner } from './HostRecoveryBanner.tsx'
+import { UpdateNotificationsPanel } from './UpdateNotificationsPanel.tsx'
+import { useUpdateNotifications, refreshUpdateNotifications, refreshUpdateNotificationsAfterChange, checkUpdateNotifications, setUpdateNotificationsEnabled, setUpdateNotificationsIntervalHours, ignoredUpdatesForBoot, notifyUpdatePreferencesChanged, type UpdateNotificationsState } from './update-notifications.ts'
 import { clearSettled, drop, enqueue, patch as patchRecord, recordForUrl, restoreSettled, serializeSettled, SETTLED_STORAGE_KEY } from './operations.ts'
+import { dismissedHostIdSet, rememberDismissedHostId } from './dismissed-host.ts'
 import type { OperationRecord } from './operations.ts'
 import { Diagnostics } from './Diagnostics.tsx'
 import { exportMarketLog } from './self-check.ts'
+import { readInstalledSort, readSortChoice, rememberInstalledSort, rememberSortChoice } from './sort-preference.ts'
 import type { HostNavigationStore } from './host-navigation.ts'
 import type { SidebarEntry } from './sidebar-entry.ts'
+import { catalogReleaseSourceOf, parseSourceUrl } from '../sources.ts'
 import {
   installCommandFor, hostCompatibilityKey,
   api, applyGithubRouting, avatarColor, catalogEntryForInstalled, entryForDep, failureText, githubRouteCandidates, groupSwitchState, installedForCatalog, isGenerationSpec, isInstalled, localizeBilingual, localizeBilingualList, looksTerminal, matchInstalledName, orderedCategories, pluginCategories,
   formatCount, pageItems, pluginName, blockAliases, pluginScreenshotCandidates, pluginScreenshots, pluginsForFavorites, previewDimensionScore, queuedRowApplies, rankThemeScreenshots, readSession, safeIcon, releaseNotesHttpsImage, rememberGithubRoute, resetScreenshotsCache, resolveCatalogRestore, safeScreenshots, sanitizeReleaseNotesBody, staleFavoriteUrls, themePlugins as themePluginsOf, themeSwatch, TIME_RANGE_DAYS, visiblePlugins, restartHintKey,
+  compareInstalledRows, displayLatest, installedDateText, marketHeldVersionText, marketUiLocale, masonryColumnCount, profileBlockedText, profileBlockStillHolds,
 } from './market-data.ts'
 import type {
-ActivationInfo, ActivationState, DrainHistoryWire, DrainOperationWire, GistExportResult, InstalledMap, InstalledRepoHints, InstalledRepoIdentities, MarketStatus, Registry, RegistryPlugin,
-  HostCompatibility, HostCompatibilityMap, ScreenshotCandidate, ScreenshotMeasurement, SharedHostPackageDependencyFinding, SortDir, SortField, ThemeSnapshot, TimeRange, Translate, UpdateStatus,
+ActivationInfo, ActivationState, DrainHistoryWire, DrainOperationWire, GistExportResult, HostCompatibility, InstalledMap, InstalledRepoHints, InstalledRepoIdentities, InstalledSort, InstallStamp, MarketLocaleStore, MarketStatus, Registry, RegistryPlugin,
+  ScreenshotCandidate, ScreenshotMeasurement, SharedHostPackageDependencyFinding, SortDir, SortField, ThemeSnapshot, TimeRange, Translate, UpdateStatus,
 } from './market-data.ts'
+
+/** Discover + Installed share one chip: same label fallbacks, status tip, bad ink. */
+function hostRequirementChip(
+  compatibility: HostCompatibility | undefined,
+  key: string | null,
+  t: Translate,
+): { label: string; title: string; bad: boolean; status: string } {
+  const label = compatibility?.requirement !== null && compatibility?.requirement !== undefined
+    ? t('hostRequirement').replace('{0}', compatibility.requirement)
+    : key === null
+      ? t('hostRequirementUnavailable')
+      : compatibility === undefined
+        ? t('hostRequirementLoading')
+        : compatibility.basis === 'undeclared'
+          ? t('hostRequirementUndeclared')
+          : t('hostRequirementUnavailable')
+  const detail = compatibility?.declarations.map(declaration =>
+    declaration.kind === 'engine'
+      ? `engines.dsh: ${declaration.range}`
+      : `${declaration.package ?? 'peer'}: ${declaration.range}`,
+  ).join('\n') || label
+  const title = (compatibility?.status === 'compatible' || compatibility?.status === 'incompatible'
+    ? t(compatibility.status === 'compatible' ? 'hostStatusCompatible' : 'hostStatusIncompatible') + '\n'
+    : '') + detail
+  return {
+    label,
+    title,
+    bad: compatibility?.status === 'incompatible',
+    status: compatibility?.status ?? 'unknown',
+  }
+}
 
 function isHostDependencyFinding(value: unknown): value is SharedHostPackageDependencyFinding {
   if (value === null || typeof value !== 'object') return false
@@ -81,34 +120,8 @@ const SLOW_INSTALL_SECONDS = 90
 /** How long the page keeps asking for a market DSH unloaded, and how long one ask may take (#1151). */
 const RECONNECT_BUDGET_MS = 90_000
 const RECONNECT_REQUEST_MS = 4000
+const UPDATE_CHECK_REQUEST_MS = 30_000
 const IGNORED_UPDATES_SESSION_KEY = 'dshm-updates-ignored'
-const UNAVAILABLE_HOST_COMPATIBILITY: HostCompatibility = {
-  status: 'unknown',
-  basis: 'unavailable',
-  requirement: null,
-  declarations: [],
-}
-
-/**
- * Read the update reminders dismissed for this host process. The boot id is
- * part of the value rather than the key so sessionStorage never accumulates
- * one orphaned entry per process. Invalid and stale records fail open: an
- * update reminder is safer than silently hiding one we cannot account for.
- */
-function ignoredUpdatesForBoot(boot: string): string[] {
-  const saved = readSession(IGNORED_UPDATES_SESSION_KEY)
-  const valid = saved !== null
-    && typeof saved === 'object'
-    && !Array.isArray(saved)
-    && saved.boot === boot
-    && Array.isArray(saved.names)
-    && saved.names.every((name: unknown) => typeof name === 'string' && name !== '')
-  if (!valid) {
-    try { sessionStorage.removeItem(IGNORED_UPDATES_SESSION_KEY) } catch { /* storage unavailable */ }
-    return []
-  }
-  return [...new Set(saved.names as string[])]
-}
 
 function HostDependencyDiagnostics({
   findings,
@@ -180,6 +193,17 @@ function phaseLabel(phase: NonNullable<MarketStatus['phase']>, t: Translate): st
   return t('phaseBuilding')
 }
 
+/** Reset before effects can use the new query with the previous page or limit. */
+function useResettableCount(initial: number, deps: readonly unknown[]) {
+  const [count, setCount] = useState(initial)
+  const [previousDeps, setPreviousDeps] = useState(deps)
+  if (deps.length !== previousDeps.length || deps.some((value, index) => !Object.is(value, previousDeps[index]))) {
+    setPreviousDeps(deps)
+    setCount(initial)
+  }
+  return [count, setCount] as const
+}
+
 /**
  * Page/page-size state shared by every paged list in this file (Discover,
  * Themes) — each caller owns its OWN instance (their filters are
@@ -195,10 +219,8 @@ function usePagination(count: number, resetDeps: readonly unknown[], scrollToTop
   goToPage: (next: number) => void
   changePageSize: (size: number) => void
 } {
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useResettableCount(1, resetDeps)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- resetDeps IS the intended dependency list, supplied by the caller.
-  useEffect(() => { setPage(1) }, resetDeps)
   const totalPages = Math.max(1, Math.ceil(count / pageSize))
   // Clamp in case the list shrank while the user was on a later page.
   const currentPage = Math.min(page, totalPages)
@@ -227,9 +249,7 @@ function useShownCount(count: number, resetDeps: readonly unknown[], chunk: numb
   more: number
   loadMore: () => void
 } {
-  const [limit, setLimit] = useState(chunk)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- resetDeps IS the intended dependency list, supplied by the caller.
-  useEffect(() => { setLimit(chunk) }, resetDeps)
+  const [limit, setLimit] = useResettableCount(chunk, resetDeps)
   const shown = Math.min(count, limit)
   return {
     shown,
@@ -328,10 +348,52 @@ function FilterMenu({
   )
 }
 
+/**
+ * The installed list's own order (#1142).
+ *
+ * Deliberately NOT the market's `FilterMenu`: that one sorts by downloads,
+ * stars or the catalog's collection date, and an installed package has none
+ * of the three. Same primitive, four options, one value — the list's order
+ * is a single choice, not a field plus a direction.
+ */
+function InstalledSortMenu({ value, onChange, t }: { value: InstalledSort; onChange: (sort: InstalledSort) => void; t: Translate }) {
+  const [open, setOpen] = useState(false)
+  const items = useMemo<MenuEntry[]>(() => [
+    { type: 'label', id: 'is-label', text: t('installedSortLabel') },
+    { id: 'installed:default', label: t('installedSortDefault') },
+    { id: 'installed:name', label: t('installedSortName') },
+    { id: 'installed:newest', label: t('installedSortNewest') },
+    { id: 'installed:oldest', label: t('installedSortOldest') },
+  ], [t])
+  return (
+    <Menu
+      open={open}
+      onClose={() => setOpen(false)}
+      selectedIds={['installed:' + value]}
+      onSelect={id => onChange(id.slice('installed:'.length) as InstalledSort)}
+      align="end"
+      portal
+      anchor={(
+        <Button
+          variant="outline"
+          size="sm"
+          icon={open ? <IconChevronUpOutline14 size={14} /> : <IconChevronDownOutline14 size={14} />}
+          onClick={() => setOpen(openNow => !openNow)}
+        >{t('installedSort')}</Button>
+      )}
+      items={items}
+    />
+  )
+}
+
 /** Keep an empty search actionable without changing the user's sort or block list. */
-function EmptyResults({ blocked, onClear, t }: { blocked: boolean; onClear?: () => void; t: Translate }) {
+function EmptyResults({ message, onClear, t }: {
+  message: 'empty' | 'blockedFilteredEmpty' | 'hostFilterEmpty'
+  onClear?: () => void
+  t: Translate
+}) {
   return <div className={css.empty}>
-    <div>{t(blocked ? 'blockedFilteredEmpty' : 'empty')}</div>
+    <div>{t(message)}</div>
     {onClear && <Button variant="outline" size="sm" className={css.retryBtn} onClick={onClear}>
       {t('clearFilters')}
     </Button>}
@@ -558,6 +620,180 @@ function renderMarkdown(md: string): Array<JSX.Element | string> {
   flushList()
   flushFence()
   return out
+}
+
+type NoteRelease = { tag: string | null; name: string | null; publishedAt: string | null; url: string | null; body: string }
+type NoteCommit = { sha: string; message: string; date: string | null }
+type NoteCommits = { items: NoteCommit[]; found: boolean }
+type ResolvedNotes = (
+  | { kind: 'release'; release: NoteRelease; beyondTarget?: string; commits?: NoteCommits }
+  | { kind: 'commits'; commits: NoteCommits }
+  | { kind: 'npm'; npmTimes: Array<{ version: string; date: string }> }
+  | { kind: 'source'; sourceUrl?: string | null; reason?: 'missing' | 'unavailable' | 'unreadable' }
+  | { kind: 'none' }
+) & { history?: { items: Array<NoteRelease & { version: string }>; partial: boolean } }
+
+function notesReleaseBody(release: NoteRelease | null | undefined): string {
+  return typeof release?.body === 'string' && release.body.trim() !== '' ? release.body : ''
+}
+
+/** Bind a supplied release page to the repository and the selected release tag. */
+function notesReleasePage(repo: string | undefined, release?: NoteRelease): string | null {
+  if (repo === undefined) return null
+  const canonicalRepo = repo.replace(/\.git$/iu, '')
+  if (canonicalRepo.split('/').some(segment => segment === '' || segment === '.' || segment === '..')) return null
+  const releasesPath = '/' + canonicalRepo + '/releases'
+  const releasesUrl = 'https://github.com' + releasesPath
+  if (release?.url && release.tag) {
+    try {
+      const page = new URL(release.url)
+      const tagPrefix = releasesPath + '/tag/'
+      if (page.origin === 'https://github.com' && page.username === '' && page.password === ''
+        && page.pathname.slice(0, tagPrefix.length).toLowerCase() === tagPrefix.toLowerCase()
+        && decodeURIComponent(page.pathname.slice(tagPrefix.length)) === release.tag) {
+        return page.origin + page.pathname
+      }
+    } catch { /* Recorded page is unusable; send the reader to the repository's releases. */ }
+  }
+  return releasesUrl
+}
+
+function UpdateNotesContent({ notes, name, target, repoUrl, t, lang }: {
+  notes: ResolvedNotes; name: string; target: string | null; repoUrl: string | null; t: Translate; lang: 'zh' | 'en'
+}) {
+  const items = notes.history?.items ?? []
+  const release = notes.kind === 'release' ? notes.release : null
+  const beyondTarget = notes.kind === 'release' ? notes.beyondTarget : undefined
+  const versionOf = (value: string | null) => value?.replace(/^v(?=\d)/i, '')
+  // Git history is returned only for an exact release match, which is the first item.
+  const expandedVersion = target !== null && /^[0-9a-f]{40}$/i.test(target) ? items[0]?.version : versionOf(target)
+  const snapshotRelease = beyondTarget === undefined ? release : null
+  const matchesSnapshot = (item: typeof items[number]): boolean => snapshotRelease !== null &&
+    ((snapshotRelease.tag !== null && snapshotRelease.tag === item.tag) || versionOf(snapshotRelease.tag) === versionOf(item.version))
+  const legacyRelease = items.some(matchesSnapshot) ? null : snapshotRelease
+  const snapshotBody = notesReleaseBody(snapshotRelease)
+  const history = snapshotBody !== ''
+    ? items.map(item => notesReleaseBody(item) === '' && item.tag !== null && item.tag === snapshotRelease?.tag
+      ? { ...item, body: snapshotBody } : item)
+    : items
+  const commits = notes.kind === 'commits' || (notes.kind === 'release' && (notes.commits?.items.length ?? 0) > 0)
+    ? notes.commits : undefined
+  const sourceUrl = notes.kind === 'source' ? notes.sourceUrl ?? '' : ''
+  const repo = parseSourceUrl(repoUrl ?? '')?.repo ?? parseSourceUrl(sourceUrl)?.repo
+  const targetRelease = history.find(item => versionOf(item.version) === expandedVersion)
+    ?? (expandedVersion !== undefined && versionOf(legacyRelease?.tag ?? null) === expandedVersion
+      ? legacyRelease ?? undefined : undefined)
+  const targetBodyMissing = targetRelease !== undefined && notesReleaseBody(targetRelease) === ''
+  const legacyBody = notesReleaseBody(legacyRelease)
+  const historyIncomplete = notes.history?.partial === true
+    || (history.length === 0 && (notes.history !== undefined || notes.kind === 'none'))
+  const showSourceNotice = notes.kind === 'source' && (!historyIncomplete || notes.reason === 'unreadable')
+  const missingNotes = (message: string, page: string | null) => (
+    <>
+      {message}{lang === 'zh' ? '' : ' '}
+      {page === null ? t('notesHistoryRetry') : (
+        <a className={css.notesSourceLink} href={page} target="_blank" rel="noreferrer">{t('notesHistoryReleasePage')}</a>
+      )}
+    </>
+  )
+  const historyHint = !targetBodyMissing && historyIncomplete && !showSourceNotice
+    ? <div className={css.spec}>{missingNotes(t(history.length === 0 ? 'notesHistoryEmpty' : 'notesHistoryPartial'), notesReleasePage(repo))}</div>
+    : null
+
+  return (
+    <div className={css.notesBody}>
+      {history.length === 0 && historyHint}
+      {history.length > 0 && (
+        <section className={css.notesHistory}>
+          <div className={css.notesMeta}><strong>{t('notesHistory')}</strong></div>
+          {historyHint}
+          {history.map(item => (
+            <details key={item.version} className={css.notesEntry} open={versionOf(item.version) === expandedVersion}>
+              <summary className={css.notesSummary}>
+                <strong>{displayLatest(item.version)}</strong>
+                {item.publishedAt !== null && <span className={css.notesDate}>{' · ' + item.publishedAt.slice(0, 10)}</span>}
+              </summary>
+              <div className={css.notesRendered}>
+                {notesReleaseBody(item) !== '' ? renderMarkdown(item.body)
+                  : item === targetRelease
+                    ? missingNotes(t('notesHistoryVersionMissing'), notesReleasePage(repo, item))
+                    : t('notesHistoryVersionMissing')}
+              </div>
+            </details>
+          ))}
+        </section>
+      )}
+      {legacyRelease !== null && (legacyBody !== '' || historyHint === null) && (
+        <>
+          <div className={css.notesMeta}>
+            <strong>{t('notesRelease')}</strong>
+            {legacyRelease.tag !== null && <span>{legacyRelease.tag}</span>}
+            {legacyRelease.publishedAt !== null && <span>{' · ' + legacyRelease.publishedAt.slice(0, 10)}</span>}
+          </div>
+          <div className={css.notesRendered}>
+            {legacyBody === ''
+              ? missingNotes(t('notesHistoryVersionMissing'), notesReleasePage(repo, legacyRelease))
+              : renderMarkdown(legacyBody)}
+          </div>
+        </>
+      )}
+      {commits !== undefined && (
+        <>
+          <div className={css.notesMeta}><strong>{t('notesCommits')}</strong></div>
+          {!commits.found && <div className={css.notesMeta}>{t('notesCommitsRecent')}</div>}
+          <ul className={css.notesList}>
+            {commits.items.map(c => (
+              <li key={c.sha} className={css.notesRow}>
+                <span className={css.notesDate}>{c.date !== null ? c.date.slice(0, 10) : ''}</span>
+                <span className={css.notesMsg}>{mdInline(c.message)}</span>
+                {repoUrl !== null && (
+                  <a className={css.notesSha} href={repoUrl + '/commit/' + c.sha}
+                    target="_blank" rel="noreferrer" title={c.message}>{c.sha.slice(0, 7)}</a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {notes.kind === 'npm' && (
+        <>
+          <div className={css.notesMeta}><strong>{t('notesNpm')}</strong></div>
+          <ul className={css.notesList}>
+            {notes.npmTimes.map(v => (
+              <li key={v.version} className={css.notesRow}>
+                <span className={css.notesDate}>{v.date.slice(0, 10)}</span>
+                <a className={css.notesVer}
+                  href={`https://www.npmjs.com/package/${encodeURIComponent(name)}/v/${encodeURIComponent(v.version)}`}
+                  target="_blank" rel="noreferrer">{v.version}</a>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {notes.kind === 'source' && showSourceNotice && (
+        <div className={css.spec}>
+          {t(notes.reason === 'unavailable'
+            ? 'notesLoadFail'
+            : notes.reason === 'unreadable' ? 'notesSourceUnreadable' : 'notesSource')}
+          {typeof notes.sourceUrl === 'string' && /^https?:\/\//i.test(notes.sourceUrl)
+            ? <>{lang === 'zh' ? '' : ' '}<a className={css.notesSourceLink} href={notes.sourceUrl} target="_blank" rel="noreferrer">{t('notesSourceLink')}</a></>
+            : notes.reason !== 'unavailable' && <>{lang === 'zh' ? '' : ' '}{t('notesSourceNoLink')}</>}
+        </div>
+      )}
+
+      {release !== null && beyondTarget !== undefined && (
+        <section className={css.notesHeld}>
+          <div className={css.notesMeta}>
+            <strong>{t('notesHeldRelease')}</strong>
+            {release.tag !== null && <span>{release.tag}</span>}
+            {release.publishedAt !== null && <span>{' · ' + release.publishedAt.slice(0, 10)}</span>}
+          </div>
+          <div className={css.spec}>{t('notesBeyondTarget').replace('{0}', release.tag ?? '').replace('{1}', beyondTarget)}</div>
+          <div className={css.notesRendered}>{notesReleaseBody(release) === '' ? t('notesHistoryVersionMissing') : renderMarkdown(release.body)}</div>
+        </section>
+      )}
+    </div>
+  )
 }
 
 export function OwnerAvatar({ name, owner, icon, className }: { name: string; owner: string; icon?: string | null; className?: string }) {
@@ -851,6 +1087,11 @@ export function resetThemePreviewCache(): void {
   measuredThemePreviewResults.clear()
 }
 
+const discoveryScan = new DiscoveryScan(() => {
+  resetScreenshotsCache()
+  resetThemePreviewCache()
+})
+
 /** README fetch + geometry probes, shared across search/page remounts. */
 function measuredThemePreview(plugin: RegistryPlugin): Promise<string[]> {
   const cached = measuredThemePreviewTasks.get(plugin.url)
@@ -977,9 +1218,13 @@ function ThemeCover({ plugin, onOpen, t }: {
  * Two columns at the settings dialog's width; the sidebar page is wider and
  * gets a third once each column still has room for a full card.
  */
-function Masonry<T>({ items, render }: {
+function Masonry<T>({ items, render, maxColumns = 3, minColumns = 2, className }: {
   items: T[]
   render: (item: T) => ReactNode
+  maxColumns?: number
+  /** Discover keeps its two-column floor; Installed may collapse to one. */
+  minColumns?: number
+  className?: string
 }) {
   const wide = useMediaWide()
   const ref = useRef<HTMLDivElement>(null)
@@ -988,18 +1233,19 @@ function Masonry<T>({ items, render }: {
     const el = ref.current
     if (el === null || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(([entry]) => {
-      if (entry !== undefined) setColumns(Math.min(3, Math.max(2, Math.floor((entry.contentRect.width + 10) / 290))))
+      if (entry !== undefined) setColumns(masonryColumnCount(entry.contentRect.width, maxColumns, 290, minColumns))
     })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [wide])
+  }, [wide, maxColumns, minColumns])
+  const masonryClass = [css.masonry, className].filter(Boolean).join(' ')
   if (!wide) {
-    return <div className={css.masonry}><div className={css.masonryCol}>{items.map(render)}</div></div>
+    return <div className={masonryClass}><div className={css.masonryCol}>{items.map(render)}</div></div>
   }
   const buckets: T[][] = Array.from({ length: columns }, () => [])
   items.forEach((item, index) => { buckets[index % columns]!.push(item) })
   return (
-    <div ref={ref} className={css.masonry}>
+    <div ref={ref} className={masonryClass}>
       {buckets.map((bucket, index) => (
         <div key={index} className={css.masonryCol}>{bucket.map(render)}</div>
       ))}
@@ -1674,6 +1920,27 @@ function IconPlus({ size = 14 }: { size?: number }) {
   )
 }
 
+/** Clock face for held-wait hints (Lucide `clock` geometry). */
+function IconClock({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+    </svg>
+  )
+}
+
 /** Reminders off (Lucide `bell-off` geometry): the body breaks where the slash crosses it. */
 function IconBellOff({ size = 16 }: { size?: number }) {
   return (
@@ -1827,19 +2094,60 @@ function CatalogVersionMark({ version, tip }: { version: string | null | undefin
  * the Installed tab's red dot / 「更新」buttons flash off then on, and the
  * two entries disagree until both refetches finish.
  */
-let cachedRegistry: Registry | null = null
 let cachedInstalled: InstalledMap | null = null
+let cachedLocalDescriptions: Record<string, string> = {}
 let cachedRepoIdentities: InstalledRepoIdentities | null = null
 let cachedRepoHints: InstalledRepoHints | null = null
-let cachedHostCompatibility: HostCompatibilityMap = {}
-let cachedHostVersion: string | null | undefined = undefined
-/** Names with an in-flight discovery-compatibility request (module-wide). */
-const hostCompatibilityInFlight = new Set<string>()
-/** Subscribers for useSyncExternalStore — every mounted MarketSection. */
-const hostCompatibilityListeners = new Set<() => void>()
-let cachedUpdates: Record<string, UpdateStatus> = {}
-/** False until /dsh-market/updates has answered at least once this process. */
-let cachedUpdatesReady = false
+interface UpdateCheckSnapshot {
+  updates: Record<string, UpdateStatus>
+  installed: InstalledMap
+  ready: boolean
+  /** null for a whole request failure, a set for failed packages only. */
+  failed: ReadonlySet<string> | null
+}
+
+const emptyUpdateCheck: UpdateCheckSnapshot = { updates: {}, installed: {}, ready: false, failed: new Set() }
+let updateCheckSnapshot = emptyUpdateCheck
+let updateCheckBoot: string | null = null
+let updateCheckRequest = 0
+let updateCheckCommitted = 0
+let installedCheckCommitted = 0
+const updateCheckListeners = new Set<() => void>()
+/** A manual check on either surface fences older background samples on both. */
+const pendingUpdateNotificationReads = new Set<number>()
+
+function getUpdateCheckSnapshot() { return updateCheckSnapshot }
+
+function subscribeUpdateCheck(listener: () => void): () => void {
+  updateCheckListeners.add(listener)
+  return () => { updateCheckListeners.delete(listener) }
+}
+
+function publishUpdateCheck(snapshot: UpdateCheckSnapshot): void {
+  updateCheckSnapshot = snapshot
+  for (const listener of updateCheckListeners) listener()
+}
+
+function releaseUpdateNotificationRead(request: number): void {
+  if (pendingUpdateNotificationReads.delete(request)) publishUpdateCheck({ ...updateCheckSnapshot })
+}
+
+function resetUpdateCheck(boot: string | null): void {
+  pendingUpdateNotificationReads.clear()
+  updateCheckBoot = boot
+  updateCheckCommitted = ++updateCheckRequest
+  installedCheckCommitted = updateCheckRequest
+  publishUpdateCheck(emptyUpdateCheck)
+}
+
+function observeUpdateCheckBoot(boot: string, previous: string | null): boolean {
+  if (previous !== updateCheckBoot) return false
+  if (updateCheckBoot === null) updateCheckBoot = boot
+  if (updateCheckBoot === boot) return false
+  resetUpdateCheck(boot)
+  return true
+}
+
 let cachedInstalledReady = false
 let cachedSkins: string[] = []
 let cachedDisabledNames: string[] = []
@@ -1864,12 +2172,10 @@ function cacheState<T>(write: (value: T) => void, setState: (value: T | ((curren
 
 /** Test helper: drop the shared surface caches between cases. */
 export function resetHostCompatibilityCache(): void {
-  cachedHostCompatibility = {}
-  cachedHostVersion = undefined
-  hostCompatibilityInFlight.clear()
-  cachedUpdates = {}
-  cachedUpdatesReady = false
+  discoveryScan.reset()
+  resetUpdateCheck(null)
   cachedInstalledReady = false
+  cachedLocalDescriptions = {}
   cachedSkins = []
   cachedDisabledNames = []
   cachedInstalledFiles = []
@@ -1880,30 +2186,32 @@ export function resetHostCompatibilityCache(): void {
   cachedMarketVersion = null
 }
 
-/** Any cached answer counts — including unavailable. Re-querying every
- * remount used to re-POST thousands of names; a host-version change (below)
- * is what drops the map for a fresh scan. */
-function hostCompatibilitySettled(name: string): boolean {
-  return cachedHostCompatibility[name] !== undefined
-}
-
-function clearHostCompatibilityCache(): void {
-  cachedHostCompatibility = {}
-  hostCompatibilityInFlight.clear()
-  for (const listener of hostCompatibilityListeners) listener()
-}
-
-function subscribeHostCompatibility(onStoreChange: () => void): () => void {
-  hostCompatibilityListeners.add(onStoreChange)
-  return () => { hostCompatibilityListeners.delete(onStoreChange) }
-}
-
-/** Merge into the module cache and notify every mounted MarketSection — a
- * sidebar/settings switch used to drop in-flight setStates and leave the
- * note frozen at 「正在检查 665/2455」. */
-function commitHostCompatibility(accepted: HostCompatibilityMap): void {
-  cachedHostCompatibility = { ...cachedHostCompatibility, ...accepted }
-  for (const listener of hostCompatibilityListeners) listener()
+/**
+ * Sponsors sit in the row that already holds the repo link and version, so they
+ * add no height. One sponsor shows its name; several show logos only (the name is
+ * in the tooltip) and never more than three, so the row cannot grow with the list.
+ */
+function SponsorMark({ lang, t }: { lang: 'zh' | 'en'; t: Translate }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const list = SPONSORS.filter(sponsor => sponsor.until === null || sponsor.until >= today).slice(0, 3)
+  if (list.length === 0) return null
+  return (
+    <span className={css.sponsorMark}>
+      <span className={css.sponsorLabel}>{t('sponsorsLabel')}</span>
+      {list.map(sponsor => (
+        <a
+          key={sponsor.id}
+          className={css.sponsorItem}
+          href={sponsor.url}
+          target="_blank"
+          rel="noreferrer sponsored"
+          title={`${sponsor.name[lang]} · ${sponsor.scope[lang]}`}
+        >
+          <img className={css.sponsorLogo} src={sponsor.logo} alt={sponsor.name[lang]} height={14} />
+        </a>
+      ))}
+    </span>
+  )
 }
 
 /** Discover grid page-size choices — the catalog grows daily, so cap each page. */
@@ -1967,9 +2275,69 @@ function installedMap(value: unknown): InstalledMap {
   return installed
 }
 
+/** Optional /installed metadata: older hosts omit it, malformed values are not text. */
+function localDescriptionsFromUnknown(value: unknown): Record<string, string> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return {}
+  const descriptions: Record<string, string> = {}
+  for (const [name, description] of Object.entries(value)) {
+    if (typeof description === 'string' && description.trim() !== '') descriptions[name] = description.trim()
+  }
+  return descriptions
+}
+
 /** A `{name: {...}}` map, or anything else — for untyped server fields. */
 function isRecordOfRecords(value: unknown): value is Record<string, { spec?: string; reason?: string }> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isInstalledSnapshot(value: unknown): value is InstalledMap {
+  return isRecordOfRecords(value) && Object.values(value).every(spec => typeof spec === 'string')
+}
+
+function isUpdateStatus(value: unknown): value is UpdateStatus {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const status = value as UpdateStatus
+  return typeof status.updateAvailable === 'boolean'
+    && (status.checkFailed === undefined || status.checkFailed === true)
+    && (status.checkError === undefined || status.checkError === 'unavailable')
+    && (status.kind === undefined || typeof status.kind === 'string')
+    && (status.version === undefined || status.version === null || typeof status.version === 'string')
+    && (status.latest === undefined || status.latest === null || typeof status.latest === 'string')
+    && (status.current === undefined || status.current === null || typeof status.current === 'string')
+}
+
+function readUpdateStatuses(body: unknown): Record<string, UpdateStatus> {
+  const updates = (body as { updates?: unknown } | null)?.updates
+  if (!isRecordOfRecords(updates) || !Object.values(updates).every(isUpdateStatus)) {
+    throw new Error('Invalid update list')
+  }
+  return updates as Record<string, UpdateStatus>
+}
+
+function applyUpdateCheck(request: number, received: Record<string, UpdateStatus> | null, installed: InstalledMap | null): void {
+  if (request < updateCheckCommitted) return
+  updateCheckCommitted = request
+  const previous = updateCheckSnapshot
+  const hasSameSpec = (name: string) => installed?.[name] !== undefined && installed[name] === previous.installed[name]
+  if (received === null) {
+    // A failed response says nothing about eligibility. A fresh installed list
+    // can still rule out rows for older installs or removed programs.
+    const updates = installed === null ? previous.updates
+      : Object.fromEntries(Object.entries(previous.updates).filter(([name]) => hasSameSpec(name)))
+    publishUpdateCheck({ ...previous, updates, installed: installed ?? previous.installed, failed: null })
+    return
+  }
+  const failed = new Set<string>()
+  const updates = Object.fromEntries(Object.entries(received).map(([name, status]) => {
+    if (status.checkFailed !== true && status.checkError !== 'unavailable') return [name, status]
+    failed.add(name)
+    const confirmed = previous.updates[name]
+    // A name can be reinstalled with a different source or local version.
+    if (hasSameSpec(name) && confirmed?.checkFailed !== true && confirmed?.checkError !== 'unavailable' && typeof status.version === 'string'
+      && status.version === confirmed?.version && status.kind === confirmed.kind) return [name, confirmed]
+    return [name, status]
+  }))
+  publishUpdateCheck({ updates, installed: installed ?? {}, ready: installed !== null, failed })
 }
 
 function sameInstalledMap(left: InstalledMap, right: InstalledMap): boolean {
@@ -1987,11 +2355,42 @@ const NOTE_MAX = 200
  */
 type DismissBrokenReply = { ok?: unknown; brokenPlugins?: unknown; error?: unknown }
 
-/** `latest` is a semver for npm installs and a commit sha for github ones. */
-function displayLatest(latest: string): string {
-  if (/^\d/.test(latest)) return 'v' + latest
-  if (/^[0-9a-f]{12,40}$/i.test(latest)) return latest.slice(0, 7)
-  return latest
+type FavoriteReply = { ok?: unknown; favorites?: unknown; error?: unknown; code?: unknown; limit?: unknown }
+
+/** Describe the pending release separately from any version the update button can install. */
+function marketWaitTip(
+  held: NonNullable<UpdateStatus['heldUpdate']>,
+  eligible: string | null,
+  locale: string,
+  t: Translate,
+): string {
+  const pending = marketHeldVersionText(held, locale, t)
+  if (eligible === null) return pending
+  const ready = t('marketVersionAvailableNow').replace('{0}', displayLatest(eligible))
+  return `${ready} · ${pending}`
+}
+
+/** Compact held-wait for the trailing row (clock + short label); version/reason in title. */
+function heldUpdateBeside(
+  held: { latest: string; until: string; estimated?: true },
+  t: (key: string) => string,
+): { label: string; title: string } {
+  const left = Date.parse(held.until) - Date.now()
+  const estimated = held.estimated === true
+  const known = Number.isFinite(left) && left > 0
+  const amount = known
+    ? String(Math.max(1, Math.ceil(left / (estimated ? 60_000 : 3_600_000))))
+    : ''
+  const label = !known
+    ? t('updateHeldBesideUnknown')
+    : estimated
+      ? t('updateHeldBesideEstimated').replace('{1}', amount)
+      : t('updateHeldBeside').replace('{1}', amount)
+  const reason = !known
+    ? t('updateHeldBesideUnknown')
+    : t(estimated ? 'updateHeldEstimatedHint' : 'updateHeldHint').replace('{1}', amount)
+  const title = `${displayLatest(held.latest)} · ${reason}`
+  return { label, title }
 }
 
 /** The tail of a local checkout path; the full path stays in the title and the copy button. */
@@ -2078,10 +2477,7 @@ const TIME_OPTIONS: ReadonlyArray<{ key: TimeRange; label: string }> = [
 
 export interface MarketSectionProps {
   t: Translate
-  locale: {
-    subscribe(callback: () => void): () => void
-    getSnapshot(): { active: string }
-  }
+  locale: MarketLocaleStore
   theme: { setTheme(id: string): void }
   themeStore: {
     subscribe(callback: () => void): () => void
@@ -2182,18 +2578,6 @@ function withoutHostProjection(
 }
 
 /**
- * Whether the "compatible with this host" filter starts on, and remembers the
- * answer once the user disagrees with the default (#872).
- *
- * Storage may be unavailable (private mode, a locked-down webview); the
- * default is what matters, so a failure to read it is not a failure.
- */
-const HOST_FILTER_KEY = 'dshm-host-filter'
-function readHostFilterPreference(): boolean {
-  try { return localStorage.getItem(HOST_FILTER_KEY) !== 'all' } catch { return true }
-}
-
-/**
  * 最近收录 display preferences: collapsed / hidden (#940).
  *
  * The block only appears on the discover tab with an empty search and both
@@ -2202,7 +2586,7 @@ function readHostFilterPreference(): boolean {
  * are display preferences, not profile settings: since 0.1.7 the settings
  * surface is deliberately just `allowRestart`.
  *
- * Same read discipline as HOST_FILTER_KEY above: an unavailable store falls
+ * When localStorage is unavailable, the preference falls
  * back to the default, and the default is "expanded and shown".
  */
 const RECENT_COLLAPSED_KEY = 'dshm-recent-collapsed'
@@ -2358,6 +2742,27 @@ function isPinned(scroller: HTMLElement, el: HTMLElement, inset: number): boolea
 }
 
 /**
+ * Mirrors "this row is sitting on its sticky line" onto the row itself (#1237).
+ *
+ * A theme may set `--dsw-alias-bg-base` to a transparent colour so the
+ * wallpaper shows through — that is the host's own page-background token, and
+ * the market's sticky rows are the only thing between that transparency and
+ * the cards scrolling underneath them. Such a theme wants no surface while the
+ * row is still in flow and one once it sticks; until now it had no way to tell
+ * the two apart except by matching the CSS modules' hashed class names.
+ *
+ * `data-dshm-stuck` is that state, on a selector that survives the hashes.
+ * The market's own stylesheet reads it only to pick `--dshm-stuck-bg`; with
+ * that hook unset the surface stays exactly `--dsw-alias-bg-base`, so a host
+ * without such a theme is unchanged.
+ */
+function markStuck(el: Element | null, pinned: boolean): void {
+  if (!(el instanceof HTMLElement)) return
+  if (pinned) el.dataset.dshmStuck = 'true'
+  else delete el.dataset.dshmStuck
+}
+
+/**
  * ScrollTop where the market's tab row first sticks under the host chrome.
  * Unsticks for one measurement so a currently-pinned head still reports its
  * in-flow offset. That is the "top" Plugins back-to-top aims for — tabs stay
@@ -2379,12 +2784,16 @@ export function MarketSection(props: MarketSectionProps) {
     cb => props.locale.subscribe(cb),
     () => props.locale.getSnapshot(),
   )
-  const lang = String(localeSnap.active).toLowerCase().startsWith('zh') ? 'zh' : 'en'
+  const uiLocale = marketUiLocale(localeSnap.active)
+  const lang = uiLocale === 'zh-CN' ? 'zh' : 'en'
   const surface = props.surface ?? 'settings'
   const sidebar = props.sidebar
   // The host's own page for a bundle (dsh 0.2.1+). Subscribed rather than read
   // once: the service arrives with the host's plugin manager, which may load
   // after this panel is already on screen.
+  const notificationSnapshot = useUpdateNotifications()
+  const latestNotification = useRef(notificationSnapshot)
+  latestNotification.current = notificationSnapshot
   const hostNavigation = props.hostNavigation
   const openInHost = useSyncExternalStore(
     cb => hostNavigation?.subscribe(cb) ?? (() => {}),
@@ -2429,7 +2838,8 @@ export function MarketSection(props: MarketSectionProps) {
     props.themeStore.subscribe,
     props.themeStore.getSnapshot,
   )
-  const [data, setData] = useState<Registry | null>(cachedRegistry)
+  const compatibility = useSyncExternalStore(discoveryScan.subscribe, discoveryScan.getSnapshot)
+  const { catalog: data, enabled: compatibleWithHost, hostVersion, verdicts: hostCompatibility } = compatibility
   const [loadError, setLoadError] = useState<string | null>(null)
   /**
    * The host answered 404 on one of the market's own routes (#962).
@@ -2441,12 +2851,16 @@ export function MarketSection(props: MarketSectionProps) {
    * exactly why it owes the user this sentence instead of a spinner.
    */
   const [marketGone, setMarketGone] = useState(false)
+  const [startupRepair, setStartupRepair] = useState<MarketStatus['startupRepair']>()
+  const [checkoutRecovery, setCheckoutRecovery] = useState<MarketStatus['checkoutRecovery']>()
+  const repairStatusRequest = useRef(0)
   // Whether the page is still trying to reach the market again, and how many
   // times the user asked it to start over (#1151).
   const [reconnecting, setReconnecting] = useState(true)
   const [reconnectRound, setReconnectRound] = useState(0)
   const [installed, setInstalledState] = useState<InstalledMap>(cachedInstalled ?? {})
-  const setInstalled = useCallback((value: InstalledMap) => { cachedInstalled = value; setInstalledState(value) }, [])
+  const [localDescriptions, setLocalDescriptionsState] = useState<Record<string, string>>(() => cachedLocalDescriptions)
+  const setLocalDescriptions = useCallback(cacheState(value => { cachedLocalDescriptions = value }, setLocalDescriptionsState), [])
   const [repoIdentities, setRepoIdentitiesState] = useState<InstalledRepoIdentities>(cachedRepoIdentities ?? {})
   const setRepoIdentities = useCallback((value: InstalledRepoIdentities) => {
     cachedRepoIdentities = value
@@ -2512,21 +2926,46 @@ export function MarketSection(props: MarketSectionProps) {
   const recordSeq = useRef(0)
   /** The synthetic install task rebuilt from dshm-pending after a remount. */
   const recoveredInstall = useRef<{ id: string; url: string; name?: string } | null>(null)
-  /** The synthetic task rebuilt from dshm-updating after this section remounts. */
-  const recoveredUpdateRecordId = useRef<string | null>(null)
+  /** The local task tracking dshm-updating, either awaiting its reply or recovering it. */
+  const pendingUpdate = useRef<{ recordId: string; recovering: boolean } | null>(null)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      pendingUpdate.current = null
+    }
+  }, [])
   /**
    * The install queue: agents-busy 409s become `queued` records instead of
    * failures, and drain automatically when agents go idle (see drainQueue).
    * Persisted in localStorage so a refresh keeps the queue; only `queued`
    * records persist — `running` recovery stays on the dshm-pending paths.
    */
-  const [updates, setUpdatesState] = useState<Record<string, UpdateStatus>>(() => cachedUpdates)
-  const setUpdates = useCallback(cacheState(value => { cachedUpdates = value }, setUpdatesState), [])
+  const updateCheck = useSyncExternalStore(subscribeUpdateCheck, getUpdateCheckSnapshot)
+  const { updates } = updateCheck
+  /**
+   * The release in this profile that is still inside the safety wait, as last
+   * heard from the server (#1252). pnpm refuses every change while it holds,
+   * so a batch or the queue stops at the first such refusal instead of trying
+   * each plugin in turn. The update check is the authority: whatever it says
+   * next replaces this.
+   */
+  const profileBlockRef = useRef<{ name: string; version: string; readyAt: string | null } | null>(null)
+  const profileBlocked = useMemo(
+    () => Object.values(updates).find(status => status.profileBlocked !== undefined)?.profileBlocked ?? null,
+    [updates],
+  )
+  useEffect(() => { profileBlockRef.current = profileBlocked }, [profileBlocked])
+  /**
+   * The host answered an update with "restart first" (#1253): an earlier one in
+   * this run already moved the loaded packages, and every later one would be
+   * refused the same way. Tied to the host's boot id, so a restart ends it.
+   */
+  const [restartHold, setRestartHold] = useState<{ boot: string | null } | null>(null)
+  const restartHoldRef = useRef(false)
   const queueRestoredRef = useRef(false)
-  const [queueSnapshotReady, setQueueSnapshotReady] = useState({
-    installed: cachedInstalledReady,
-    updates: cachedUpdatesReady,
-  })
+  const [installedReady, setInstalledReady] = useState(cachedInstalledReady)
   useEffect(() => {
     if (queueRestoredRef.current) return
     let saved: unknown = null
@@ -2539,14 +2978,13 @@ export function MarketSection(props: MarketSectionProps) {
     }
     if (data === null) return
     // Cached or not-yet-loaded maps cannot judge a replacement's saved queue.
-    if (saved.some(row => row?.kind === 'update' || row?.kind === 'uninstall') && !queueSnapshotReady.installed) return
-    if (saved.some(row => row?.kind === 'update') && !queueSnapshotReady.updates) return
+    if (saved.some(row => row?.kind === 'update' || row?.kind === 'uninstall') && !installedReady) return
+    if (saved.some(row => row?.kind === 'update' && (
+      !updateCheck.ready || updateCheck.failed === null || updateCheck.failed.has(row.name)
+    ))) return
     queueRestoredRef.current = true
-    // Consumed only once the rows can actually be restored. Removing it
-    // earlier lost the queue outright: this effect runs on the first render,
-    // where `data === null` (the catalog has not arrived), and the run that
-    // follows found the storage empty — so a REFRESH with a pending queue, the
-    // case this feature exists for, threw it away.
+    // Claim the saved rows synchronously once they have enough evidence to
+    // restore, so a second mounted surface cannot restore the same tasks.
     try { localStorage.removeItem('dshm-queue-v1') } catch { /* storage unavailable */ }
     /**
      * A queued row may only run while the world it was queued in still holds.
@@ -2631,7 +3069,7 @@ export function MarketSection(props: MarketSectionProps) {
       return kept
     })
     setOperationsOpen(true)
-  }, [data, t, lang, queueSnapshotReady, installed, updates])
+  }, [data, t, lang, installedReady, installed, updateCheck, updates])
   useEffect(() => {
     // Never write before the restore has read. On the first render `records`
     // is empty, and this effect would then delete the stored queue that the
@@ -2763,23 +3201,6 @@ export function MarketSection(props: MarketSectionProps) {
   const [pluginMenuUrl, setPluginMenuUrl] = useState<string | null>(null)
   const [installedMenuName, setInstalledMenuName] = useState<string | null>(null)
   const [clearingStale, setClearingStale] = useState(false)
-  /** The notes payload the server answers with, verbatim (see /changelog). */
-  type NoteRelease = { tag: string | null; name: string | null; publishedAt: string | null; url: string | null; body: string }
-  type NoteCommit = { sha: string; message: string; date: string | null }
-  interface UpdateNotes {
-    kind: 'release' | 'commits' | 'npm' | 'source' | 'none'
-    release?: NoteRelease
-    commits?: { items: NoteCommit[]; found: boolean }
-    npmTimes?: Array<{ version: string; date: string }>
-    sourceUrl?: string | null
-    reason?: 'missing' | 'unavailable' | 'unreadable'
-  }
-  type ResolvedNotes =
-    | { kind: 'release'; release: NoteRelease }
-    | { kind: 'commits'; commits: { items: NoteCommit[]; found: boolean } }
-    | { kind: 'npm'; npmTimes: Array<{ version: string; date: string }> }
-    | { kind: 'source'; sourceUrl?: string | null; reason?: 'missing' | 'unavailable' | 'unreadable' }
-    | { kind: 'none' }
   interface CompatibilityNotice {
     code: 'soft-incompatible'
     risks: Array<{ plugin: string; peer: string; range: string; resolved: string; direction: string }>
@@ -2820,11 +3241,14 @@ export function MarketSection(props: MarketSectionProps) {
    * shows these plugins and their update actions; only proactive prompts use
    * this set. */
   const [ignoredUpdateNames, setIgnoredUpdateNames] = useState<string[]>([])
+  useEffect(() => { notifyUpdatePreferencesChanged() }, [ignoredUpdateNames])
   const [updatingName, setUpdatingName] = useState<string | null>(null)
   /** Update-notes dialog (#294): which row opened it, and what it resolved to. */
-  const [notesFor, setNotesFor] = useState<{ name: string; current: string | null; latest: string | null; repoUrl: string | null } | null>(null)
+  const [notesFor, setNotesFor] = useState<{ name: string; current: string | null; latest: string | null; target: string | null; repoUrl: string | null } | null>(null)
   const [updateNotes, setUpdateNotes] = useState<ResolvedNotes | null>(null)
   const [notesState, setNotesState] = useState<'loading' | 'ready' | 'fail'>('loading')
+  const notesRequest = useRef<AbortController | null>(null)
+  useEffect(() => () => notesRequest.current?.abort(), [])
   // Plugin blocked by pnpm's fresh-release safety wait; arms the update-now button.
   const [staleName, setStaleName] = useState<string | null>(null)
   // Local link:/file: restore — a modal asks before swapping to the catalog.
@@ -2957,6 +3381,22 @@ export function MarketSection(props: MarketSectionProps) {
   const setDisabledNames = useCallback(cacheState(value => { cachedDisabledNames = value }, setDisabledNamesState), [])
   /** The user's own note per plugin (#347): package name → text. */
   const [notes, setNotes] = useState<Record<string, string>>({})
+  /**
+   * When this market installed/updated each package (#1142). Only packages
+   * the market itself installed have an entry: the CLI and the host's own
+   * plugins page leave nothing on disk that says when, and the row shows
+   * `—` rather than guessing from a directory mtime pnpm rewrites.
+   */
+  const [installTimes, setInstallTimes] = useState<Record<string, InstallStamp>>({})
+  /**
+   * How the installed list is ordered (#1142). Its own value, NOT the
+   * market's `SortField`: that one is downloads/stars/added, and none of the
+   * three exist for an installed package — `added` is the catalog's
+   * collection date, which is a different question from when the user
+   * installed it. The choice outlives this mount (#1142) — the mirror effect
+   * below keeps it in localStorage.
+   */
+  const [installedSort, setInstalledSort] = useState<InstalledSort>(() => readInstalledSort())
   /** Catalog URLs bookmarked for later install (#414). */
   const [favoriteUrls, setFavoriteUrlsState] = useState<string[]>(() => cachedFavoriteUrls)
   const setFavoriteUrls = useCallback(cacheState(value => { cachedFavoriteUrls = value }, setFavoriteUrlsState), [])
@@ -2964,6 +3404,9 @@ export function MarketSection(props: MarketSectionProps) {
   const [blockedNames, setBlockedNamesState] = useState<string[]>(() => cachedBlockedNames)
   const setBlockedNames = useCallback(cacheState(value => { cachedBlockedNames = value }, setBlockedNamesState), [])
   const [updateExemptNames, setUpdateExemptNames] = useState<string[]>([])
+  useEffect(() => {
+    void refreshUpdateNotificationsAfterChange()
+  }, [updateExemptNames, disabledNames, blockedNames])
   /** Rows the user asked to show the AUTHOR's description on, despite a note. */
   const [showTheirs, setShowTheirs] = useState<string[]>([])
   /** The row whose note is being edited, and the text in the box. */
@@ -3022,7 +3465,7 @@ export function MarketSection(props: MarketSectionProps) {
    * "npm latest" beside a number that is not npm's latest is a bug report
    * waiting to be filed. Null until the catalog answers.
    */
-  const [catalogUpdated, setCatalogUpdated] = useState<string | null>(null)
+  const catalogUpdated = data?.updated?.trim() || null
   const catalogVersionTip = useMemo(
     () => (catalogUpdated === null
       ? t('catalogVersionUndated')
@@ -3091,6 +3534,12 @@ export function MarketSection(props: MarketSectionProps) {
   const [envFixing, setEnvFixing] = useState(false)
   const [envFailed, setEnvFailed] = useState(false)
   const [bootId, setBootId] = useState<string | null>(null)
+  const bootIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    bootIdRef.current = bootId
+    // A new host process ends the hold: its packages resolve afresh (#1253).
+    restartHoldRef.current = restartHold !== null && restartHold.boot === bootId
+  }, [bootId, restartHold])
   /** One-click restart (#14 by @ysyyhhh): server capability + in-flight state. */
   const [restartEnabled, setRestartEnabled] = useState(false)
   /** Supervisor the host detected around itself, when it named one (#229). */
@@ -3158,50 +3607,41 @@ export function MarketSection(props: MarketSectionProps) {
   const restoringStickRef = useRef(false)
   /** Hidden file input behind the Import button (a Button can't host an <input>). */
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [sortField, setSortField] = useState<SortField>('downloads')
-  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [sortField, setSortField] = useState<SortField>(() => readSortChoice('discover').field)
+  const [sortDir, setSortDir] = useState<SortDir>(() => readSortChoice('discover').dir)
   const [timeRange, setTimeRange] = useState<TimeRange>('all')
-  /** Undefined while the first catalog response is pending; null means the host cannot be located. */
-  const [hostVersion, setHostVersionState] = useState<string | null | undefined>(() => cachedHostVersion)
-  const setHostVersion = useCallback((value: string | null | undefined) => {
-    // Same process, different DSH — peer ranges were judged against the old
-    // host and must not keep filtering the list.
-    if (typeof cachedHostVersion === 'string' && typeof value === 'string' && value !== cachedHostVersion) {
-      clearHostCompatibilityCache()
-    }
-    cachedHostVersion = value
-    setHostVersionState(value)
-  }, [])
-  /** v1 is deliberately opt-in: undeclared/unknown entries stay visible even when enabled. */
-  // #872: ON by default. The report measured it on a live 0.2.0-rc.2 host —
-  // 175 discovered plugins, 45 of them declaring that host — so the default
-  // list was ~74% installable-in-name-only, with nothing at list level saying
-  // so. That is the wrong default per this project's own rule: the default has
-  // to be the one that is right without reading anything. Turning it off is
-  // one click in the filter menu, and the choice sticks.
-  const [compatibleWithHost, setCompatibleWithHostState] = useState(readHostFilterPreference)
-  const setCompatibleWithHost = useCallback((next: boolean) => {
-    setCompatibleWithHostState(next)
-    try { localStorage.setItem(HOST_FILTER_KEY, next ? 'compatible' : 'all') } catch { /* storage unavailable — the choice just won't survive a reload */ }
-  }, [])
+  const setCompatibleWithHost = useCallback((next: boolean) => { discoveryScan.setEnabled(next) }, [])
   /** The profile this page is running in, for the manual command's own
    * `--profile` token (#872). The catalog's is always `web`. */
   const [profileName, setProfileName] = useState<string | null>(null)
-  const hostCompatibility = useSyncExternalStore(
-    subscribeHostCompatibility,
-    () => cachedHostCompatibility,
-    () => cachedHostCompatibility,
-  )
-  const [hostCompatibilityPending, setHostCompatibilityPending] = useState(0)
+  const compatibilityDemandOwner = useRef({})
   const [catsOpen, setCatsOpen] = useState(false)
   /** Themes tab: independent from Discover's sort/time state above — a
    * search or sort choice in one tab has no business resetting the other. */
-  const [themeSortField, setThemeSortField] = useState<SortField>('downloads')
-  const [themeSortDir, setThemeSortDir] = useState<SortDir>('desc')
+  const [themeSortField, setThemeSortField] = useState<SortField>(() => readSortChoice('themes').field)
+  const [themeSortDir, setThemeSortDir] = useState<SortDir>(() => readSortChoice('themes').dir)
   const [themeTimeRange, setThemeTimeRange] = useState<TimeRange>('all')
-  const [favSortField, setFavSortField] = useState<SortField>('downloads')
-  const [favSortDir, setFavSortDir] = useState<SortDir>('desc')
+  const [favSortField, setFavSortField] = useState<SortField>(() => readSortChoice('favorites').field)
+  const [favSortDir, setFavSortDir] = useState<SortDir>(() => readSortChoice('favorites').dir)
   const [favTimeRange, setFavTimeRange] = useState<TimeRange>('all')
+  /**
+   * Each list's order is a display preference, not a profile setting (#1142):
+   * the choice used to live only in this component's state, so a tab switch or
+   * a reload put every list back on its default. The mirror writes the value
+   * that is on screen, which is why it also runs on the first render — a fresh
+   * profile records the default it started from, a reloaded one records the
+   * choice it restored, and neither can drift from what the user is seeing.
+   *
+   * localStorage rather than state.json: the same line the catalog's
+   * compatibility filter (`dshm-host-filter`) and the "recently added" flags
+   * (#940) take.
+   */
+  useEffect(() => {
+    rememberSortChoice('discover', { field: sortField, dir: sortDir })
+    rememberSortChoice('themes', { field: themeSortField, dir: themeSortDir })
+    rememberSortChoice('favorites', { field: favSortField, dir: favSortDir })
+    rememberInstalledSort(installedSort)
+  }, [sortField, sortDir, themeSortField, themeSortDir, favSortField, favSortDir, installedSort])
   /** WebDAV provider-preset dropdown (primitives Menu). */
   const [presetOpen, setPresetOpen] = useState(false)
   /** Install-command disclosure inside the confirm dialog. */
@@ -3254,14 +3694,63 @@ export function MarketSection(props: MarketSectionProps) {
   /** True while the drain is executing one queued request (no parallel starts). */
   const drainingRef = useRef(false)
 
-  const refreshInstalled = useCallback((force?: boolean) => {
-    fetch(api('/dsh-market/installed'), { cache: 'no-store' })
-      .then(res => res.json())
+  const mounted = useRef(false)
+  const refreshRequest = useRef(0)
+  const refreshInFlight = useRef(false)
+  const bridgedNotification = useRef<UpdateNotificationsState | null>(null)
+  const notificationReads = useRef(new Set<number>())
+  const [checkingUpdates, setCheckingUpdates] = useState(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      refreshRequest.current = 0
+      refreshInFlight.current = false
+      for (const request of notificationReads.current) releaseUpdateNotificationRead(request)
+      notificationReads.current.clear()
+    }
+  }, [])
+
+  const refreshInstalled = useCallback((force?: boolean, notification?: UpdateNotificationsState) => {
+    if (!mounted.current) return
+    const request = ++updateCheckRequest
+    const boot = updateCheckBoot
+    refreshRequest.current = request
+    refreshInFlight.current = true
+    if (notification === undefined) {
+      bridgedNotification.current = latestNotification.current
+      notificationReads.current.add(request)
+      pendingUpdateNotificationReads.add(request)
+    }
+    const ownsRefresh = () => mounted.current && refreshRequest.current === request
+    const isCurrent = () => ownsRefresh() && (boot === null || boot === updateCheckBoot)
+      && (notification === undefined || updateCheckBoot === null || notification.boot === updateCheckBoot)
+    setCheckingUpdates(true)
+    const requestOptions = { cache: 'no-store', signal: AbortSignal.timeout(UPDATE_CHECK_REQUEST_MS) } as const
+    const installRead = fetch(api('/dsh-market/installed'), requestOptions)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${String(res.status)}`)
+        return res.json()
+      })
       .then(body => {
-        setInstalled(body.installed || {})
+        if (!isCurrent() || !isInstalledSnapshot(body?.installed)) return null
+        const installed = body.installed
+        // Each surface renders its own installed list. A newer update check
+        // in a sibling surface can supersede the shared update response only.
+        if (request >= installedCheckCommitted) {
+          cachedInstalled = installed
+          installedCheckCommitted = request
+        }
+        setInstalledState(installed)
+        if (notification !== undefined) {
+          cachedInstalledReady = true
+          setInstalledReady(true)
+          return installed
+        }
+        setLocalDescriptions(localDescriptionsFromUnknown(body.descriptions))
         setRepoIdentities(installedRepoIdentities(body.repoIdentities))
         setRepoHints(installedRepoHints(body.repoHints))
-        setInstalledFiles(Array.isArray(body.present) ? body.present : Object.keys(body.installed || {}))
+        setInstalledFiles(Array.isArray(body.present) ? body.present : Object.keys(installed))
         setSkins(body.live || [])
         if (Array.isArray(body.disabled)) {
           setDisabledNames(body.disabled)
@@ -3272,6 +3761,18 @@ export function MarketSection(props: MarketSectionProps) {
         }
         if (body.notes !== null && typeof body.notes === 'object' && !Array.isArray(body.notes)) {
           setNotes(body.notes as Record<string, string>)
+        }
+        if (body.installTimes !== null && typeof body.installTimes === 'object' && !Array.isArray(body.installTimes)) {
+          const stamps: Record<string, InstallStamp> = {}
+          for (const [name, raw] of Object.entries(body.installTimes as Record<string, unknown>)) {
+            if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue
+            const record = raw as { installedAt?: unknown; updatedAt?: unknown }
+            const installedAt = typeof record.installedAt === 'string' ? record.installedAt : undefined
+            const updatedAt = typeof record.updatedAt === 'string' ? record.updatedAt : undefined
+            if (installedAt === undefined && updatedAt === undefined) continue
+            stamps[name] = { ...(installedAt === undefined ? {} : { installedAt }), ...(updatedAt === undefined ? {} : { updatedAt }) }
+          }
+          setInstallTimes(stamps)
         }
         if (Array.isArray(body.patchDisabled)) setPatchDisabledNames(body.patchDisabled)
         if (typeof body.profile === 'string') setProfileName(body.profile)
@@ -3297,18 +3798,68 @@ export function MarketSection(props: MarketSectionProps) {
         installedReadGen.current += 1
         setHostDependencyFindings(findings)
         cachedInstalledReady = true
-        setQueueSnapshotReady(ready => ({ ...ready, installed: true }))
+        setInstalledReady(true)
+        return installed
       })
-      .catch(() => {})
-    fetch(api('/dsh-market/updates') + (force === true ? '?force=1' : ''), { cache: 'no-store' })
-      .then(res => res.json())
-      .then(body => {
-        setUpdates(body.updates || {})
-        cachedUpdatesReady = true
-        setQueueSnapshotReady(ready => ({ ...ready, updates: true }))
+      .catch(() => null)
+    const updateRead = notification !== undefined
+      ? Promise.resolve(notification.updates)
+      : fetch(api('/dsh-market/updates') + (force === true ? '?force=1' : ''), requestOptions)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${String(res.status)}`)
+        return res.json()
       })
-      .catch(() => {})
-  }, [setActivations, setBlockedNames, setDisabledNames, setFavoriteUrls, setInstalledBundles, setInstalledFiles, setSkins, setUpdates])
+      .then(readUpdateStatuses)
+      .catch(() => {
+        // Expose a failed update check even when /installed is still loading.
+        // Reconcile any retained entries when that read has settled.
+        if (isCurrent()) applyUpdateCheck(request, null, null)
+        if (ownsRefresh()) { refreshInFlight.current = false; setCheckingUpdates(false) }
+        return null
+      })
+    void Promise.all([updateRead, installRead]).then(([received, installed]) => {
+      if (isCurrent()) {
+        if (notification?.checkedAt === null && request >= updateCheckCommitted) {
+          updateCheckCommitted = request
+          publishUpdateCheck({ ...emptyUpdateCheck, installed: installed ?? {} })
+        } else {
+          applyUpdateCheck(request, received, installed)
+          // A partial failure still carries successful results for other
+          // packages. Only an unclassified failure makes the whole check unknown.
+          if (notification?.error != null && request === updateCheckCommitted
+            && updateCheckSnapshot.failed?.size === 0) {
+            publishUpdateCheck({ ...updateCheckSnapshot, failed: null })
+          }
+        }
+      }
+      if (notification === undefined) {
+        const release = () => {
+          notificationReads.current.delete(request)
+          releaseUpdateNotificationRead(request)
+        }
+        // A sample received during this check predates its result. Keep both
+        // surfaces fenced until a trailing local read has passed any older GET.
+        if (ownsRefresh()) void refreshUpdateNotificationsAfterChange().finally(release)
+        else release()
+      }
+      if (ownsRefresh()) { refreshInFlight.current = false; setCheckingUpdates(false) }
+    })
+  }, [setActivations, setBlockedNames, setDisabledNames, setFavoriteUrls, setInstalledBundles, setInstalledFiles, setLocalDescriptions, setSkins])
+
+  // A background result reuses the shared update snapshot, but still pairs it
+  // with a fresh local inventory before restoring queued work. This reads no
+  // update source and never starts a second scheduler. Manual checks keep their
+  // request/boot fences and finish before a background sample is considered.
+  useEffect(() => {
+    if (!notificationSnapshot.loaded || notificationSnapshot.readFailed || notificationSnapshot.checking
+      || refreshInFlight.current || pendingUpdateNotificationReads.size > 0
+      || (updateCheckBoot !== null && notificationSnapshot.boot !== updateCheckBoot)) return
+    const previous = bridgedNotification.current
+    if (previous?.updates === notificationSnapshot.updates && previous.checkedAt === notificationSnapshot.checkedAt
+      && previous.error === notificationSnapshot.error && previous.boot === notificationSnapshot.boot) return
+    bridgedNotification.current = notificationSnapshot
+    refreshInstalled(undefined, notificationSnapshot)
+  }, [notificationSnapshot, checkingUpdates, updateCheck, refreshInstalled])
 
   /**
    * Host-owned deferred operations (#411).
@@ -3321,8 +3872,14 @@ export function MarketSection(props: MarketSectionProps) {
    */
   const settledHostRef = useRef(new Set<string>())
   const knownHostIdsRef = useRef(new Set<string>())
-  /** Host operations the user cleared; a status poll must not add them back. */
-  const dismissedHostRef = useRef(new Set<string>())
+  /**
+   * Host operations the user cleared; a status poll must not add them back —
+   * and neither must a reload. The set is read from storage and written back
+   * per id, because these rows belong to the host: clearing one only ever
+   * hides it here, so a set that lived only in memory brought the row back on
+   * the next mount (#1184).
+   */
+  const dismissedHostRef = useRef(dismissedHostIdSet())
   const drainMarkerRestoredRef = useRef(false)
 
   const clearDrainMarker = useCallback((operationId: string) => {
@@ -3580,9 +4137,17 @@ export function MarketSection(props: MarketSectionProps) {
    * with the user left to guess whether the plugin landed.
    */
   const noteMarketGone = useCallback(() => {
+    if (!mountedRef.current) return
+    discoveryScan.setUnavailable()
+    refreshRequest.current = 0
+    repairStatusRequest.current += 1
+    setStartupRepair(undefined)
+    setCheckoutRecovery(undefined)
+    setCheckingUpdates(false)
     setMarketGone(true)
     setBusyUrl(null)
     setUpdatingName(null)
+    pendingUpdate.current = null
     setRemovingName(null)
     setRecords(list => list.map(record =>
       record.state === 'running' || record.state === 'queued'
@@ -3593,47 +4158,72 @@ export function MarketSection(props: MarketSectionProps) {
       sessionStorage.removeItem('dshm-updating')
     } catch { /* storage unavailable */ }
   }, [t])
+  useEffect(() => {
+    if (compatibility.gone) noteMarketGone()
+  }, [compatibility.gone, noteMarketGone])
 
   /**
    * The status payload, or `null` when the route answered 404 (#962). Every
    * poll that reads this stops on the null: the market is no longer mounted,
    * so there is no status to read and nothing left to poll for.
    */
-  const readMarketStatus = useCallback(async (res: Response): Promise<MarketStatus | null> => {
+  const readMarketStatus = useCallback(async (res: Response, repairRequest?: number): Promise<MarketStatus | null> => {
     if (res.status === 404) {
-      noteMarketGone()
+      if (repairRequest === undefined || repairRequest === repairStatusRequest.current) noteMarketGone()
       return null
     }
     return await res.json() as MarketStatus
   }, [noteMarketGone])
 
+  const applyRepairStatus = useCallback((status: Pick<MarketStatus, 'startupRepair' | 'checkoutRecovery'>, request: number) => {
+    if (!mounted.current || request !== repairStatusRequest.current) return
+    const report = status.startupRepair
+    setStartupRepair(previous =>
+      report && previous?.id === report.id && previous.revision > report.revision ? previous : report)
+    setCheckoutRecovery(status.checkoutRecovery)
+  }, [])
+
+  const refreshRepairStatus = useCallback(async (signal?: AbortSignal) => {
+    const request = ++repairStatusRequest.current
+    try {
+      const res = await fetch(api('/dsh-market/status'), { cache: 'no-store', signal: signal ?? null })
+      if (!signal?.aborted && (res.ok || res.status === 404)) {
+        const status = await readMarketStatus(res, request)
+        if (!signal?.aborted && status !== null) applyRepairStatus(status, request)
+      }
+    } catch { /* A temporary status failure will be retried while the check is pending. */ }
+  }, [readMarketStatus, applyRepairStatus])
+
+  const checkingRepair = startupRepair?.checking === true || checkoutRecovery?.checking === true
+  useEffect(() => {
+    if (!checkingRepair || marketGone) return
+    const controller = new AbortController()
+    let timer = setTimeout(() => { void poll() }, 2000)
+    async function poll() {
+      await refreshRepairStatus(controller.signal)
+      if (!controller.signal.aborted) timer = setTimeout(() => { void poll() }, 2000)
+    }
+    return () => {
+      controller.abort()
+      clearTimeout(timer)
+    }
+  }, [checkingRepair, marketGone, refreshRepairStatus])
+
+  const wasCheckingCheckout = useRef(false)
+  useEffect(() => {
+    const checking = checkoutRecovery?.checking === true
+    if (wasCheckingCheckout.current && !checking && !marketGone) refreshInstalled()
+    wasCheckingCheckout.current = checking
+  }, [checkoutRecovery, marketGone, refreshInstalled])
+
   const loadCatalog = useCallback(() => {
     setLoadError(null)
-    return fetch(api('/dsh-market/registry'), { cache: 'no-store' })
-      .then(async (res) => {
-        const body = (await res.json().catch(() => ({}))) as {
-          registry?: Registry
-          hostVersion?: string | null
-          error?: string
-        }
-        if (res.status === 404) {
+    return discoveryScan.resume()
+      .then((outcome) => {
+        if (outcome === 'gone') {
           noteMarketGone()
           throw new Error(t('marketGoneTitle'))
         }
-        if (!res.ok) throw new Error(typeof body.error === 'string' ? body.error : `HTTP ${String(res.status)}`)
-        return body
-      })
-      .then((body) => {
-        if (body.registry === undefined) throw new Error('the catalog response carried no data')
-        if (body.registry.updated !== cachedRegistry?.updated) {
-          resetScreenshotsCache()
-          resetThemePreviewCache()
-        }
-        cachedRegistry = body.registry
-        setData(body.registry)
-        const catalogDate = body.registry.updated
-        setCatalogUpdated(typeof catalogDate === 'string' && catalogDate.trim() !== '' ? catalogDate : null)
-        setHostVersion(typeof body.hostVersion === 'string' ? body.hostVersion : null)
         setLoadError(null)
       })
       // Report WHY. An unreachable catalog used to be answered with a
@@ -3662,12 +4252,17 @@ export function MarketSection(props: MarketSectionProps) {
     let inFlight: AbortController | undefined
     let stopped = false
     const attempt = async (): Promise<void> => {
+      const boot = updateCheckBoot
+      const repairRequest = ++repairStatusRequest.current
       inFlight = new AbortController()
       const cutoff = setTimeout(() => inFlight?.abort(), RECONNECT_REQUEST_MS)
       try {
         const res = await fetch(api('/dsh-market/status'), { cache: 'no-store', signal: inFlight.signal })
         const status = res.ok ? await res.json() as Partial<MarketStatus> | null : null
         if (!stopped && status !== null && typeof status === 'object' && typeof status.boot === 'string') {
+          applyRepairStatus(status, repairRequest)
+          discoveryScan.setBoot(status.boot)
+          observeUpdateCheckBoot(status.boot, boot)
           setMarketGone(false)
           void loadCatalog()
           refreshInstalled()
@@ -3690,67 +4285,17 @@ export function MarketSection(props: MarketSectionProps) {
       clearTimeout(timer)
       inFlight?.abort()
     }
-  }, [marketGone, reconnectRound, loadCatalog, refreshInstalled])
-
-  const loadHostCompatibility = useCallback(async (names: readonly string[]): Promise<void> => {
-    const unique = [...new Set(names)].filter(name => {
-      if (name === '' || hostCompatibilitySettled(name) || hostCompatibilityInFlight.has(name)) return false
-      hostCompatibilityInFlight.add(name)
-      return true
-    })
-    if (unique.length === 0) return
-    setHostCompatibilityPending(count => count + unique.length)
-    for (let offset = 0; offset < unique.length; offset += 64) {
-      const chunk = unique.slice(offset, offset + 64)
-      try {
-        const response = await fetch(api('/dsh-market/discovery-compatibility'), {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            packages: chunk.filter(key => !key.startsWith('https://')),
-            ...(chunk.some(key => key.startsWith('https://'))
-              ? { entries: chunk.filter(key => key.startsWith('https://')) } : {}),
-          }),
-        })
-        const body = await response.json() as {
-          hostVersion?: string | null
-          plugins?: Record<string, HostCompatibility>
-        }
-        if (!response.ok || body.plugins === null || typeof body.plugins !== 'object') {
-          throw new Error(`HTTP ${String(response.status)}`)
-        }
-        if (typeof body.hostVersion === 'string' || body.hostVersion === null) {
-          setHostVersion(body.hostVersion)
-        }
-        const accepted: HostCompatibilityMap = {}
-        for (const name of chunk) {
-          const item = body.plugins[name] as HostCompatibility | null | undefined
-          if (item === null || item === undefined
-            || !['compatible', 'incompatible', 'unknown'].includes(item.status)
-            || !['manifest', 'undeclared', 'unavailable'].includes(item.basis)
-            || (item.requirement !== null && typeof item.requirement !== 'string')
-            || !Array.isArray(item.declarations)) {
-            accepted[name] = UNAVAILABLE_HOST_COMPATIBILITY
-            continue
-          }
-          accepted[name] = item
-        }
-        commitHostCompatibility(accepted)
-      } catch {
-        commitHostCompatibility(Object.fromEntries(chunk.map(name => [name, UNAVAILABLE_HOST_COMPATIBILITY])))
-      } finally {
-        for (const name of chunk) hostCompatibilityInFlight.delete(name)
-        setHostCompatibilityPending(count => Math.max(0, count - chunk.length))
-      }
-    }
-  }, [setHostVersion])
+  }, [marketGone, reconnectRound, loadCatalog, refreshInstalled, applyRepairStatus])
 
   useEffect(() => {
     void loadCatalog()
+    const boot = updateCheckBoot
+    const repairRequest = ++repairStatusRequest.current
     fetch(api('/dsh-market/status'), { cache: 'no-store' })
-      .then(readMarketStatus)
+      .then(res => readMarketStatus(res, repairRequest))
       .then(status => {
         if (status === null) return
+        applyRepairStatus(status, repairRequest)
         statusRef.current = {
           busy: status.busy === true,
           runningAgents: Array.isArray(status.runningAgents) ? status.runningAgents.map(String) : [],
@@ -3766,6 +4311,8 @@ export function MarketSection(props: MarketSectionProps) {
         // within seconds and the images correct themselves.
         applyGithubRouting(status)
         if (typeof status.boot === 'string') {
+          discoveryScan.setBoot(status.boot)
+          if (mounted.current && observeUpdateCheckBoot(status.boot, boot)) refreshInstalled()
           setBootId(status.boot)
           setIgnoredUpdateNames(ignoredUpdatesForBoot(status.boot))
           // A dismissal only silences the notice for the boot it was made
@@ -3785,7 +4332,8 @@ export function MarketSection(props: MarketSectionProps) {
       })
       .catch(() => {})
     refreshInstalled()
-  }, [applyDrainStatus, refreshInstalled, loadCatalog, readMarketStatus, restoreDrainMarkers])
+    void refreshUpdateNotifications()
+  }, [applyDrainStatus, refreshInstalled, loadCatalog, readMarketStatus, restoreDrainMarkers, applyRepairStatus])
 
   // Pending-restart flags survive tab switches and page reloads, scoped to
   // one host process: a different boot id means the restart happened and the
@@ -3811,6 +4359,7 @@ export function MarketSection(props: MarketSectionProps) {
       // Nothing pending: drop any stale entry (e.g. a hot mount cleared the
       // only doneUrl) so a same-boot remount cannot resurrect the banner (#73).
       sessionStorage.removeItem('dshm-restart')
+      notifyUpdatePreferencesChanged()
       return
     }
     sessionStorage.setItem('dshm-restart', JSON.stringify({
@@ -3821,6 +4370,7 @@ export function MarketSection(props: MarketSectionProps) {
       removed: removedCount,
       toggled: toggleRestart,
     }))
+    notifyUpdatePreferencesChanged()
   }, [bootId, doneUrls, updatedNames, restartNames, removedCount, toggleRestart])
 
   const fixEnv = useCallback(() => {
@@ -3861,7 +4411,7 @@ export function MarketSection(props: MarketSectionProps) {
     if (updating !== null && typeof updating.name === 'string' && updating.name !== '') {
       setUpdatingName(updating.name)
       const id = `recovered-update:${updating.name}`
-      recoveredUpdateRecordId.current = id
+      pendingUpdate.current = { recordId: id, recovering: true }
       setRecords(list => list.some(record =>
         record.kind === 'update' && record.name === updating.name && record.state === 'running')
         ? list
@@ -3885,7 +4435,11 @@ export function MarketSection(props: MarketSectionProps) {
   }, [data])
 
   useEffect(() => {
-    if (busyUrl === null && updatingName === null) {
+    // An uninstall in flight is polled like an install or an update: without it
+    // nothing asked the host how the operation was going, so a market the host
+    // unloaded mid-uninstall never reached the 404 that says so, and the row
+    // read "uninstalling" until a restart (#1056).
+    if (busyUrl === null && updatingName === null && removingName === null) {
       // `hostBusy` is sampled by the progress poll. A normal update response
       // can settle the local operation before the next poll observes the
       // route lock released, leaving the restart button disabled until this
@@ -3907,13 +4461,16 @@ export function MarketSection(props: MarketSectionProps) {
       return
     }
     const timer = setInterval(() => {
+      const polledUpdate = pendingUpdate.current
+      const repairRequest = polledUpdate === null ? undefined : ++repairStatusRequest.current
       fetch(api('/dsh-market/status'), { cache: 'no-store' })
-        .then(readMarketStatus)
+        .then(res => readMarketStatus(res, repairRequest))
         .then(status => {
           // 404: the host unloaded the market, and this poll is the only
           // witness left of the operation it was tracking — noteMarketGone
           // released the button and settled the row (#962).
           if (status === null) return
+          if (repairRequest !== undefined && typeof status.boot === 'string') applyRepairStatus(status, repairRequest)
           statusRef.current = {
             busy: status.busy === true,
             runningAgents: Array.isArray(status.runningAgents) ? status.runningAgents.map(String) : [],
@@ -3925,6 +4482,7 @@ export function MarketSection(props: MarketSectionProps) {
           setHostBusy(status.busy === true)
           setDebuggerLatch(typeof status.debugger === 'string' ? status.debugger : null)
           if (status.active) {
+            if (pendingUpdate.current === polledUpdate) updateIdleStrikes.current = 0
             setCancelling(status.cancelling === true)
             if (status.phase !== null && status.phase !== undefined) {
               // Structured pnpm progress: stage + current package + count.
@@ -4013,34 +4571,30 @@ export function MarketSection(props: MarketSectionProps) {
                 setInstallError(t('installFail') + ' — ' + t('exportLog'))
               }
             }
-            // An update whose response was lost — the page was closed mid-run
-            // and reopened via the dshm-updating marker — converges the same
-            // way. Once the host reports the operation fully settled (pnpm
-            // exited AND the mutation lock released), hand the running row
-            // back to the refreshed listing instead of showing "updating"
-            // forever. Two idle polls guard the brief window before the host
-            // has actually started the command.
-            if (updatingName !== null && status.busy !== true) {
-              if (++updateIdleStrikes.current >= 2) {
-                updateIdleStrikes.current = 0
-                sessionStorage.removeItem('dshm-updating')
-                const recoveredId = recoveredUpdateRecordId.current
-                if (recoveredId !== null) {
-                  setRecords(list => drop(list, recoveredId))
-                  recoveredUpdateRecordId.current = null
-                }
-                setUpdatingName(null)
-                refreshInstalled()
-              }
-            } else {
+            // An idle sample can precede a POST reaching the host. Only a
+            // lost reply or a remount makes this task eligible for recovery.
+            if (pendingUpdate.current !== polledUpdate) return
+            if (updatingName === null || status.busy === true || polledUpdate?.recovering === false) {
               updateIdleStrikes.current = 0
+              return
             }
+            // Two idle polls allow the host time to begin the command.
+            if (++updateIdleStrikes.current < 2) return
+            updateIdleStrikes.current = 0
+            if (polledUpdate !== null) {
+              sessionStorage.removeItem('dshm-updating')
+              pendingUpdate.current = null
+              setRecords(list => list.filter(record => record.id !== polledUpdate.recordId
+                || record.state !== 'running' || record.hostOperationId !== undefined))
+            }
+            setUpdatingName(null)
+            refreshInstalled()
           }
         })
         .catch(() => {})
     }, 2000)
     return () => clearInterval(timer)
-  }, [applyDrainStatus, busyUrl, updatingName, data, installed, repoIdentities, repoHints, refreshInstalled, lang, restoreDrainMarkers, t])
+  }, [applyDrainStatus, applyRepairStatus, busyUrl, updatingName, removingName, data, installed, repoIdentities, repoHints, refreshInstalled, lang, restoreDrainMarkers, t])
 
   const scrollToTop = () => {
     const el = listScroller(surface, rootRef.current, bodyRef.current, themesFullscreen)
@@ -4132,10 +4686,16 @@ export function MarketSection(props: MarketSectionProps) {
   // Fullscreen drops the flatten rules and scrolls inside `.body` instead.
   useLayoutEffect(() => {
     const root = rootRef.current
+    /** Drops #1237's stuck marks. Scroll state, so it leaves with the offsets. */
+    const clearStuck = (): void => {
+      markStuck(headRef.current, false)
+      markStuck(root?.querySelector(`.${css.cats}`) ?? null, false)
+    }
     if (surface !== 'plugins' || root === null || themesFullscreen) {
       root?.style.removeProperty('--dshm-host-sticky-top')
       root?.style.removeProperty('--dshm-plugins-head-height')
       root?.style.removeProperty('--dshm-empty-view-height')
+      clearStuck()
       return undefined
     }
     const host = listScroller(surface, root, null, false)
@@ -4143,6 +4703,7 @@ export function MarketSection(props: MarketSectionProps) {
       root.style.removeProperty('--dshm-host-sticky-top')
       root.style.removeProperty('--dshm-plugins-head-height')
       root.style.removeProperty('--dshm-empty-view-height')
+      clearStuck()
       return undefined
     }
     let frame = 0
@@ -4168,6 +4729,12 @@ export function MarketSection(props: MarketSectionProps) {
         const view = Math.max(0, Math.round(hostRect.bottom - top))
         root.style.setProperty('--dshm-empty-view-height', `${String(view)}px`)
       }
+      const cats = root.querySelector(`.${css.cats}`)
+      const catsEl = cats instanceof HTMLElement ? cats : null
+      const headPinned = head !== null && isPinned(host, head, hostTop)
+      const catsPinned = catsEl !== null && isPinned(host, catsEl, hostTop + headHeight)
+      markStuck(head, headPinned)
+      markStuck(catsEl, catsPinned)
       if (restoringStickRef.current) return
       const y = host.scrollTop
       // A clamp-to-0 from a shorter list can fire scroll before the restore
@@ -4175,17 +4742,16 @@ export function MarketSection(props: MarketSectionProps) {
       // not drop them on a one-frame !isPinned — only when the reader has
       // scrolled back above the remembered line.
       if (y > 0) pluginsYRef.current = y
-      if (head !== null && isPinned(host, head, hostTop)) {
+      if (headPinned) {
         headFloorRef.current = headFloorRef.current === null ? y : Math.min(headFloorRef.current, y)
       } else if (headFloorRef.current !== null && y > 0 && y + 4 < headFloorRef.current) {
         // y===0 is often a short-list clamp, not a real scroll to the top —
         // keep the floor so the restore layout effect can still use it.
         headFloorRef.current = null
       }
-      const cats = root.querySelector(`.${css.cats}`)
-      if (cats instanceof HTMLElement && isPinned(host, cats, hostTop + headHeight)) {
+      if (catsPinned) {
         catsFloorRef.current = catsFloorRef.current === null ? y : Math.min(catsFloorRef.current, y)
-      } else if (cats === null) {
+      } else if (catsEl === null) {
         catsFloorRef.current = null
       } else if (catsFloorRef.current !== null && y > 0 && y + 4 < catsFloorRef.current) {
         catsFloorRef.current = null
@@ -4203,6 +4769,7 @@ export function MarketSection(props: MarketSectionProps) {
       root.style.removeProperty('--dshm-host-sticky-top')
       root.style.removeProperty('--dshm-plugins-head-height')
       root.style.removeProperty('--dshm-empty-view-height')
+      clearStuck()
     }
     apply()
     host.addEventListener('scroll', schedule, { passive: true })
@@ -4242,8 +4809,13 @@ export function MarketSection(props: MarketSectionProps) {
     [data, q, cat, lang, sortField, sortDir, timeRange])
   // One plugin can be stored under the installed name or the catalog name.
   // Both have to hide the card and skip Update all (#657).
+  // With nothing blocked — the default — the answer is false for every entry,
+  // and it is decided before the matching below could change it: the matching
+  // is an ARGUMENT, so without this it ran for the whole catalog first and only
+  // then was asked of an empty set (#1097, ~730 ms at 9.9k entries).
   const pluginBlocked = (plugin: RegistryPlugin): boolean =>
-    blockAliases(plugin, matchInstalledName(plugin, installed, repoIdentities, data?.plugins, repoHints))
+    blockedNameSet.size > 0
+    && blockAliases(plugin, matchInstalledName(plugin, installed, repoIdentities, data?.plugins, repoHints))
       .some(name => blockedNameSet.has(name))
   // Memoized because one call walks the WHOLE catalog
   // (`catalogEntryForInstalled` → `entryForDep` → `sameSourceConflict` per
@@ -4276,19 +4848,6 @@ export function MarketSection(props: MarketSectionProps) {
     // pluginBlocked closes over the installed map and the catalog match.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pluginsAll, blockedNameSet, installed, repoIdentities, data, repoHints])
-  // Host filter, applied to the already-blocked list: the same rows
-  // `visiblePlugins` dropped, and the same count the chip reports, at a cost
-  // that does not grow with the catalog.
-  const { plugins, hostHiddenCount } = useMemo(() => {
-    if (!compatibleWithHost) return { plugins: pluginsUnblocked, hostHiddenCount: 0 }
-    const compatible = (plugin: RegistryPlugin): boolean => {
-      const key = hostCompatibilityKey(plugin)
-      return key === null || hostCompatibility[key]?.status !== 'incompatible'
-    }
-    let hidden = 0
-    for (const plugin of pluginsAll) if (!compatible(plugin)) hidden += 1
-    return { plugins: pluginsUnblocked.filter(compatible), hostHiddenCount: hidden }
-  }, [pluginsAll, pluginsUnblocked, compatibleWithHost, hostCompatibility])
   // A sort the user chose is a request to see the list in THAT order, and
   // this block ignores the sort by design (it is "what was added in the last
   // seven days", ordered by downloads). Left in place it sits between the
@@ -4302,11 +4861,9 @@ export function MarketSection(props: MarketSectionProps) {
       ? []
       : visiblePlugins(data.plugins, {
           category: 'all', query: '', lang, sort: 'downloads-desc', sinceDays: 7,
-          hostCompatibility, compatibleWithHost,
         }).filter(plugin => !pluginBlocked(plugin)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data, tab, q, cat, timeRange, sortField, sortDir, lang, hostCompatibility, compatibleWithHost, blockedNameSet, installed, repoIdentities, repoHints])
-  const hasRecent = recentlyAdded.length > 0
+    [data, tab, q, cat, timeRange, sortField, sortDir, lang, blockedNameSet, installed, repoIdentities, repoHints])
   const [recentCollapsed, setRecentCollapsed] = useState(() => readRecentFlag(RECENT_COLLAPSED_KEY))
   const [recentHidden, setRecentHidden] = useState(() => readRecentFlag(RECENT_HIDDEN_KEY))
   const toggleRecentCollapsed = useCallback(() => {
@@ -4327,35 +4884,33 @@ export function MarketSection(props: MarketSectionProps) {
     setRecentCollapsed(false)
     writeRecentFlag(RECENT_COLLAPSED_KEY, false)
   }, [])
-  const recentPlugins = recentlyAdded.slice(0, RECENT_STRIP_LIMIT)
+  // Fix the slice before compatibility resolves. Hiding a card must not
+  // pull in an unchecked replacement and start another batch.
+  const discoverResetDeps = [q, cat, sortField, sortDir, timeRange]
   const { currentPage, totalPages, pageSize, goToPage, changePageSize } =
-    usePagination(plugins.length, [q, cat, sortField, sortDir, timeRange, compatibleWithHost], scrollToTop)
-  const discoverMore = useShownCount(plugins.length, [q, cat, sortField, sortDir, timeRange, compatibleWithHost], DEFAULT_PAGE_SIZE)
-  const pagePlugins = surface === 'plugins'
-    ? plugins.slice(0, discoverMore.shown)
-    : plugins.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-  const pageHostPackages = [...new Set([...pagePlugins, ...recentPlugins].flatMap(plugin =>
-    hostCompatibilityKey(plugin) === null ? [] : [hostCompatibilityKey(plugin)!]))]
-  const allHostPackages = useMemo(
-    () => [...new Set((data?.plugins ?? []).flatMap(plugin =>
-      hostCompatibilityKey(plugin) === null ? [] : [hostCompatibilityKey(plugin)!]))],
-    [data],
-  )
-  const pageHostPackagesKey = pageHostPackages.join('\u0000')
-  const allHostPackagesKey = allHostPackages.join('\u0000')
-  useEffect(() => {
-    if (tab === 'discover') void loadHostCompatibility(pageHostPackages)
-    // The key is the stable identity of this page's package/source set; the
-    // array itself is recreated as compatibility results arrive.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, pageHostPackagesKey, loadHostCompatibility])
-  useEffect(() => {
-    if (compatibleWithHost) void loadHostCompatibility(allHostPackages)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [compatibleWithHost, allHostPackagesKey, loadHostCompatibility])
-  const loadedHostPackages = allHostPackages.reduce(
-    (count, name) => count + (hostCompatibility[name] === undefined ? 0 : 1), 0,
-  )
+    usePagination(pluginsUnblocked.length, discoverResetDeps, scrollToTop)
+  const discoverMore = useShownCount(pluginsUnblocked.length, discoverResetDeps, DEFAULT_PAGE_SIZE)
+  const basePage = surface === 'plugins'
+    ? pluginsUnblocked.slice(0, discoverMore.shown)
+    : pluginsUnblocked.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const baseRecent = recentlyAdded.slice(0, RECENT_STRIP_LIMIT)
+  const hostVerdict = (plugin: RegistryPlugin) => {
+    const key = hostCompatibilityKey(plugin)
+    return key === null ? undefined : hostCompatibility[key]
+  }
+  const compatible = (plugin: RegistryPlugin): boolean =>
+    !compatibleWithHost || hostVerdict(plugin)?.status !== 'incompatible'
+  const pagePlugins = basePage.filter(compatible)
+  const recentPlugins = baseRecent.filter(compatible)
+  const hasRecent = recentPlugins.length > 0
+  // A catalog card can appear both in the grid and in the recent strip.
+  // Keep distinct cards in counts even when they share the same lookup key.
+  const discoverCandidates = [...new Set([...basePage, ...(!recentHidden && !recentCollapsed ? baseRecent : [])])]
+  const pageHostPackages = [...new Set(discoverCandidates.map(hostCompatibilityKey).filter(key => key !== null))]
+  const pageVerdicts = discoverCandidates.map(hostVerdict)
+  const loadedHostPackages = pageHostPackages.filter(key => hostCompatibility[key] !== undefined).length
+  const hostHiddenCount = pageVerdicts.filter(verdict => verdict?.status === 'incompatible').length
+  const hostUnavailableCount = pageVerdicts.filter(verdict => verdict?.basis === 'unavailable').length
 
   const themePluginsAll = useMemo(
     () => (data === null ? [] : visiblePlugins(data.plugins, {
@@ -4418,16 +4973,36 @@ export function MarketSection(props: MarketSectionProps) {
     : favoriteThemes.slice(
       (favoriteThemePagination.currentPage - 1) * favoriteThemePagination.pageSize,
       favoriteThemePagination.currentPage * favoriteThemePagination.pageSize)
+  // Installed rows need the same discovery-compatibility scan as Discover /
+  // Favorites so an incompatible plugin can say why it cannot run — without
+  // waiting for the user to open the catalog first.
+  // Only keys DiscoveryScan can describe. A bare installed name is dropped by
+  // the scanner (no catalog entry) — demanding it left the chip on Loading forever.
+  const installedHostPackages = useMemo(
+    () => [...new Set(Object.entries(installed).flatMap(([name, spec]) => {
+      const entry = data === null
+        ? undefined
+        : catalogEntryForInstalled(data.plugins, name, String(spec), repoIdentities[name], repoHints[name])
+      if (entry === undefined) return []
+      const key = hostCompatibilityKey(entry)
+      return key === null ? [] : [key]
+    }))],
+    [installed, data, repoIdentities, repoHints],
+  )
   // Favorites reuse pluginCard (and its host-requirement badge). Discover
   // already loads compatibility for the current page; without the same
   // fetch here the badge stays on "Reading host requirement…" forever.
-  const favoritePageHostPackages = [...new Set(favoritePagePlugins.flatMap(plugin =>
-    hostCompatibilityKey(plugin) === null ? [] : [hostCompatibilityKey(plugin)!]))]
-  const favoritePageHostPackagesKey = favoritePageHostPackages.join('\u0000')
+  const compatibilityKeys = (marketGone ? [] : tab === 'discover' ? pageHostPackages
+    : tab === 'favorites' ? favoritePagePlugins.map(hostCompatibilityKey).filter(key => key !== null)
+    : tab === 'installed' ? installedHostPackages
+    : []).join('\u0000')
   useEffect(() => {
-    if (tab === 'favorites') void loadHostCompatibility(favoritePageHostPackages)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, favoritePageHostPackagesKey, loadHostCompatibility])
+    discoveryScan.setDemand(compatibilityDemandOwner.current, data, compatibilityKeys === '' ? [] : compatibilityKeys.split('\u0000'))
+  }, [data, compatibilityKeys])
+  useEffect(() => {
+    const owner = compatibilityDemandOwner.current
+    return () => { discoveryScan.removeDemand(owner) }
+  }, [])
   const favoriteStale = useMemo(
     () => (data === null ? [] : staleFavoriteUrls(favoriteUrls, data.plugins)),
     [data, favoriteUrls])
@@ -5000,6 +5575,8 @@ export function MarketSection(props: MarketSectionProps) {
     // "update all" left the panel empty while several plugins were mid-flight
     // (#295 by @sanyecao88). One record per attempt, like the install flow.
     const updateRecordId = nextRecordId()
+    const attempt = { recordId: updateRecordId, recovering: false }
+    pendingUpdate.current = attempt
     setRecords(list => enqueue(list, { id: updateRecordId, kind: 'update', name, state: 'running', updateOptions }))
     return fetch(api('/dsh-market/update'), {
       method: 'POST',
@@ -5016,13 +5593,20 @@ export function MarketSection(props: MarketSectionProps) {
         ...(!restore && statusRef.current.agentDrain && !preferReject ? { busyPolicy: 'drain' } : {}),
       }),
     })
-      .then(res => res.json().then(body => ({ status: res.status, body })))
+      .then(async res => {
+        const body = await res.json()
+        if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new Error('Invalid update response')
+        return { status: res.status, body }
+      })
       .then(({ status, body }) => {
         // A response means the host settled the request (even a 4xx/5xx), so
         // the running row can hand back now. Only a lost response keeps the
         // marker + row for the poll to converge.
-        sessionStorage.removeItem('dshm-updating')
-        setUpdatingName(null)
+        if (pendingUpdate.current === attempt) {
+          pendingUpdate.current = null
+          sessionStorage.removeItem('dshm-updating')
+          setUpdatingName(null)
+        }
         if (status === 202 && typeof body.operationId === 'string') {
           const operation = body.operation as DrainOperationWire | undefined
           setRecords(list => patchRecord(withoutHostProjection(list, body.operationId, updateRecordId), updateRecordId, {
@@ -5043,6 +5627,29 @@ export function MarketSection(props: MarketSectionProps) {
           setRecords(list => drop(list, updateRecordId))
           refreshInstalled()
           if (body.partial === true) setInstallError(t('partialNote'))
+          return
+        }
+        // Another release in the profile is still inside the safety wait
+        // (#1252): remember it so a batch stops here, and re-read the list so
+        // every row shows the wait instead of an update that cannot start.
+        const releaseBlocked = body.failureCode === 'PROFILE_RELEASE_BLOCKED' && body.profileBlocked !== null
+          && typeof body.profileBlocked === 'object'
+          ? body.profileBlocked as { name?: unknown; version?: unknown; readyAt?: unknown }
+          : null
+        if (releaseBlocked !== null && typeof releaseBlocked.name === 'string' && typeof releaseBlocked.version === 'string') {
+          profileBlockRef.current = {
+            name: releaseBlocked.name, version: releaseBlocked.version,
+            readyAt: typeof releaseBlocked.readyAt === 'string' ? releaseBlocked.readyAt : null,
+          }
+          refreshInstalled(true)
+        }
+        // The host wants a restart before any further update (#1253). Not a
+        // failure of this plugin: it is waiting like the rest, so it keeps its
+        // row, says why, and the batch stops here.
+        if (body.failureCode === 'RESTART_REQUIRED') {
+          restartHoldRef.current = true
+          setRestartHold({ boot: bootIdRef.current })
+          setRecords(list => patchRecord(list, updateRecordId, { state: 'warned', reason: t('restartFirstNote') }))
           return
         }
         if (status === 409 && body.staleTarget === true) {
@@ -5103,7 +5710,8 @@ export function MarketSection(props: MarketSectionProps) {
             void doUpdate(name, force, restore, compatVersion, confirmAgentsRunning, eligibleVersion, true)
             return
           }
-          if (status === 409) {
+          // A wait is a failure with its own answer below, not a lock to queue behind.
+          if (status === 409 && releaseBlocked === null) {
             if (body.failureCode === 'AGENT_BARRIER_LOST') {
               setRecords(list => patchRecord(list, updateRecordId, {
                 state: 'failed',
@@ -5150,10 +5758,9 @@ export function MarketSection(props: MarketSectionProps) {
             setOperationsOpen(true)
             return
           }
-          // The target says it needs a newer host than this one (#404). Not
-          // a failure to report and move on from — a decision, so it gets a
-          // dialog with the two facts and a way past. The row is dropped
-          // rather than marked failed: nothing was attempted.
+          // The target's declared range excludes this host (#404, #1210).
+          // Show the range and the running version so the user can choose.
+          // Drop the row because the market refused before attempting the update.
           if (body.hostIncompatible && typeof body.hostIncompatible === 'object') {
             const notice = body.hostIncompatible as { name?: unknown; version?: unknown; requirement?: unknown; hostVersion?: unknown; npmName?: unknown }
             setRecords(list => drop(list, updateRecordId))
@@ -5201,12 +5808,15 @@ export function MarketSection(props: MarketSectionProps) {
         }
       })
       .catch(() => {
-        // A lost response does not mean the update stopped (the route holds
-        // its reply until pnpm finishes, #100): keep the marker AND the
-        // running row, and let the status poll converge the outcome instead
-        // of declaring a false failure — mirroring the install flow's catch.
+        // The host may still be writing. Keep the row until the status poll
+        // confirms idle, and leave this attempt alone if the page was closed.
+        if (pendingUpdate.current === attempt) pendingUpdate.current = { ...attempt, recovering: true }
       })
-  }, [refreshInstalled, installed, rememberDrainMarker, t, lang, updates])
+      .finally(() => {
+        // A linked source switch can start its own recovery as the update ends.
+        if (restore && mounted.current) void refreshRepairStatus()
+      })
+  }, [refreshInstalled, refreshRepairStatus, installed, rememberDrainMarker, t, lang, updates])
 
 
   const doSourceMigration = useCallback((name: string, confirmAgentsRunning = false, renameTo?: string) => {
@@ -5309,14 +5919,29 @@ export function MarketSection(props: MarketSectionProps) {
       exists while a user is actually looking at one plugin's notes, and
       closing the dialog abandons the render — the server side caches the
       payload, so reopening is cheap. */
-  const openNotes = useCallback((name: string, current: string | null, latest: string | null, repoUrl: string | null) => {
-    setNotesFor({ name, current, latest, repoUrl })
+  const openNotes = useCallback((name: string, current: string | null, latest: string | null, target: string | null, repoUrl: string | null) => {
+    notesRequest.current?.abort()
+    const request = new AbortController()
+    notesRequest.current = request
+    setNotesFor({ name, current, latest, target, repoUrl })
     setUpdateNotes(null)
     setNotesState('loading')
-    fetch(`${api('/dsh-market/changelog')}?name=${encodeURIComponent(name)}`)
+    // The Update button may install an older, mature version than the repo's
+    // latest; ask for notes relative to that one (#1193).
+    fetch(`${api('/dsh-market/changelog')}?name=${encodeURIComponent(name)}${target !== null ? `&target=${encodeURIComponent(target)}` : ''}`, { signal: request.signal })
       .then(res => res.json())
-      .then(body => { setUpdateNotes(body as ResolvedNotes); setNotesState('ready') })
-      .catch(() => setNotesState('fail'))
+      .then(body => {
+        if (request.signal.aborted) return
+        setUpdateNotes(body as ResolvedNotes)
+        setNotesState('ready')
+      })
+      .catch(() => { if (!request.signal.aborted) setNotesState('fail') })
+  }, [])
+
+  const closeNotes = useCallback(() => {
+    notesRequest.current?.abort()
+    notesRequest.current = null
+    setNotesFor(null)
   }, [])
 
   const doUseSkin = useCallback((name: string) => {    setInstallError(null)
@@ -5381,9 +6006,9 @@ export function MarketSection(props: MarketSectionProps) {
     })
       .then(async (res) => {
         const text = await res.text()
-        let body: { ok?: unknown; favorites?: unknown; error?: unknown } | null = null
+        let body: FavoriteReply | null = null
         if (text !== '') {
-          try { body = JSON.parse(text) as { ok?: unknown; favorites?: unknown; error?: unknown } } catch { /* non-JSON */ }
+          try { body = JSON.parse(text) as FavoriteReply } catch { /* non-JSON */ }
         }
         return { status: res.status, body }
       })
@@ -5400,6 +6025,10 @@ export function MarketSection(props: MarketSectionProps) {
         }
         if (status === 409) {
           setFavoriteError(t('favoriteBusy'))
+          return
+        }
+        if (body?.code === 'FAVORITES_LIMIT_REACHED' && typeof body.limit === 'number') {
+          setFavoriteError(t('favoriteLimitReached').replace('{0}', String(body.limit)))
           return
         }
         setFavoriteError(typeof body?.error === 'string' ? body.error : t('favoriteFailed'))
@@ -5854,6 +6483,16 @@ export function MarketSection(props: MarketSectionProps) {
             && record.hostOperationId === undefined
             && (record.kind === 'install' || runningAgents.length === 0))
           if (task === undefined || recordsRef.current.some(record => record.state === 'running' && record.hostOperationId === undefined)) return
+          // A queued update meets the same wall as the one that failed (#1252):
+          // end it with the reason instead of starting a run that cannot work.
+          // A queued update waits for the restart too; it stays queued (#1253).
+          if (task.kind === 'update' && restartHoldRef.current) return
+          const blocked = profileBlockRef.current
+          if (task.kind === 'update' && blocked !== null && profileBlockStillHolds(blocked)) {
+            const reason = t('profileBlockedSkipped').replace('{0}', profileBlockedText(blocked, t))
+            setRecords(list => patchRecord(list, task.id, { state: 'failed', reason }))
+            return
+          }
           setRecords(list => list.filter(record => record.id !== task.id))
           drainingRef.current = true
           try {
@@ -5875,7 +6514,7 @@ export function MarketSection(props: MarketSectionProps) {
       disposed = true
       clearInterval(timer)
     }
-  }, [applyDrainStatus, readMarketStatus, restoreDrainMarkers])
+  }, [applyDrainStatus, readMarketStatus, restoreDrainMarkers, t])
 
   /** A queued record's "run now": retry immediately instead of waiting for idle. */
   const runQueuedNow = useCallback((record: OperationRecord, confirmAgentsRunning = false) => {
@@ -6015,6 +6654,10 @@ export function MarketSection(props: MarketSectionProps) {
           return true
         }
         const text = (v: unknown) => typeof v === 'string' ? v : v == null ? '' : JSON.stringify(v)
+        if (body.partial === true) {
+          setGroupPayload(body)
+          refreshInstalled()
+        }
         setInstallError(text(body.error) || t('toggleFail'))
         if (Array.isArray(body.restartMembers) && body.restartMembers.length > 0) {
           setToggleRestart(n => n + body.restartMembers.length)
@@ -6201,6 +6844,19 @@ export function MarketSection(props: MarketSectionProps) {
     const names = reminderBatchUpdatableNames.map(name => ({ name, eligibleVersion: updates[name]?.eligibleVersion }))
     setUpdatingAll(true)
     const next = () => {
+      // The first refusal for a profile-wide wait ends the batch (#1252): the
+      // rest would meet the same wall, so say so once per plugin and stop.
+      const blocked = profileBlockRef.current
+      if (names.length > 0 && blocked !== null && profileBlockStillHolds(blocked)) {
+        const reason = t('profileBlockedSkipped').replace('{0}', profileBlockedText(blocked, t))
+        const skipped = names.splice(0, names.length)
+        setRecords(list => skipped.reduce((acc, item) => enqueue(acc, {
+          id: nextRecordId(), kind: 'update', name: item.name, state: 'failed', reason,
+        }), list))
+      }
+      // The host asked for a restart (#1253): the rest would be refused the
+      // same way. They stay un-updated and listed; the notice says what to do.
+      if (restartHoldRef.current) names.splice(0, names.length)
       const item = names.shift()
       if (item === undefined) {
         setUpdatingAll(false)
@@ -6214,7 +6870,7 @@ export function MarketSection(props: MarketSectionProps) {
       doUpdate(item.name, false, false, undefined, false, item.eligibleVersion).then(next, next)
     }
     next()
-  }, [reminderBatchUpdatableNames, doUpdate, refreshInstalled, updates])
+  }, [reminderBatchUpdatableNames, doUpdate, refreshInstalled, updates, t, nextRecordId])
 
   const finishRestore = useCallback((body: { errors?: unknown; unportable?: unknown; pinned?: unknown; bootErrors?: unknown }) => {
     const errors = Array.isArray(body.errors) ? body.errors as { name?: unknown; error?: unknown }[] : []
@@ -6338,6 +6994,13 @@ export function MarketSection(props: MarketSectionProps) {
     return String(error)
   }
 
+  /** The picker list: dependency plugins + bundle-only plugins, deduplicated. */
+  const exportOptions = useMemo(() => {
+    const names = new Set([...Object.keys(installed), ...installedBundles])
+    return [...names].sort()
+  }, [installed, installedBundles])
+  const exportAllSelected = exportOptions.length > 0 && exportOptions.every(name => exportSelection.has(name))
+
   const runGist = useCallback((action: 'export' | 'import' | 'verify') => {
     setGistBusy(true)
     setGistMessage(null)
@@ -6358,15 +7021,11 @@ export function MarketSection(props: MarketSectionProps) {
       }
       body.gistId = gistId.trim()
     }
-    if (action === 'export') {
-      // All plugins selected → full backup (with config); partial → only
-      // the checked plugins, config optional via the picker flag.
-      const allNames = new Set([...Object.keys(installed), ...installedBundles])
-      const allSelected = exportSelection.size === allNames.size && exportSelection.size > 0
-      if (!allSelected) {
-        body.includeDeps = [...exportSelection]
-        if (exportIncludeConfig) body.includeConfig = true
-      }
+    // A full export includes configuration by default. A partial export
+    // includes only the selected plugins and any explicitly selected config.
+    if (action === 'export' && !exportAllSelected) {
+      body.includeDeps = [...exportSelection]
+      if (exportIncludeConfig) body.includeConfig = true
     }
     fetch(api('/dsh-market/gist'), {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
@@ -6413,13 +7072,7 @@ export function MarketSection(props: MarketSectionProps) {
       // inside it — never hidden behind the dialog.
       if (action === 'export') setExportError(message)
     }).finally(() => setGistBusy(false))
-  }, [exportIncludeConfig, exportSelection, gistId, gistToken, installed, installedBundles, previewBackup, t])
-
-  /** The picker list: dependency plugins + bundle-only plugins, deduplicated. */
-  const exportOptions = useMemo(() => {
-    const names = new Set([...Object.keys(installed), ...installedBundles])
-    return [...names].sort()
-  }, [installed, installedBundles])
+  }, [exportAllSelected, exportIncludeConfig, exportSelection, gistId, gistMode, gistToken, previewBackup, t])
 
   /** Classify an install spec for the export picker badge. */
   const specKind = (spec: string | undefined): 'npm' | 'git' | 'file' | 'bundle' => {
@@ -6430,11 +7083,10 @@ export function MarketSection(props: MarketSectionProps) {
   }
 
   const openExportPicker = useCallback(() => {
-    const names = new Set([...Object.keys(installed), ...installedBundles])
-    setExportSelection(new Set(names))
+    setExportSelection(new Set(exportOptions))
     setExportIncludeConfig(false)
     setExportOpen(true)
-  }, [installed, installedBundles])
+  }, [exportOptions])
 
   const runWebdavRef = useRef(runWebdav)
   useEffect(() => { runWebdavRef.current = runWebdav }, [runWebdav])
@@ -6511,10 +7163,18 @@ export function MarketSection(props: MarketSectionProps) {
         if (aOn !== bOn) return bOn - aOn
         const aUp = isPluginUpdatable(nameA, String(specA), updates[nameA], updatedNames, quietUpdateSet) ? 1 : 0
         const bUp = isPluginUpdatable(nameB, String(specB), updates[nameB], updatedNames, quietUpdateSet) ? 1 : 0
-        return bUp - aUp
+        if (aUp !== bUp) return bUp - aUp
+        // The chosen field applies INSIDE those two groups, not across them:
+        // "sorted by install time" must not float a plugin the user switched
+        // off above one that is running (#1142, and #745 above still holds).
+        return compareInstalledRows(
+          installedSort,
+          { name: nameA, installedAt: installTimes[nameA]?.installedAt },
+          { name: nameB, installedAt: installTimes[nameB]?.installedAt },
+        )
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `updatesLoaded` stands in for `updates`/`updatedNames`: reorder when the check lands, then hold (#631). `effectiveDisabledSet` only re-runs this when a disable state actually changed; the toggled row is the only one that moves.
-  }, [isInstalledListActive, displayedInstalled, selfName, updatesLoaded, effectiveDisabledSet, dependencyOnlyNames])
+  }, [isInstalledListActive, displayedInstalled, selfName, updatesLoaded, effectiveDisabledSet, dependencyOnlyNames, installedSort, installTimes])
   const missingRestoreCount = Object.keys(pendingDependencies).filter(name => !installedFiles.includes(name)).length
   // Self-update lives in the page header (or the Plugins tab's own tab row)
   // and the settings card, not this tab's row list (the market itself is
@@ -6550,6 +7210,34 @@ export function MarketSection(props: MarketSectionProps) {
     />
   )
 
+  /** Bookmarks with no catalog entry have no card, so each gets its own row
+   * and its own remove button; a bulk clear sits beside them when there are several. */
+  const renderStaleFavorites = () => (
+    <div className={css.favoritesStaleBar} data-testid="favorites-stale">
+      <span>{t('favoritesStaleNote').replace('{0}', String(favoriteStale.length))}</span>
+      {favoriteStale.map(url => (
+        <div key={url} className={css.favoritesStaleRow}>
+          <span className={css.favoritesStaleName}>{url.replace(/^https?:\/\/(www\.)?github\.com\//, '')}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={clearingStale}
+            aria-label={`${t('favoriteRemove')} ${url}`}
+            onClick={() => toggleFavorite(url)}
+          >{t('favoriteRemove')}</Button>
+        </div>
+      ))}
+      {favoriteStale.length > 1 && (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={clearingStale}
+          onClick={() => clearStaleFavorites()}
+        >{clearingStale ? t('favoritesClearingStale') : t('favoritesClearStale')}</Button>
+      )}
+    </div>
+  )
+
   const renderPluginMenu = (plugin: RegistryPlugin, key = plugin.url) => {
     const aliases = blockAliases(plugin, matchInstalledName(plugin, installed, repoIdentities, data?.plugins, repoHints))
     const hidden = aliases.some(name => blockedNameSet.has(name))
@@ -6559,6 +7247,7 @@ export function MarketSection(props: MarketSectionProps) {
         onClose={() => setPluginMenuUrl(null)}
         onSelect={(id) => {
           setPluginMenuUrl(null)
+          if (id === 'favorite') toggleFavorite(plugin.url)
           if (id === 'block') toggleBlock(blockToggleName(aliases))
         }}
         align="end"
@@ -6572,20 +7261,32 @@ export function MarketSection(props: MarketSectionProps) {
             onClick={() => setPluginMenuUrl(open => open === key ? null : key)}
           >···</button>
         )}
-        items={[{ id: 'block', label: hidden ? t('blockRemove') : t('blockAdd') }]}
+        items={[
+          { id: 'favorite', label: favoriteUrlSet.has(plugin.url) ? t('favoriteRemove') : t('favoriteAdd') },
+          { id: 'block', label: hidden ? t('blockRemove') : t('blockAdd') },
+        ]}
       />
     )
   }
 
+  /** Catalog copy wins; an installed package can still explain itself when
+   * it has no usable catalog description (#1147). Shared by all installed views. */
+  const authoredDescription = (name: string, entry: RegistryPlugin | undefined): string => {
+    for (const description of [entry?.description?.[lang], entry?.description?.en, localDescriptions[name]]) {
+      if (typeof description === 'string' && description.trim() !== '') return description.trim()
+    }
+    return ''
+  }
+
   /**
    * What the group view says about an installed plugin beyond its name: the
-   * user's own note, else the catalog's description (#1006). One place, so a
-   * plugin reads the same whether it sits in a group or in "Ungrouped".
+   * user's own note, else the author's description (#1006, #1147). One place,
+   * so a plugin reads the same in a group or in "Ungrouped".
    */
   const installedBlurb = (name: string) => {
     const entry = data === null ? undefined : catalogEntryForInstalled(data.plugins, name, String(installed[name]), repoIdentities[name], repoHints[name])
     const note = notes[name]
-    const authored = (entry?.description && (entry.description[lang] || entry.description.en)) || ''
+    const authored = authoredDescription(name, entry)
     return { entry, note, shown: note ?? authored }
   }
 
@@ -6944,20 +7645,7 @@ export function MarketSection(props: MarketSectionProps) {
     const blocked = record !== null && (record.state === 'input' || record.state === 'failed')
     const compatibilityKey = hostCompatibilityKey(p)
     const compatibility = compatibilityKey === null ? undefined : hostCompatibility[compatibilityKey]
-    const hostRequirementLabel = compatibility?.requirement !== null && compatibility?.requirement !== undefined
-      ? t('hostRequirement').replace('{0}', compatibility.requirement)
-      : compatibilityKey === null
-        ? t('hostRequirementUnavailable')
-        : compatibility === undefined
-          ? t('hostRequirementLoading')
-          : compatibility.basis === 'undeclared'
-            ? t('hostRequirementUndeclared')
-            : t('hostRequirementUnavailable')
-    const hostRequirementTitle = compatibility?.declarations.map(declaration =>
-      declaration.kind === 'engine'
-        ? `engines.dsh: ${declaration.range}`
-        : `${declaration.package ?? 'peer'}: ${declaration.range}`,
-    ).join('\n') || hostRequirementLabel
+    const hostChip = hostRequirementChip(compatibility, compatibilityKey, t)
     return (
       <div key={p.url} className={blocked ? `${css.card} ${css.cardBlocked}` : css.card}>
         <div className={css.row1}>
@@ -7003,15 +7691,15 @@ export function MarketSection(props: MarketSectionProps) {
         )}
         <div className={css.foot}>
           <div className={css.footTags}>
-            <span
-              className={compatibility?.status === 'incompatible'
-                ? `${css.hostRequirement} ${css.hostRequirementBad}`
-                : css.hostRequirement}
-              data-status={compatibility?.status ?? 'unknown'}
-              title={(compatibility?.status === 'compatible' || compatibility?.status === 'incompatible'
-                ? t(compatibility.status === 'compatible' ? 'hostStatusCompatible' : 'hostStatusIncompatible') + '\n'
-                : '') + hostRequirementTitle}
-            >{hostRequirementLabel}</span>
+            <CardTip label={hostChip.title} maxWidth={320}>
+              <span
+                className={hostChip.bad
+                  ? `${css.hostRequirement} ${css.hostRequirementBad}`
+                  : css.hostRequirement}
+                data-status={hostChip.status}
+                tabIndex={0}
+              >{hostChip.label}</span>
+            </CardTip>
             {pluginCategories(p).map(category => (
               <span key={category} className={css.tag}>
                 {(data!.categories[category] && (data!.categories[category]![lang] || data!.categories[category]!.en)) || category}
@@ -7397,6 +8085,17 @@ export function MarketSection(props: MarketSectionProps) {
     })
   }, [doGroupAction, groups, installedThemeNames])
 
+  const marketUpdateStatus = updates[selfName]
+  const eligibleMarketVersion = marketUpdateStatus?.updateAvailable === true
+    ? marketUpdateStatus.eligibleVersion ?? marketUpdateStatus.latest ?? null
+    : null
+  const heldMarketVersion = marketUpdateStatus?.heldUpdate
+  const showMarketWait = typeof heldMarketVersion?.latest === 'string'
+    && heldMarketVersion.latest !== ''
+    && heldMarketVersion.latest !== eligibleMarketVersion
+    && !updatedNames.includes(selfName)
+    && !quietUpdateSet.has(selfName)
+
   // Update-the-market, update-all, and "don't remind". On the Plugins tab the
   // host already has a page title, so these sit on the market's own tab row.
   // Settings and the sidebar keep them in the heading.
@@ -7447,6 +8146,11 @@ export function MarketSection(props: MarketSectionProps) {
       onClick={doExportLog}
     >{exportState === 'busy' ? t('exportingLog') : t('exportLog')}</Button>
   )
+  // The header banner means "the check did not complete". One row that can never
+  // answer (a private repo probed anonymously) keeps its own per-row hint; it must
+  // not hold the whole page in a retry state forever (#1227).
+  const updateCheckFailed = updateCheck.failed === null
+    || (updateCheck.failed.size > 0 && updateCheck.failed.size >= Object.keys(updateCheck.updates).length)
 
   return (
     <div
@@ -7486,7 +8190,16 @@ export function MarketSection(props: MarketSectionProps) {
               market through a client that embeds it, with no other way to
               find the repo it came from. */}
           <a className={css.repoLink} href="https://github.com/dsh-market/dsh-market" target="_blank" rel="noreferrer" title="dsh-market · GitHub">dsh-market</a>
-          {version !== null && <span className={css.version} title={t('versionHint')}>v{version}</span>}
+          {version !== null && (
+            <span className={css.marketVersionGroup}>
+              <span className={css.version} title={t('versionHint')}>v{version}</span>
+              {showMarketWait && (
+                <Tooltip label={() => marketWaitTip(heldMarketVersion, eligibleMarketVersion, uiLocale, t)} side="bottom" delayMs={HOVER_TIP_DELAY_MS} portal maxWidth={320}>
+                  <span className={css.marketVersionWait} tabIndex={0}>{t('marketVersionWaiting')}</span>
+                </Tooltip>
+              )}
+            </span>
+          )}
           <a className={css.submitLink} href="https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md" target="_blank" rel="noreferrer">{t('submitPlugin')}</a>
           {exportLogButton}
           {batchActions}
@@ -7532,7 +8245,12 @@ export function MarketSection(props: MarketSectionProps) {
             className={(tab === 'backup' || tab === 'diagnostics') ? `${css.tab} ${css.on}` : css.tab}
             onClick={() => { if (tab !== 'backup' && tab !== 'diagnostics') setTab('backup') }}
           >{t('tabAdvanced')}</button>
-          <span className={css.grow} />
+          {/* Sponsors live in the spacer, not beside it: the spacer only gets the
+              width the tabs and actions leave over, so the mark can never push a
+              button onto a second line. When it does not fit it drops out whole. */}
+          <span className={surface === 'plugins' ? `${css.grow} ${css.sponsorSlot}` : css.grow}>
+            {surface === 'plugins' && <><span className={css.sponsorWrapFloor} /><SponsorMark lang={lang} t={t} /></>}
+          </span>
           {/* The host page already names this tab, so these sit here instead
               of a second title row. Settings and the sidebar keep them in
               the heading. Export stays reachable on this surface — install
@@ -7546,6 +8264,8 @@ export function MarketSection(props: MarketSectionProps) {
             lang={lang}
             describe={describePlugin}
             records={records}
+            startupRepairEntries={startupRepair?.entries}
+            checkoutRecoveryEntries={checkoutRecovery?.entries}
             open={operationsOpen}
             onOpenChange={setOperationsOpen}
             replacing={replacing}
@@ -7554,14 +8274,16 @@ export function MarketSection(props: MarketSectionProps) {
               for (const record of recordsRef.current) {
                 if (record.hostOperationId !== undefined
                   && (record.state === 'done' || record.state === 'warned' || record.state === 'failed')) {
-                  dismissedHostRef.current.add(record.hostOperationId)
+                  rememberDismissedHostId(record.hostOperationId)
                 }
               }
               setRecords(list => clearSettled(list))
             }}
             onCancel={record => doCancel(record)}
             onDismiss={record => {
-              if (record.hostOperationId !== undefined) dismissedHostRef.current.add(record.hostOperationId)
+              if (record.hostOperationId !== undefined) {
+                rememberDismissedHostId(record.hostOperationId)
+              }
               setRecords(list => drop(list, record.id))
             }}
             onRefresh={() => location.reload()}
@@ -7589,6 +8311,28 @@ export function MarketSection(props: MarketSectionProps) {
             }}
           />
         </div>
+        {!marketGone && updateCheckFailed && (
+          <div className={css.updateCheckNotice}>
+            <span role="status">{t('updateCheckFailed')}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={t('updateCheckRetry')}
+              disabled={checkingUpdates}
+              onClick={() => refreshInstalled(true)}
+            >{t('loadRetry')}</Button>
+          </div>
+        )}
+        {!marketGone && restartHold !== null && restartHold.boot === bootId && (
+          <div className={css.updateCheckNotice}>
+            <span role="status">{t('restartFirstNote')}</span>
+          </div>
+        )}
+        {!marketGone && profileBlocked !== null && (
+          <div className={css.updateCheckNotice}>
+            <span role="status">{profileBlockedText(profileBlocked, t)}</span>
+          </div>
+        )}
         {/* Backup & Restore and Diagnostics sit under Advanced rather than as
             their own top-level tabs — most users never need either, and having
             five peers up top buried the ones people actually reach for. */}
@@ -7709,6 +8453,18 @@ export function MarketSection(props: MarketSectionProps) {
             </span>
           </div>
         )}
+        {tab === 'installed' && <UpdateNotificationsPanel
+          snapshot={notificationSnapshot} t={t}
+          busy={updatingName !== null || busyUrl !== null || removingName !== null}
+          onCheck={checkUpdateNotifications}
+          onEnabled={setUpdateNotificationsEnabled}
+          onIntervalHours={setUpdateNotificationsIntervalHours}
+          onUpdate={name => {
+            if (updates[name]?.restoreRequired === true) askRestore(name)
+            else doUpdate(name)
+          }}
+          onOpenHost={openInHost === undefined ? undefined : name => openInHost.openBundle(name)}
+        />}
         {tab === 'installed' && <HostDependencyDiagnostics findings={hostDependencyFindings} t={t} />}
         {tab === 'installed' && brokenPluginNames.length > 0 && (
           <div className={css.brokenPluginNotice}>
@@ -8098,15 +8854,16 @@ export function MarketSection(props: MarketSectionProps) {
                         }}
                       />
                       </div>
-                      {compatibleWithHost && typeof hostVersion === 'string' && (
+                      {compatibleWithHost && typeof hostVersion === 'string' && pageHostPackages.length > 0 && (
                         <div className={css.hostFilterNote}>
-                          {hostCompatibilityPending > 0 || loadedHostPackages < allHostPackages.length
+                          {loadedHostPackages < pageHostPackages.length
                             ? t('hostFilterLoading')
                               .replace('{0}', String(loadedHostPackages))
-                              .replace('{1}', String(allHostPackages.length))
-                            : t('hostFilterActive')
+                              .replace('{1}', String(pageHostPackages.length))
+                            : t(hostUnavailableCount > 0 ? 'hostFilterIncomplete' : 'hostFilterActive')
                                 .replace('{0}', hostVersion)
-                                .replace('{1}', String(hostHiddenCount))}
+                                .replace('{1}', String(hostHiddenCount))
+                                .replace('{2}', String(hostUnavailableCount))}
                         </div>
                       )}
                     </div>
@@ -8140,31 +8897,19 @@ export function MarketSection(props: MarketSectionProps) {
                           </div>
                         </section>
                     )}
-                    {plugins.length === 0
-                      ? <EmptyResults blocked={pluginsAll.length > hostHiddenCount} t={t}
+                    {pagePlugins.length === 0
+                      ? <EmptyResults message={basePage.length > 0 ? 'hostFilterEmpty' : pluginsAll.length > 0 ? 'blockedFilteredEmpty' : 'empty'} t={t}
                           onClear={data.plugins.length > 0 && (q !== '' || cat !== 'all' || timeRange !== 'all' || compatibleWithHost) ? () => {
                             setQ(''); resetDiscoverSearch(value => value + 1)
                             setCat('all'); setTimeRange('all'); setCompatibleWithHost(false)
                             bodyRef.current?.querySelector('input')?.focus()
                           } : undefined}
                         />
-                      : (
-                          <>
-                            <Masonry items={pagePlugins} render={plugin => pluginCard(plugin)} />
-                            {surface === 'plugins'
-                              ? <LoadMore more={discoverMore.more} onLoad={discoverMore.loadMore} t={t} />
-                              : (
-                                  <Pager
-                                    currentPage={currentPage}
-                                    totalPages={totalPages}
-                                    pageSize={pageSize}
-                                    onGoToPage={goToPage}
-                                    onChangePageSize={changePageSize}
-                                    t={t}
-                                  />
-                                )}
-                          </>
-                        )}
+                      : <Masonry items={pagePlugins} render={plugin => pluginCard(plugin)} />}
+                    {pluginsUnblocked.length > 0 && (surface === 'plugins'
+                      ? <LoadMore more={discoverMore.more} onLoad={discoverMore.loadMore} t={t} />
+                      : <Pager currentPage={currentPage} totalPages={totalPages} pageSize={pageSize}
+                          onGoToPage={goToPage} onChangePageSize={changePageSize} t={t} />)}
                   </>
                 )
           : tab === 'favorites'
@@ -8200,27 +8945,14 @@ export function MarketSection(props: MarketSectionProps) {
                           ? (
                               <div className={css.favoritesStaleOnly}>
                                 <div className={css.empty}>{t('favoritesStaleEmpty')}</div>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={clearingStale}
-                                  onClick={() => clearStaleFavorites()}
-                                >{clearingStale ? t('favoritesClearingStale') : t('favoritesClearStale')}</Button>
+                                {renderStaleFavorites()}
                               </div>
                             )
                           : <div className={css.empty}>{t('empty')}</div>
                         : (
                             <>
                               {favoriteStale.length > 0 && (
-                                <div className={css.favoritesStaleBar}>
-                                  <span>{t('favoritesStaleNote').replace('{0}', String(favoriteStale.length))}</span>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={clearingStale}
-                                    onClick={() => clearStaleFavorites()}
-                                  >{clearingStale ? t('favoritesClearingStale') : t('favoritesClearStale')}</Button>
-                                </div>
+                                renderStaleFavorites()
                               )}
                               <div className={css.themeResultBar}>
                                 <span>{t('favoritesResultCount').replace('{0}', String(favoriteListed.length))}</span>
@@ -8315,7 +9047,7 @@ export function MarketSection(props: MarketSectionProps) {
                     : anyThemePlugins.length === 0
                       ? <div className={css.empty}>{t('themeEmpty')}</div>
                       : themePlugins.length === 0
-                        ? <EmptyResults blocked={themePluginsAll.length > 0} t={t}
+                        ? <EmptyResults message={themePluginsAll.length > 0 ? 'blockedFilteredEmpty' : 'empty'} t={t}
                             onClear={qThemes !== '' || themeTimeRange !== 'all' ? () => {
                               setQThemes(''); resetThemeSearch(value => value + 1)
                               setThemeTimeRange('all')
@@ -8377,6 +9109,13 @@ export function MarketSection(props: MarketSectionProps) {
                   </div>
                   <div className={css.tabSearchRow}>
                     <SearchInput key="installed" resetToken={installedSearchReset} className={css.tabSearch} placeholder={t('searchPh')} value={qInstalled} onCommit={setQInstalled} t={t} />
+                    {/* The order control belongs to the list only: groups are
+                        ordered by the user's own group order, and offering to
+                        sort them by install time would silently rearrange
+                        something that is not sorted by anything else. */}
+                    {installedView === 'list' && (
+                      <InstalledSortMenu value={installedSort} onChange={setInstalledSort} t={t} />
+                    )}
                     {installedView === 'groups' && (
                       creatingGroup
                         ? (
@@ -8399,6 +9138,18 @@ export function MarketSection(props: MarketSectionProps) {
                   {installedView === 'groups'
                       ? (
                           <>
+                            {groupOrder.length > 0 && (
+                              <div className={css.groupBulkActions}>
+                                <Button variant="ghost" size="sm"
+                                  disabled={groupQuery !== '' || groupOrder.every(gid => collapsedGroups.has(gid))}
+                                  onClick={() => setCollapsedGroups(new Set(groupOrder))}
+                                >{t('groupCollapseAll')}</Button>
+                                <Button variant="ghost" size="sm"
+                                  disabled={groupQuery !== '' || !groupOrder.some(gid => collapsedGroups.has(gid))}
+                                  onClick={() => setCollapsedGroups(new Set())}
+                                >{t('groupExpandAll')}</Button>
+                              </div>
+                            )}
                             {groupQuery === '' && groupOrder.length === 0
                               ? <div className={css.empty}>{t('noGroups')}</div>
                               : visibleGroupIds.map(gid => {
@@ -8640,6 +9391,9 @@ export function MarketSection(props: MarketSectionProps) {
                         ? <div className={css.empty}>{t('installedEmpty')}</div>
                         : (
                           <Masonry
+                            maxColumns={2}
+                            minColumns={1}
+                            className={css.masonryInstalled}
                             items={orderedInstalledEntries
                             .filter(([name, spec]) => {
                               const needle = qInstalled.trim().toLowerCase()
@@ -8668,12 +9422,25 @@ export function MarketSection(props: MarketSectionProps) {
                             const act = activations[name]
                             const meta = act !== undefined ? activationMeta(act.state, t, act.dependencyOf, act.loadedByProfile, act.library) : null
                             const version = status && status.version ? 'v' + status.version : ''
+                            // When this market installed it (#1142), in the
+                            // reader's own timezone. `updatedOn` never
+                            // replaces the install date on the line — they are
+                            // two events, and only the install date is what
+                            // the sort orders by.
+                            const stamp = installTimes[name]
+                            const installedOn = installedDateText(stamp?.installedAt)
+                            const updatedOn = installedDateText(stamp?.updatedAt)
+                            const installedWhenTitle = [
+                              installedOn === null ? t('installedAtUnknown') : `${t('installedAtLabel')} ${installedOn}`,
+                              updatedOn === null ? '' : `${t('updatedAtLabel')} ${updatedOn}`,
+                            ].filter(Boolean).join(' · ')
                             const specText = String(spec)
                             // A plain range beside the resolved version says the
                             // same thing twice. Every other spec — github:, file:,
                             // link:, a tag — is the only place the row says where
                             // the plugin came from, so it stays.
                             const specRedundant = version !== '' && /^[\^~]?\d/.test(specText)
+                            const releaseSource = entry !== undefined && catalogReleaseSourceOf(specText, entry) !== null
                             const localPath = localPathOf(specText)
                             const ghSpec = /^github:([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:#|$)/.exec(specText)
                             const repoUrl = entry !== undefined ? entry.url : ghSpec !== null ? 'https://github.com/' + ghSpec[1] : null
@@ -8683,6 +9450,38 @@ export function MarketSection(props: MarketSectionProps) {
                             // states. inert/broken rows keep their diagnosis
                             // without a misleading toggle (#60).
                             const toggleable = act?.library !== true && (off || (act !== undefined && (act.state === 'live' || act.state === 'restart')))
+                            const updatable = isPluginUpdatable(name, String(spec), status, updatedNames)
+                            const metaBits = [
+                              version,
+                              localDev ? t('linkedDev') : '',
+                              // Third segment of the same line (#1142), and only
+                              // when the market knows it. Every package installed
+                              // before this existed, or through the CLI, has no
+                              // date: a dash on all of those rows is a placeholder
+                              // that says nothing, so the row stays quiet and the
+                              // hover text explains why there is no date. The
+                              // label says what the date is: a bare date beside a
+                              // version reads as a release date.
+                              installedOn === null ? '' : `${t('installedAtLabel')} ${installedOn}`,
+                            ].filter(Boolean)
+                            // Same DSH chip as Discover (label / tip / bad ink).
+                            // - No catalog entry: stay quiet (scan cannot settle → never Loading).
+                            // - Activation incompat: status band only — no second red chip.
+                            // - Local-dev / missing: quiet.
+                            const compatibilityKey = entry !== undefined ? hostCompatibilityKey(entry) : null
+                            const compatibility = compatibilityKey === null
+                              ? undefined
+                              : hostCompatibility[compatibilityKey]
+                            const hostChip = hostRequirementChip(compatibility, compatibilityKey, t)
+                            const showIncompat = !localDev && act?.state === 'incompatible'
+                            const showHostRequirement = !missing && !localDev && !showIncompat && entry !== undefined
+                              // Only a known requirement earns a chip. "undeclared" / "unknown" /
+                              // "loading" on every card is noise the user cannot act on.
+                              && compatibility?.requirement != null
+                            const note = notes[name]
+                            const authored = authoredDescription(name, entry)
+                            const theirs = showTheirs.includes(name)
+                            const shown = note !== undefined && !theirs ? note : authored
                             return (
                               <div key={name} className={missing ? `${css.irow} ${css.irowMissing}` : css.irow}>
                                 <div style={{ minWidth: 0 }}>
@@ -8711,9 +9510,30 @@ export function MarketSection(props: MarketSectionProps) {
                                     <span className={css.irowMenu}>{renderInstalledBlockMenu(name)}</span>
                                   )}
                                   </div>
-                                  {(version !== '' || localDev) && (
+                                  {(metaBits.length > 0 || updatable) && (
                                     <div className={css.irowMeta}>
-                                      {[version, localDev ? t('linkedDev') : ''].filter(Boolean).join(' · ')}
+                                      {metaBits.length > 0 && (
+                                        <span className={css.irowMetaText} title={installedWhenTitle}>
+                                          {metaBits.join(' · ')}
+                                        </span>
+                                      )}
+                                      {/* Notes sit beside the installed version — the
+                                          update button already says a newer cut exists,
+                                          so a second "有新版本" band is just empty space. */}
+                                      {updatable && (
+                                        <button
+                                          type="button"
+                                          className={css.notesLink}
+                                          onClick={() => openNotes(
+                                            name,
+                                            status?.current ?? null,
+                                            status?.latest ?? null,
+                                            // Prefer the mature install target (#1193); else latest.
+                                            status?.eligibleVersion ?? status?.latest ?? null,
+                                            repoUrl,
+                                          )}
+                                        >{`${t('notesLink')} ›`}</button>
+                                      )}
                                     </div>
                                   )}
                                   {specRedundant
@@ -8730,6 +9550,13 @@ export function MarketSection(props: MarketSectionProps) {
                                             )}
                                           </div>
                                         )
+                                      : releaseSource
+                                        ? (
+                                            <div className={css.irowPath}>
+                                              <span className={css.irowPathIcon}><IconLinkOutline14 size={14} /></span>
+                                              <a className={`${css.spec} ${css.src}`} href={specText} title={specText} target="_blank" rel="noreferrer">GitHub Release</a>
+                                            </div>
+                                          )
                                       : repoUrl !== null
                                         ? (
                                             <div className={css.irowPath}>
@@ -8746,38 +9573,34 @@ export function MarketSection(props: MarketSectionProps) {
                                       which is what someone with forty plugins
                                       is asking. The original stays one click
                                       away rather than being lost. */}
-                                  {notingName === name
-                                    ? (
-                                        <div className={css.noteEdit}>
-                                          <Input
-                                            className={css.noteInput}
-                                            value={noteDraft}
-                                            maxLength={NOTE_MAX}
-                                            autoFocus
-                                            placeholder={t('notePlaceholder')}
-                                            onChange={e => setNoteDraft(e.target.value)}
-                                            onKeyDown={(e) => {
-                                              // Enter while an IME is composing commits the candidate, not the note.
-                                              if (e.nativeEvent.isComposing || e.keyCode === 229) return
-                                              if (e.key === 'Enter') saveNote(name, noteDraft)
-                                              if (e.key === 'Escape') setNotingName(null)
-                                            }}
-                                          />
-                                          <div className={css.noteEditBar}>
-                                            <span className={css.noteCount} aria-hidden="true">{`${noteDraft.length}/${NOTE_MAX}`}</span>
-                                            <Button variant="ghost" size="sm" onClick={() => setNotingName(null)}>{t('cancel')}</Button>
-                                            <Button variant="primary" size="sm" onClick={() => saveNote(name, noteDraft)}>{t('noteSave')}</Button>
+                                  <div className={css.irowDescBand}>
+                                    {notingName === name
+                                      ? (
+                                          <div className={css.noteEdit}>
+                                            <Input
+                                              className={css.noteInput}
+                                              value={noteDraft}
+                                              maxLength={NOTE_MAX}
+                                              autoFocus
+                                              placeholder={t('notePlaceholder')}
+                                              onChange={e => setNoteDraft(e.target.value)}
+                                              onKeyDown={(e) => {
+                                                // Enter while an IME is composing commits the candidate, not the note.
+                                                if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                                                if (e.key === 'Enter') saveNote(name, noteDraft)
+                                                if (e.key === 'Escape') setNotingName(null)
+                                              }}
+                                            />
+                                            <div className={css.noteEditBar}>
+                                              <span className={css.noteCount} aria-hidden="true">{`${noteDraft.length}/${NOTE_MAX}`}</span>
+                                              <Button variant="ghost" size="sm" onClick={() => setNotingName(null)}>{t('cancel')}</Button>
+                                              <Button variant="primary" size="sm" onClick={() => saveNote(name, noteDraft)}>{t('noteSave')}</Button>
+                                            </div>
                                           </div>
-                                        </div>
-                                      )
-                                    : (() => {
-                                        const note = notes[name]
-                                        const authored = (entry?.description && (entry.description[lang] || entry.description.en)) || ''
-                                        const theirs = showTheirs.includes(name)
-                                        const shown = note !== undefined && !theirs ? note : authored
-                                        return (
-                                          <div className={`${css.desc} ${css.descTight} ${css.noteRow}`}>
-                                            {shown !== '' && (
+                                        )
+                                      : shown !== ''
+                                        ? (
+                                            <div className={`${css.desc} ${css.descTight} ${css.irowBody}`}>
                                               <CardDesc
                                                 key={shown}
                                                 text={shown}
@@ -8786,7 +9609,27 @@ export function MarketSection(props: MarketSectionProps) {
                                                 className={css.irowDesc}
                                                 textClassName={note !== undefined && !theirs ? css.noteMine : undefined}
                                               />
-                                            )}
+                                            </div>
+                                          )
+                                        : null}
+                                    {/* Foot stays outside the note editor so the DSH chip
+                                        does not vanish while editing. Note actions hide
+                                        during edit (the editor is the action). */}
+                                    {(showHostRequirement || notingName !== name) && (
+                                      <div className={(shown === '' || notingName === name) ? `${css.irowFootRow} ${css.irowNoteActionsSpaced}` : css.irowFootRow}>
+                                        {showHostRequirement && (
+                                          <CardTip label={hostChip.title} maxWidth={320}>
+                                            <span
+                                              className={hostChip.bad
+                                                ? `${css.hostRequirement} ${css.hostRequirementBad}`
+                                                : css.hostRequirement}
+                                              data-status={hostChip.status}
+                                              tabIndex={0}
+                                            >{hostChip.label}</span>
+                                          </CardTip>
+                                        )}
+                                        {notingName !== name && (
+                                          <div className={css.irowNoteActions}>
                                             {note !== undefined && authored !== '' && (
                                               <button
                                                 type="button"
@@ -8805,51 +9648,39 @@ export function MarketSection(props: MarketSectionProps) {
                                               {note === undefined ? t('noteAdd') : t('noteEdit')}
                                             </button>
                                           </div>
-                                        )
-                                      })()}
-                                  {/* Update and reminder lines (#294, #728). An up-to-date row
-                                      with reminders on renders neither. */}
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* Incompat / muted-reminder only (#294, #728). Held waits
+                                      sit with the update control. Compatible rows show the
+                                      Discover-parity DSH chip; incompat rows use this band only. */}
                                   {(() => {
-                                    const updatable = isPluginUpdatable(name, String(spec), status, updatedNames)
                                     const exempt = updateExemptSet.has(name)
-                                    if (!updatable && !exempt) return null
+                                    // Activation is the installed fact. Catalog discovery only
+                                    // fills requirement numbers — never lights the band alone
+                                    // (catalog latest can be incompatible while this install runs).
                                     const ignored = !exempt && bootId !== null && ignoredUpdateSet.has(name)
-                                    const sep = <span className={css.irowStatusSep} aria-hidden="true">·</span>
+                                    if (!exempt && !ignored && !showIncompat) return null
                                     return (
-                                      <>
-                                        {/* The fact and the reminder are separate lines: silencing one
-                                            must never read as hiding the other (#728). */}
-                                        {updatable && (
-                                          <div className={css.irowStatus}>
-                                            {/* A generation's newer release is already stated in the action band. */}
-                                            {!generation && (
-                                              <span className={css.irowStatusPart}>
-                                                <span className={css.irowStatusFact}>
-                                                  {status?.eligibleVersion != null
-                                                    ? t('hostUpdateReady').replace('{0}', displayLatest(status.eligibleVersion))
-                                                    : status?.latest != null ? t('hostUpdateReady').replace('{0}', displayLatest(status.latest)) : t('updateAvailableShort')}
-                                                </span>
-                                                {sep}
-                                              </span>
-                                            )}
-                                            <button
-                                              type="button"
-                                              className={css.notesLink}
-                                              onClick={() => openNotes(name, status?.current ?? null, status?.latest ?? null, repoUrl)}
-                                            >{`${t('notesLink')} ›`}</button>
+                                      <div className={css.irowStatusBand}>
+                                        {showIncompat && (
+                                          <div className={css.irowIncompat}>
+                                            <div className={css.irowIncompatTitle}>{t('installedIncompatTitle')}</div>
+                                            <div className={css.irowIncompatBody}>
+                                              {t('installedIncompatWhy')
+                                                .replace('{0}', compatibility?.requirement ?? t('hostIncompatibleUnknown'))
+                                                .replace('{1}', (typeof hostVersion === 'string' ? hostVersion : null) ?? t('hostIncompatibleUnknown'))}
+                                            </div>
+                                            <div className={css.irowIncompatBody}>
+                                              {status?.updateAvailable === true
+                                                ? t('installedIncompatNextUpdate')
+                                                : compatibility?.status === 'incompatible'
+                                                  ? t('installedIncompatNextHost')
+                                                  : t('installedIncompatNextUnknown')}
+                                            </div>
                                           </div>
                                         )}
-                                        {updatable && status?.eligibleVersion !== undefined && status.restoreRequired !== true &&
-                                          status.heldUpdate !== undefined && status.heldUpdate.latest !== status.eligibleVersion && (() => {
-                                            const left = Date.parse(status.heldUpdate.until) - Date.now()
-                                            const known = status.heldUpdate.estimated !== true && Number.isFinite(left) && left > 0
-                                            return <div className={css.irowStatus}><span className={css.metaInline}>{
-                                              t(known ? 'updateHeldTarget' : 'updateHeldTargetUnknown')
-                                                .replace('{0}', displayLatest(status.heldUpdate.latest))
-                                                .replace('{1}', String(Math.max(1, Math.ceil(left / 3_600_000))))
-                                                .replace('{2}', displayLatest(status.eligibleVersion))
-                                            }</span></div>
-                                          })()}
                                         {(exempt || ignored) && (
                                           <div className={css.irowStatus}>
                                             <span className={css.irowStatusIcon}><IconBellOff size={16} /></span>
@@ -8878,17 +9709,18 @@ export function MarketSection(props: MarketSectionProps) {
                                             </span>
                                           </div>
                                         )}
-                                      </>
+                                      </div>
                                     )
                                   })()}
                                   {!off && act !== undefined && meta !== null && (
                                         <div className={css.act}>
                                           {/* Only a state the switch does NOT already show earns a
                                               line here: "installed but not active" is news, "live"
-                                              is what the switch is for. */}
+                                              is what the switch is for. Incompatible already owns
+                                              the quiet status band — do not repeat the same label. */}
                                           {act.library === true
                                             ? <span className={css.metaTag}>{meta.label}</span>
-                                            : meta.dot !== 'done' && (
+                                            : meta.dot !== 'done' && (localDev || act.state !== 'incompatible') && (
                                                 <span className={meta.dot === 'error' ? css.actBroken : css.actWarn}>
                                                   <StateDot state={meta.dot} size={7} />
                                                   {meta.label}
@@ -8978,8 +9810,10 @@ export function MarketSection(props: MarketSectionProps) {
                                     </>
                                   )
                                 })()}
-                                {/* The status tags stay one unit, so a wrap moves them together (#242). */}
+                                {/* Horizontal ops stay in one trailing unit so a
+                                    wrap moves them together (#242, installed layout). */}
                                 <span className={css.irowTrailing}>
+                                <span className={css.irowTrailingRow}>
                                 {!missing && status?.sourceMigration !== undefined && (
                                   <Button
                                     variant="outline"
@@ -8993,49 +9827,72 @@ export function MarketSection(props: MarketSectionProps) {
                                   : updatedNames.includes(name)
                                     ? <span className={`${css.metaTag} ${css.metaTagOk}`}>{act?.library === true ? t('updatedLibrary') : act?.state === 'live' ? t('updatedLive') : t('updated')}</span>
                                     : updatingName === name
-                                      ? <Button variant="outline" size="sm" className={css.warnBtn} disabled>{t('updating')}</Button>
+                                      ? <Button variant="outline" size="sm" className={css.irowUpdateBtn} disabled>{t('updating')}</Button>
                                       : status !== undefined && generation && status.latest != null
                                         ? <span className={css.metaTag} title={t('hostUpdateHint')}>{t('hostUpdateReady').replace('{0}', status.latest)}</span>
-                                      : status && status.updateAvailable
+                                      : status?.profileBlocked !== undefined && status.updateAvailable !== true
+                                        // Another release in the profile is in the way (#1252).
+                                        // One short word here; the sentence is in the tooltip
+                                        // and, once, in the note above the list.
                                         ? (
-                                            <>
-                                              <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className={css.warnBtn}
-                                                disabled={updatingName !== null}
-                                                onClick={() => {
-                                                  if (status.restoreRequired === true) askRestore(name)
-                                                  else doUpdate(name)
-                                                }}
-                                              >{status.restoreRequired === true ? t('restoreOnline')
-                                                : status.eligibleVersion !== undefined ? `${t('update')} ${displayLatest(status.eligibleVersion)}` : t('update')}</Button>
-                                              {status.heldUpdate !== undefined && (
-                                                <span className={css.metaTag}>
-                                                  {t('updateHeldTag').replace('{0}', displayLatest(status.heldUpdate.latest))}
-                                                </span>
-                                              )}
-                                            </>
+                                            <Tooltip label={profileBlockedText(status.profileBlocked, t)} side="top" delayMs={HOVER_TIP_DELAY_MS} portal maxWidth={280}>
+                                              <span className={css.irowTrailingHint}>
+                                                <IconClock size={12} />
+                                                {t('profileBlockedBeside')}
+                                              </span>
+                                            </Tooltip>
                                           )
-                                        : status?.heldUpdate !== undefined
-                                          // A newer release exists but pnpm will refuse
-                                          // it until the profile's fresh-release wait
-                                          // passes (#945). The official Desktop has no
-                                          // bypass, so the honest state is "waiting",
-                                          // not a button that fails by construction.
-                                          ? (() => {
-                                              const left = Date.parse(status.heldUpdate.until) - Date.now()
-                                              // An estimated hold is the registry failing to say when
-                                              // the version shipped (#961), not a known window: say
-                                              // minutes and say why, rather than claiming a wait the
-                                              // market cannot know.
-                                              const estimated = status.heldUpdate.estimated === true
-                                              const amount = String(Math.max(1, Math.ceil(left / (estimated ? 60_000 : 3_600_000))))
-                                              const hint = t(estimated ? 'updateHeldEstimatedHint' : 'updateHeldHint').replace('{1}', amount)
+                                      : status && status.updateAvailable
+                                        ? (() => {
+                                              // Hint then button: clock+short wait stays visible,
+                                              // update action stays the rightmost control.
+                                              const held = status.heldUpdate !== undefined
+                                                ? heldUpdateBeside(status.heldUpdate, t)
+                                                : null
                                               return (
-                                                <span className={css.metaTag} title={hint}>
-                                                  {t('updateHeldTag').replace('{0}', displayLatest(status.heldUpdate.latest))}
-                                                </span>
+                                                <>
+                                                  {held !== null && (
+                                                    <Tooltip label={held.title} side="top" delayMs={HOVER_TIP_DELAY_MS} portal maxWidth={280}>
+                                                      <span className={css.irowTrailingHint}>
+                                                        <IconClock size={12} />
+                                                        {held.label}
+                                                      </span>
+                                                    </Tooltip>
+                                                  )}
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className={css.irowUpdateBtn}
+                                                    disabled={updatingName !== null}
+                                                    onClick={() => {
+                                                      if (status.restoreRequired === true) askRestore(name)
+                                                      else doUpdate(name)
+                                                    }}
+                                                  >{status.restoreRequired === true ? t('restoreOnline')
+                                                    : (() => {
+                                                        // Status fact is versionless; the button is the
+                                                        // one place that still names the target. Prefer
+                                                        // the mature eligible cut, else latest (#layout).
+                                                        const target = status.eligibleVersion ?? status.latest
+                                                        return target != null && target !== ''
+                                                          ? `${t('update')} ${displayLatest(target)}`
+                                                          : t('update')
+                                                      })()}</Button>
+                                                </>
+                                              )
+                                            })()
+                                        : status?.heldUpdate !== undefined
+                                          // Held-only: no installable cut yet (#945). Same quiet
+                                          // clock hint as beside the update button.
+                                          ? (() => {
+                                              const held = heldUpdateBeside(status.heldUpdate, t)
+                                              return (
+                                                <Tooltip label={held.title} side="top" delayMs={HOVER_TIP_DELAY_MS} portal maxWidth={280}>
+                                                  <span className={css.irowTrailingHint}>
+                                                    <IconClock size={12} />
+                                                    {held.label}
+                                                  </span>
+                                                </Tooltip>
                                               )
                                             })()
                                         : localDev
@@ -9061,8 +9918,11 @@ export function MarketSection(props: MarketSectionProps) {
                                                     >{t('install')}</Button>
                                                   </>
                                                 )
-                                              : <span className={css.metaTag} title={t('upToDate')}>{t('upToDate')}</span>}
+                                              : updateCheck.failed === null || updateCheck.failed.has(name)
+                                                ? null
+                                                : <span className={css.metaTag} title={t('upToDate')}>{t('upToDate')}</span>}
                                 {removingName === name && <span className={css.metaTag}>{t('uninstalling')}</span>}
+                                </span>
                                 </span>
                                 </div>
                               </div>
@@ -9362,7 +10222,7 @@ export function MarketSection(props: MarketSectionProps) {
           key={commentsFor.url}
           name={pluginName(commentsFor.name, commentsFor.npm)}
           url={commentsFor.url}
-          lang={lang}
+          lang={uiLocale}
           onClose={() => setCommentsFor(null)}
           t={t}
         />
@@ -9584,8 +10444,9 @@ export function MarketSection(props: MarketSectionProps) {
       {notesFor !== null && (
         <Modal
           open
-          onClose={() => setNotesFor(null)}
-          className={notesState === 'ready' && updateNotes?.kind === 'release' ? css.notesModalWide : undefined}
+          onClose={closeNotes}
+          className={notesState === 'ready' && (updateNotes?.kind === 'release' || (updateNotes?.history?.items.length ?? 0) > 0)
+            ? css.notesModalWide : undefined}
           /* The host's Modal renders its title node verbatim; the hand-written
              primitives.d.ts narrows the prop to string, so this cast documents
              intent rather than defeating a runtime check. */
@@ -9593,7 +10454,7 @@ export function MarketSection(props: MarketSectionProps) {
             ? <a className={css.nameLink} href={notesFor.repoUrl + '#readme'} target="_blank" rel="noreferrer">{notesFor.name}</a>
             : notesFor.name) as unknown as string}
           footer={(
-            <Button variant="ghost" onClick={() => setNotesFor(null)}>{t('gotIt')}</Button>
+            <Button variant="ghost" onClick={closeNotes}>{t('gotIt')}</Button>
           )}
         >
           {/* The version line reads as versions when both ends are semver and
@@ -9605,75 +10466,17 @@ export function MarketSection(props: MarketSectionProps) {
                 ? notesFor.current.slice(0, 7)
                 : notesFor.current}</span>
               <span className={css.notesArrow}>→</span>
-              <span className={css.spec}>{notesFor.latest !== null && notesFor.latest.length === 40
-                ? notesFor.latest.slice(0, 7)
-                : notesFor.latest}</span>
+              <span className={css.spec}>{(() => {
+                const end = notesFor.target ?? notesFor.latest
+                return end !== null && end.length === 40 ? end.slice(0, 7) : end
+              })()}</span>
             </div>
           )}
           {notesState === 'loading' && <div className={css.spec}>{t('loading')}</div>}
           {notesState === 'fail' && <div className={css.spec}>{t('notesLoadFail')}</div>}
           {notesState === 'ready' && updateNotes !== null && (
-            updateNotes.kind === 'release' ? (
-              <div className={css.notesBody}>
-                <div className={css.notesMeta}>
-                  <strong>{t('notesRelease')}</strong>
-                  {updateNotes.release.tag !== null && <span>{' ' + updateNotes.release.tag}</span>}
-                  {updateNotes.release.publishedAt !== null && <span>{' · ' + updateNotes.release.publishedAt.slice(0, 10)}</span>}
-                </div>
-                {/* Author-written markdown through the tiny converter: HTML is
-                    stripped first; headings, quotes, fences, bullets, bold,
-                    inline code, https links and allowlisted images only. */}
-                <div className={css.notesRendered}>{renderMarkdown(updateNotes.release.body || t('notesNone'))}</div>
-              </div>
-            )
-            : updateNotes.kind === 'commits' ? (
-              <div className={css.notesBody}>
-                <div className={css.notesMeta}><strong>{t('notesCommits')}</strong></div>
-                {!updateNotes.commits.found && <div className={css.notesMeta}>{t('notesCommitsRecent')}</div>}
-                <ul className={css.notesList}>
-                  {updateNotes.commits.items.map(c => (
-                    <li key={c.sha} className={css.notesRow}>
-                      <span className={css.notesDate}>{c.date !== null ? c.date.slice(0, 10) : ''}</span>
-                      <span className={css.notesMsg}>{mdInline(c.message)}</span>
-                      {notesFor.repoUrl !== null && (
-                        /* The commit itself on GitHub — the escape hatch when
-                           two lines of clamp hide exactly the detail wanted. */
-                        <a className={css.notesSha}
-                          href={notesFor.repoUrl + '/commit/' + c.sha}
-                          target="_blank" rel="noreferrer"
-                          title={c.message}>{c.sha.slice(0, 7)}</a>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )
-            : updateNotes.kind === 'npm' ? (
-              <div className={css.notesBody}>
-                <div className={css.notesMeta}><strong>{t('notesNpm')}</strong></div>
-                <ul className={css.notesList}>
-                  {updateNotes.npmTimes.map(v => (
-                    <li key={v.version} className={css.notesRow}>
-                      <span className={css.notesDate}>{v.date.slice(0, 10)}</span>
-                      <a className={css.notesVer}
-                        href={`https://www.npmjs.com/package/${encodeURIComponent(notesFor.name)}/v/${encodeURIComponent(v.version)}`}
-                        target="_blank" rel="noreferrer">{v.version}</a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )
-            : updateNotes.kind === 'source' ? (
-              <div className={css.spec}>
-                {t(updateNotes.reason === 'unavailable'
-                  ? 'notesLoadFail'
-                  : updateNotes.reason === 'unreadable' ? 'notesSourceUnreadable' : 'notesSource')}
-                {typeof updateNotes.sourceUrl === 'string' && /^https?:\/\//i.test(updateNotes.sourceUrl)
-                  ? <>{lang === 'zh' ? '' : ' '}<a className={css.notesSourceLink} href={updateNotes.sourceUrl} target="_blank" rel="noreferrer">{t('notesSourceLink')}</a></>
-                  : updateNotes.reason !== 'unavailable' && <>{lang === 'zh' ? '' : ' '}{t('notesSourceNoLink')}</>}
-              </div>
-            )
-            : <div className={css.spec}>{t('notesNone')}</div>
+            <UpdateNotesContent notes={updateNotes} name={notesFor.name} target={notesFor.target ?? notesFor.latest}
+              repoUrl={notesFor.repoUrl} t={t} lang={lang} />
           )}
         </Modal>
       )}
@@ -9738,7 +10541,7 @@ export function MarketSection(props: MarketSectionProps) {
                 className: css.backupCheck,
                 onChange: setExportIncludeConfig,
               })}
-              {exportIncludeConfig && <p className={css.backupWarn}>{t('credsWarning')}</p>}
+              {(exportAllSelected || exportIncludeConfig) && <p className={css.backupWarn}>{t('gistConfigWarning')}</p>}
               {exportError !== null && <p className={css.backupWarn}>{exportError}</p>}
             </>
           )}

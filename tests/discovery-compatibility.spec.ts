@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -13,6 +13,7 @@ import {
 const HOST_PACKAGES = new Set([
   '@deepseek-ai/dsh',
   '@deepseek-ai/dsh-settings',
+  '@deepseek-ai/dsh-credentials',
   '@deepseek-ai/dsh-tools',
   '@deepseek-ai/cordis',
   '@deepseek-ai/schemastery',
@@ -161,6 +162,7 @@ describe('manifestFacts', () => {
       version: '1.2.3',
       enginesDsh: '^0.1.2-alpha.2',
       peerDependencies: { '@deepseek-ai/dsh-tools': '^0.1.2-alpha.2' },
+      dependencies: {},
     })
   })
 })
@@ -174,6 +176,7 @@ describe('manifestFacts reads both host-requirement shapes (#577)', () => {
       version: '0.3.20',
       enginesDsh: '>=0.1.5-rc.1',
       peerDependencies: {},
+      dependencies: {},
     })
   })
 
@@ -186,6 +189,7 @@ describe('manifestFacts reads both host-requirement shapes (#577)', () => {
       version: '1.0.0',
       enginesDsh: '^0.1.2-alpha.2',
       peerDependencies: {},
+      dependencies: {},
     })
   })
 
@@ -197,6 +201,7 @@ describe('manifestFacts reads both host-requirement shapes (#577)', () => {
       version: '1.0.0',
       enginesDsh: null,
       peerDependencies: {},
+      dependencies: {},
     })
   })
 })
@@ -205,6 +210,20 @@ describe('DiscoveryManifestIndex', () => {
   const directories: string[] = []
   afterEach(() => {
     for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
+  })
+
+  it('returns newly fetched facts before writing to the compatibility cache (#1170)', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'dshm-discovery-'))
+    directories.push(directory)
+    const index = new DiscoveryManifestIndex(join(directory, 'discovery.json'), {
+      fetcher: async () => Response.json({ version: '1.0.0' }),
+    })
+
+    expect(await index.lookup(['plugin-a'], 'https://registry.example')).toEqual({
+      'plugin-a': manifestFacts({ version: '1.0.0' }),
+    })
+    expect(readdirSync(directory)).toEqual([])
+    await index.dispose()
   })
 
   it('bounds concurrency and reuses the durable cache in a new index', async () => {
@@ -235,6 +254,7 @@ describe('DiscoveryManifestIndex', () => {
     expect(Object.keys(loaded)).toHaveLength(3)
     expect(calls).toBe(3)
     expect(peak).toBe(2)
+    await first.dispose()
 
     const second = new DiscoveryManifestIndex(cache, {
       fetcher: async () => { throw new Error('the durable cache should answer') },
@@ -243,6 +263,67 @@ describe('DiscoveryManifestIndex', () => {
     })
     expect(await second.lookup(['plugin-a', 'plugin-b', 'plugin-c'], 'https://registry.example'))
       .toEqual(loaded)
+    await second.dispose()
+  })
+
+  it('keeps a whole catalog-sized scan cached, not just its last 5,000 (#1170)', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'dshm-discovery-'))
+    directories.push(directory)
+    const cache = join(directory, '.dsh-market', 'discovery.json')
+    const names = Array.from({ length: 5_300 }, (_, i) => `plugin-${String(i)}`)
+    let clock = 1_000
+    const fetcher = async (): Promise<Response> => new Response(JSON.stringify({ version: '1.0.0' }), { status: 200 })
+    const first = new DiscoveryManifestIndex(cache, { fetcher, now: () => clock++, concurrency: 8 })
+    for (let i = 0; i < names.length; i += 64) await first.lookup(names.slice(i, i + 64), 'https://registry.example')
+    await first.dispose()
+
+    let refetched = 0
+    const second = new DiscoveryManifestIndex(cache, {
+      fetcher: async () => { refetched += 1; return new Response(JSON.stringify({ version: '1.0.0' }), { status: 200 }) },
+      now: () => clock,
+    })
+    await second.lookup(names, 'https://registry.example')
+    expect(refetched).toBe(0)
+    await second.dispose()
+  })
+
+  it('persists exact discovery releases separately from other versions and advisory latest', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'dshm-discovery-'))
+    directories.push(directory)
+    const cache = join(directory, 'discovery.json')
+    const urls: string[] = []
+    const registry = 'https://registry.example'
+    const mirror = 'https://mirror.example'
+    const fetcher = async (url: string) => {
+      urls.push(url)
+      const release = new URL(url).pathname.split('/').at(-1)
+      return Response.json({ version: release === 'latest' ? '1.0.0' : release })
+    }
+    const index = new DiscoveryManifestIndex(cache, { fetcher, now: () => 1_000 })
+    const exact = { versions: new Map([['plugin-a', '2.0.0-rc.1']]) }
+    expect((await index.lookup(['plugin-a'], registry, exact))['plugin-a']?.version).toBe('2.0.0-rc.1')
+    expect((await index.lookup(['plugin-a'], registry, { record: false }))['plugin-a']?.version).toBe('1.0.0')
+    await index.dispose()
+
+    const reopened = new DiscoveryManifestIndex(cache, { fetcher, now: () => 1_001 })
+    expect((await reopened.lookup(['plugin-a'], registry, exact))['plugin-a']?.version).toBe('2.0.0-rc.1')
+    expect((await reopened.lookup(['plugin-a'], mirror, exact))['plugin-a']?.version).toBe('2.0.0-rc.1')
+    expect(urls).toEqual([
+      `${registry}/plugin-a/2.0.0-rc.1`,
+      `${registry}/plugin-a/latest`,
+      `${mirror}/plugin-a/2.0.0-rc.1`,
+    ])
+    await reopened.dispose()
+  })
+
+  it('rejects an exact-version response naming a different package', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'dshm-discovery-'))
+    directories.push(directory)
+    const index = new DiscoveryManifestIndex(join(directory, 'discovery.json'), {
+      fetcher: async () => Response.json({ name: 'another-plugin', version: '2.0.0' }),
+    })
+    const versions = new Map([['plugin-a', '2.0.0']])
+    expect(await index.lookup(['plugin-a'], 'https://registry.example', { versions })).toEqual({ 'plugin-a': null })
   })
 
   it('retries a raw manifest read instead of reporting an unknown requirement (#1148)', async () => {
@@ -266,6 +347,7 @@ describe('DiscoveryManifestIndex', () => {
     const facts = (await index.lookupGitHub([source]))['https://github.com/acme/dsh-notes']!
     expect(facts).toMatchObject({ enginesDsh: '0.2.2-rc.1' })
     expect(urls[0]).toBe(urls[1])
+    await index.dispose()
   })
 
   it('does not persist a registry failure as an undeclared manifest', async () => {
@@ -277,6 +359,7 @@ describe('DiscoveryManifestIndex', () => {
       now: () => 1_000,
     })
     expect(await failed.lookup(['plugin-a'], 'https://registry.example')).toEqual({ 'plugin-a': null })
+    await failed.dispose()
 
     let retried = 0
     const recovered = new DiscoveryManifestIndex(cache, {
@@ -289,6 +372,7 @@ describe('DiscoveryManifestIndex', () => {
     expect((await recovered.lookup(['plugin-a'], 'https://registry.example'))['plugin-a'])
       .toMatchObject({ version: '1.0.0' })
     expect(retried).toBe(1)
+    await recovered.dispose()
   })
 
   it('an advisory pre-flight leaves no failure cooldown behind (#619)', async () => {
@@ -319,6 +403,7 @@ describe('DiscoveryManifestIndex', () => {
     expect((await index.lookup(['plugin-a'], 'https://registry.example'))['plugin-a'])
       .toMatchObject({ version: '2.0.0' })
     expect(asked).toBe(2)
+    await index.dispose()
   })
 
   it('an advisory pre-flight does not seed the durable cache either (#619)', async () => {
@@ -344,6 +429,7 @@ describe('DiscoveryManifestIndex', () => {
     expect((await index.lookup(['plugin-a'], 'https://registry.example'))['plugin-a'])
       .toMatchObject({ version: '2.0.0' })
     expect(served).toBe(2)
+    await index.dispose()
   })
 })
 
@@ -397,6 +483,128 @@ describe('host-compatibility declaration semantics (Phase 1 additions)', () => {
     expect(result.status).toBe('compatible')
     expect(result.basis).toBe('manifest')
     expect(result.requirement).toBe('>=0.1.0') // only the engine declaration remains
+  })
+})
+
+describe('host core packages declared as ordinary dependencies', () => {
+  // This describe is top-level, so the `directories` list declared inside
+  // `describe('DiscoveryManifestIndex')` is not in scope here.
+  const temporary: string[] = []
+  afterEach(() => {
+    for (const directory of temporary.splice(0)) rmSync(directory, { recursive: true, force: true })
+  })
+
+  it('refuses a host core package whose dependency range the host does not satisfy', () => {
+    // dsh-qqbot@1.0.2 declared @deepseek-ai/dsh-settings and
+    // dsh-credentials as ordinary dependencies at `^0.1.0-rc.5`. pnpm hoisted
+    // the resolved 0.1.0-rc.x into the profile root, shadowing the runtime's
+    // 0.2.2-rc.1, and Desktop died on the next start with
+    // "desktop welcome: Web RPC failed". Discovery read only engines.dsh and
+    // peers, so it reported nothing and the install proceeded.
+    const result = deriveHostCompatibility(facts({
+      dependencies: {
+        '@deepseek-ai/dsh-settings': '^0.1.0-rc.5',
+        '@deepseek-ai/dsh-credentials': '^0.1.0-rc.5',
+      },
+    }), '0.2.2-rc.1', HOST_PACKAGES)
+    expect(result.status).toBe('incompatible')
+    expect(result.basis).toBe('manifest')
+    expect(result.declarations).toEqual([
+      { kind: 'dependency', package: '@deepseek-ai/dsh-settings', range: '^0.1.0-rc.5' },
+      { kind: 'dependency', package: '@deepseek-ai/dsh-credentials', range: '^0.1.0-rc.5' },
+    ])
+    expect(result.requirement).toBe('^0.1.0-rc.5')
+  })
+
+  it('admits a host core package whose dependency range the host satisfies', () => {
+    const result = deriveHostCompatibility(facts({
+      enginesDsh: '>=0.2.0',
+      dependencies: { '@deepseek-ai/dsh-settings': '^0.2.2-rc.1' },
+    }), '0.2.2-rc.1', HOST_PACKAGES)
+    expect(result.status).toBe('compatible')
+    expect(result.declarations).toContainEqual(
+      { kind: 'dependency', package: '@deepseek-ai/dsh-settings', range: '^0.2.2-rc.1' },
+    )
+  })
+
+  it('ignores ordinary dependencies the host does not provide', () => {
+    const result = deriveHostCompatibility(facts({
+      enginesDsh: '>=0.2.0',
+      dependencies: {
+        '@deepseek-ai/dsh-settings': '^0.2.2-rc.1',
+        '@deepseek-ai/not-a-host-package': '^0.1.0',
+        'community-library': '^9.0.0',
+      },
+    }), '0.2.2-rc.1', HOST_PACKAGES)
+    expect(result.status).toBe('compatible')
+    expect(result.requirement).toBe('>=0.2.0 ∩ ^0.2.2-rc.1')
+  })
+
+  it('does not judge cordis or schemastery dependencies against the DSH version', () => {
+    // They are host packages but not on the 0.x lockstep line, so their range
+    // says nothing about the DSH version.
+    const result = deriveHostCompatibility(facts({
+      dependencies: { '@deepseek-ai/cordis': '^4.0.4', '@deepseek-ai/schemastery': '^3.18.1' },
+    }), '0.2.2-rc.1', new Set([...HOST_PACKAGES, '@deepseek-ai/cordis', '@deepseek-ai/schemastery']))
+    expect(result.status).toBe('unknown')
+    expect(result.declarations).toEqual([])
+  })
+
+  it('holds a dependency to the installed range, not to peer leniency', () => {
+    // `^0.0.1` as a PEER is forgiven: a sloppy caret ceiling that was never
+    // meant as a host bound. As a DEPENDENCY it is an install instruction — pnpm
+    // resolves 0.0.1 and hoists it over the host's copy.
+    const peer = deriveHostCompatibility(facts({
+      peerDependencies: { '@deepseek-ai/dsh-settings': '^0.0.1' },
+    }), '0.1.2-alpha.2', HOST_PACKAGES)
+    expect(peer.status).toBe('compatible')
+    const dependency = deriveHostCompatibility(facts({
+      dependencies: { '@deepseek-ai/dsh-settings': '^0.0.1' },
+    }), '0.1.2-alpha.2', HOST_PACKAGES)
+    expect(dependency.status).toBe('incompatible')
+  })
+
+  it('reads bounded @deepseek-ai/ dependency declarations from the manifest', () => {
+    expect(manifestFacts({
+      version: '1.0.2',
+      dependencies: {
+        '@deepseek-ai/dsh-settings': '^0.1.0-rc.5',
+        'community-library': '^9.0.0',
+        broken: 42,
+      },
+    })).toEqual({
+      version: '1.0.2',
+      enginesDsh: null,
+      peerDependencies: {},
+      dependencies: { '@deepseek-ai/dsh-settings': '^0.1.0-rc.5' },
+    })
+  })
+
+  it('accepts a durable cache entry written before the dependency field existed', async () => {
+    // The cache is durable across upgrades. An entry written by the previous
+    // build has no `dependencies`; it must still load rather than being
+    // discarded and refetched — the module exists to keep one catalog request
+    // from becoming a thousand registry requests.
+    const directory = mkdtempSync(join(tmpdir(), 'dshm-discovery-'))
+    temporary.push(directory)
+    const cache = join(directory, '.dsh-market', 'discovery.json')
+    mkdirSync(join(directory, '.dsh-market'), { recursive: true })
+    writeFileSync(cache, JSON.stringify({
+      schema: 'dsh-market/discovery-compatibility-cache/v1',
+      entries: {
+        'plugin-a': {
+          checkedAt: 1_000,
+          facts: { version: '1.0.0', enginesDsh: null, peerDependencies: {} },
+        },
+      },
+    }))
+
+    const index = new DiscoveryManifestIndex(cache, {
+      fetcher: async () => { throw new Error('the durable cache should answer') },
+      now: () => 1_001,
+    })
+    expect((await index.lookup(['plugin-a'], 'https://registry.example'))['plugin-a'])
+      .toEqual({ version: '1.0.0', enginesDsh: null, peerDependencies: {}, dependencies: {} })
   })
 })
 
@@ -508,7 +716,7 @@ describe('lookupVersion', () => {
     })
 
     expect(await index.lookupVersion('plugin-a', '1.0.0', 'https://registry.example'))
-      .toEqual({ version: '1.0.0', enginesDsh: '>=0.1.0', peerDependencies: {} })
+      .toEqual({ version: '1.0.0', enginesDsh: '>=0.1.0', peerDependencies: {}, dependencies: {} })
     expect(urls).toEqual(['https://registry.example/plugin-a/1.0.0'])
   })
 

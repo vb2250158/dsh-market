@@ -5,11 +5,24 @@
  * injection must depend on the profile's actual shape.
  */
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { classifyPnpmFailure, pluginArgsFor } from '../src/pnpm-compat.ts'
+
+// The store layer is read from the environment pnpm would obey, so a host that
+// relocated its store (PNPM_CONFIG_STORE_DIR, as DSH Desktop users often do)
+// must not change what the profile-file advice says. Tests that are about the
+// environment opt back in with vi.stubEnv.
+beforeEach(() => {
+  vi.stubEnv('PNPM_CONFIG_STORE_DIR', '')
+  vi.stubEnv('pnpm_config_store_dir', '')
+})
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 describe('pluginArgsFor', () => {
   let dir: string
@@ -60,6 +73,63 @@ describe('classifyPnpmFailure', () => {
     expect(failure?.message).toContain('>=99.0.0')
     // A plain market-side failure must not be swallowed by this branch.
     expect(classifyPnpmFailure('ERR_PNPM_FETCH_404 GET https://registry/x: Not Found')?.code).not.toBe('host-incompatible-install')
+  })
+
+  // #1210: both sides of a range land in this one branch, and the side decides
+  // what the reader can do. Naming the wrong one sends them to upgrade a host
+  // that is already ahead, and points the report at the host instead of at the
+  // plugin that has not caught up.
+  it('names the plugin as the side that is behind when its ceiling is under the host (#1210)', () => {
+    // The reporter's case: @anionex/dsh-vision-toolkit@0.1.51 declares peers up
+    // to 0.2.2-rc.2, the host runs 0.2.2-rc.3.
+    const output = [
+      'dsh: installation rejected: Plugin @anionex/dsh-vision-toolkit@0.1.51 is incompatible with dsh 0.2.2-rc.3:',
+      ' requirements {"peerDependencies.@deepseek-ai/dsh":">=0.1.0-rc.1 <=0.2.2-rc.2"}. Running it may cause crashes or data loss.',
+      ' Update the plugin or install a plugin version compatible with this dsh runtime.',
+    ].join('')
+    const failure = classifyPnpmFailure(output)
+    expect(failure?.code).toBe('host-incompatible-install')
+    // What happened: the ceiling, and which side of it the host is on.
+    expect(failure?.message).toContain('兼容上界')
+    expect(failure?.message).toContain('0.2.2-rc.3')
+    expect(failure?.message).toContain('<=0.2.2-rc.2')
+    // The claim that was wrong: this release does NOT want a newer host.
+    expect(failure?.message).not.toContain('要求的 DSH 比当前运行的新')
+    expect(failure?.message).not.toContain('needs a newer DSH')
+    // The way out still travels, and now points at the plugin's side.
+    expect(failure?.message).toContain('allow-version')
+  })
+
+  it('keeps naming the host when the requirement floor is above it (#1210)', () => {
+    const output = [
+      'dsh: installation rejected: Plugin dshm-e2e-fixture-b@1.0.0 is incompatible with dsh 0.2.1-rc.1:',
+      ' requirements {"engines.dsh":">=0.3.0"}. Running it may cause crashes or data loss.',
+    ].join('')
+    const failure = classifyPnpmFailure(output)
+    expect(failure?.code).toBe('host-incompatible-install')
+    expect(failure?.message).toContain('要求的 DSH 比当前运行的新')
+    expect(failure?.message).not.toContain('兼容上界')
+  })
+
+  it('claims no direction when the host text does not prove one (#1210)', () => {
+    // A range the running host actually satisfies (the two bounds leave it
+    // inside), so neither "too new" nor "too old" is provable from this line.
+    const output = [
+      'dsh: installation rejected: Plugin dshm-e2e-fixture-c@1.0.0 is incompatible with dsh 0.2.2-rc.3:',
+      ' requirements {"engines.dsh":">=0.2.0-rc.2 <0.4.0-0"}. Running it may cause crashes or data loss.',
+    ].join('')
+    const failure = classifyPnpmFailure(output)
+    expect(failure?.code).toBe('host-incompatible-install')
+    expect(failure?.message).toContain('不兼容')
+    expect(failure?.message).not.toContain('要求的 DSH 比当前运行的新')
+    expect(failure?.message).not.toContain('兼容上界')
+    // Unparseable requirements keep the old neutral behaviour too.
+    const malformed = classifyPnpmFailure([
+      'dsh: installation rejected: Plugin dshm-e2e-fixture-d@1.0.0 is incompatible with dsh 0.2.2-rc.3:',
+      ' requirements {not json}. Running it may cause crashes or data loss.',
+    ].join(''))
+    expect(malformed?.code).toBe('host-incompatible-install')
+    expect(malformed?.message).not.toContain('兼容上界')
   })
 
   it('names the profile write-lock timeout and where the lock is (#914)', () => {
@@ -977,7 +1047,7 @@ pnpm now wants to use the store at "/tmp/store-v10/v11" to link dependencies.
     const failure = classifyPnpmFailure(output, 1, { profileDirectory: profileWithRecord(recordingMoved) })
 
     expect(failure?.code).toBe('unexpected-store')
-    expect(failure?.message).toContain('storeDir: <上面第一个路径>')
+    expect(failure?.message).toContain(`storeDir: '${MOVED}'`)
     expect(failure?.message).not.toMatch(/写 storeDir 修不好/)
     expect(failure?.message).toContain(`node_modules → ${MOVED}\n`)
   })
@@ -995,7 +1065,8 @@ pnpm now wants to use the store at "/tmp/store-v10/v11" to link dependencies.
     const failure = classifyPnpmFailure(output, 1, { profileDirectory: profileRecording('10.34.9') })
 
     expect(failure?.code).toBe('unexpected-store')
-    expect(failure?.message).toContain('storeDir: <上面第一个路径>')
+    expect(failure?.message).toContain('storeDir')
+    expect(failure?.message).toContain('pnpm store path')
   })
 })
 
@@ -1071,6 +1142,121 @@ pnpm now wants to use the store at "/Users/panda/Library/pnpm/store/v10" to link
     expect(failure?.message).toContain('storeDir')
     expect(failure?.message).not.toContain('Staging directory')
     expect(failure?.message).not.toContain('暂存目录')
+  })
+
+  // #1100: the advice this branch hands out has to name the layer that
+  // actually decides the store, because the shape the reporter was stuck in
+  // was "the profile already pins the recorded store, pnpm still resolves
+  // another one, and the message asks for the pin again". Measured on pnpm
+  // 11.28.5: `--store-dir` > `PNPM_CONFIG_STORE_DIR` > the profile's
+  // `storeDir` > the global npmrc `store-dir` > the default, and the kebab
+  // `store-dir` inside pnpm-workspace.yaml is ignored with a WARN.
+  describe('naming the layer that decides the store', () => {
+    let dir: string | undefined
+
+    const profileWithWorkspace = (workspace: string): string => {
+      dir = mkdtempSync(join(tmpdir(), 'dshm-store-'))
+      writeFileSync(join(dir, 'package.json'), '{"name":"p","private":true}')
+      writeFileSync(join(dir, 'pnpm-workspace.yaml'), workspace)
+      return dir
+    }
+
+    /** A store that exists, so the "recorded store is gone" branch stays out of the way. */
+    const liveStore = (profile: string): string => {
+      const store = join(profile, 'store', 'v11')
+      mkdirSync(store, { recursive: true })
+      return store
+    }
+
+    const outputFor = (profile: string, linked: string, wanted: string): string =>
+      ` ERR_PNPM_UNEXPECTED_STORE  Unexpected store location\nThe dependencies at "${join(profile, 'node_modules')}" are currently linked from the store at "${linked}".\npnpm now wants to use the store at "${wanted}" to link dependencies.`
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
+      if (dir !== undefined) rmSync(dir, { recursive: true, force: true })
+      dir = undefined
+    })
+
+    // The host's own environment decides the store while the market runs, so
+    // a test that asserts its absence has to say so rather than hope.
+    const withNoStoreEnv = (): void => {
+      vi.stubEnv('PNPM_CONFIG_STORE_DIR', '')
+      vi.stubEnv('pnpm_config_store_dir', '')
+    }
+
+    it('hands over the paste-ready line, and the check that proves it took', () => {
+      withNoStoreEnv()
+      const profile = profileWithWorkspace('packages:\n  - .\n')
+      const linked = liveStore(profile)
+      const wanted = join(profile, 'other', 'v11')
+      const message = classifyPnpmFailure(outputFor(profile, linked, wanted), 1, { profileDirectory: profile })?.message ?? ''
+      // A line that can be pasted as-is. Single quotes: a Windows path in
+      // double quotes is read as YAML escape sequences.
+      expect(message).toContain(`storeDir: '${linked}'`)
+      // The check, not just the edit: this branch's failure mode was "I wrote
+      // what it said and the next run failed the same way".
+      expect(message).toContain('pnpm store path')
+      expect(message).toContain('驼峰')
+      // No environment variable to blame here, so none may be named — in
+      // either spelling, since on Windows it can be listed as the lowercase one.
+      expect(message).not.toMatch(/pnpm_config_store_dir=/iu)
+    })
+
+    it('names the environment variable when it is the reason the file cannot work', () => {
+      const profile = profileWithWorkspace('packages:\n  - .\n')
+      const linked = liveStore(profile)
+      const override = join(profile, 'env-store')
+      vi.stubEnv('PNPM_CONFIG_STORE_DIR', override)
+      const message = classifyPnpmFailure(outputFor(profile, linked, override), 1, { profileDirectory: profile })?.message ?? ''
+      // The message names the variable as the environment spells it. On
+      // Windows the two spellings the beforeEach stubs are ONE variable, and
+      // it keeps the spelling that created it: an earlier test's
+      // unstubAllEnvs re-creates it as pnpm_config_store_dir (restoring the ''
+      // it read), so the value set here is listed under the lowercase name.
+      const name = Object.keys(process.env).find(key => /^pnpm_config_store_dir$/iu.test(key) && process.env[key] === override)
+      expect(name, 'the stub above must be visible in process.env').toBeDefined()
+      expect(message).toContain(`${name}=`)
+      expect(message).toContain(override)
+      expect(message).toContain('环境变量')
+      // The paste-ready line would be dead advice here, so it must not be the offer.
+      expect(message).not.toContain(`storeDir: '${linked}'`)
+    })
+
+    it('says the pin is already there instead of asking for it a second time', () => {
+      const profile = profileWithWorkspace('packages:\n  - .\n')
+      const linked = liveStore(profile)
+      vi.stubEnv('PNPM_CONFIG_STORE_DIR', '')
+      vi.stubEnv('pnpm_config_store_dir', '')
+      writeFileSync(join(profile, 'pnpm-workspace.yaml'), `storeDir: '${linked}'\npackages:\n  - .\n`)
+      const override = join(profile, 'env-store')
+      vi.stubEnv('PNPM_CONFIG_STORE_DIR', override)
+      const message = classifyPnpmFailure(outputFor(profile, linked, override), 1, { profileDirectory: profile })?.message ?? ''
+      expect(message).toContain('已经写了')
+      expect(message).toContain('already pins')
+      expect(message).toContain(override)
+      // Not the ordinary "write this line" offer: that line is already there.
+      expect(message).not.toContain('持久的修法')
+    })
+
+    it('treats a kebab-case pin as the no-op pnpm says it is', () => {
+      withNoStoreEnv()
+      const profile = profileWithWorkspace('packages:\n  - .\n')
+      const linked = liveStore(profile)
+      writeFileSync(join(profile, 'pnpm-workspace.yaml'), `store-dir: '${linked}'\npackages:\n  - .\n`)
+      const message = classifyPnpmFailure(outputFor(profile, linked, join(profile, 'other', 'v11')), 1, { profileDirectory: profile })?.message ?? ''
+      expect(message).toContain("store-dir:")
+      expect(message).toContain('驼峰')
+      expect(message).toContain(`storeDir: '${linked}'`)
+    })
+
+    it('still names the key and the check when the two paths cannot be read', () => {
+      withNoStoreEnv()
+      const profile = profileWithWorkspace('packages:\n  - .\n')
+      const message = classifyPnpmFailure('ERR_PNPM_UNEXPECTED_STORE\nreworded upstream', 1, { profileDirectory: profile })?.message ?? ''
+      expect(message).toContain('storeDir')
+      expect(message).toContain('pnpm store path')
+      expect(message).toContain('PNPM_CONFIG_STORE_DIR')
+    })
   })
 })
 

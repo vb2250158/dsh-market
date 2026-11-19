@@ -8,12 +8,12 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadRegistry, pluginCategories } from './registry.ts'
-import { hotMount, hotUnmount, listHotMounts, writeDisabled } from './hot.ts'
+import { hotMount, hotMountFailure, hotUnmount, listHotMounts, writeDisabled } from './hot.ts'
 import { logEvent } from './log.ts'
 import { loaderEntryId } from './patch.ts'
 import { LifecyclePendingError, LifecycleWaitError, waitForLifecycle } from './lifecycle.ts'
 import { nameMatchesPackage } from './entry-identity.ts'
-import { bundlePatchInsertedIds, profileDir, readInstalled } from './profile.ts'
+import { bundleExpressionRowIds, bundlePatchInsertedIds, profileDir, readInstalled } from './profile.ts'
 import { parseSourceUrl, repoOfTarget } from './sources.ts'
 
 /** The slice of a cordis loader entry the market needs for live enable/disable. */
@@ -38,8 +38,14 @@ export interface ThemeHost {
 /** Manages theme exclusivity for one profile. */
 export interface ThemeManager {
   installedThemeNames(): Promise<Set<string>>
-  setEntryDisabled(name: string, disabledFlag: boolean, requireLive?: boolean, rejectPending?: boolean): Promise<boolean>
-  activateTheme(name: string): Promise<boolean>
+  setEntryDisabled(name: string, disabledFlag: boolean, requireLive?: boolean, rejectPending?: boolean, keepOff?: ReadonlySet<string>): Promise<boolean>
+  activateTheme(name: string, keepOff?: ReadonlySet<string>): Promise<ThemeActivationResult>
+}
+
+interface ThemeActivationResult {
+  ok: boolean
+  /** Verified component failure before rolling back the attempted switch. */
+  reason?: string
 }
 
 /**
@@ -233,7 +239,9 @@ export function createThemeManager(
    *
    * @returns true when a matching live entry was found and updated.
    */
-  async function setEntryDisabled(name: string, disabledFlag: boolean, requireLive = false, rejectPending = false): Promise<boolean> {
+  async function setEntryDisabled(
+    name: string, disabledFlag: boolean, requireLive = false, rejectPending = false, keepOff?: ReadonlySet<string>,
+  ): Promise<boolean> {
     const previous: { entry: LoaderEntry; disabled: boolean | null | undefined; live: boolean }[] = []
     try {
       let found = false
@@ -244,8 +252,25 @@ export function createThemeManager(
       // looking for a naming bug (#619's shape) in a profile where the match
       // was fine and the runtime was simply still busy.
       let matched = false
+      // Rows the package decides itself, by expression (`disabled: !!js …`),
+      // are not the market's to overrule (#1043). The durable layer already
+      // leaves them alone — `switchPluginLayers` filters them out through
+      // `bundleExpressionRowIds` — and the live layer has to agree: clearing a
+      // guard the host evaluated to `true` mounts the row anyway, which for a
+      // carrier means a second copy of a module the host already holds
+      // (`storage form 'domain' is already mounted`), and dsh answers a
+      // duplicate mount by exiting (#1175: dsh-tui on a web profile).
+      //
+      // Disabling still writes through: "off" cannot resurrect anything, and a
+      // guarded row the user wants off should stay off whichever way the
+      // condition falls.
+      const expressionIds = disabledFlag
+        ? null
+        : new Set(bundleExpressionRowIds(join(activeProfileDir, 'node_modules', name)))
       for (const entry of matchingEntries(name)) {
+        if (expressionIds !== null && expressionIds.has(loaderEntryId(entry))) continue
         matched = true
+        if (!disabledFlag && keepOff?.has(loaderEntryId(entry).split(':').at(-1) ?? '')) continue
         if (!disabledFlag && uncertainEntries.has(entry)) {
           throw new LifecycleWaitError('loader entry: runtime state is uncertain; retry disabling before enabling')
         }
@@ -333,7 +358,9 @@ export function createThemeManager(
    * theme keeps neither: it never came up, and leaving it out of the disable
    * set is what lets the next attempt try it again.
    */
-  async function activateTheme(name: string): Promise<boolean> {
+  async function activateTheme(name: string, keepOff?: ReadonlySet<string>): Promise<ThemeActivationResult> {
+    const stopFailedMount = async (theme: string): Promise<boolean> =>
+      !listHotMounts().includes(theme) || await hotUnmount(theme)
     const themes = await installedThemeNames()
     const stopped: { name: string; kind: 'hot' | 'entry' }[] = []
     for (const other of themes) {
@@ -348,19 +375,30 @@ export function createThemeManager(
     }
     disabledThemes.delete(name)
     writeDisabled(activeProfileDir, disabledThemes)
-    const live = listHotMounts().includes(name)
-      || await setEntryDisabled(name, false)
-      || (await hotMount(host, activeProfileDir, name)).ok
-    if (live) return true
+    let reason: string | null
+    if (listHotMounts().includes(name)) {
+      reason = hotMountFailure(name, activeProfileDir)
+      if (reason === null) return { ok: true }
+    } else {
+      if (await setEntryDisabled(name, false, false, false, keepOff)) return { ok: true }
+      const mount = await hotMount(host, activeProfileDir, name, keepOff)
+      if (mount.ok) return { ok: true }
+      reason = mount.retained === true ? mount.reason : null
+    }
+    const failure = reason === null ? { ok: false } : { ok: false, reason }
+    if (!await stopFailedMount(name)) return failure
     for (const previous of stopped) {
       const back = previous.kind === 'hot'
         ? (await hotMount(host, activeProfileDir, previous.name)).ok
         : await setEntryDisabled(previous.name, false)
       if (back) disabledThemes.delete(previous.name)
-      else logEvent('warn', 'theme', `${previous.name}: could not be restored after ${name} failed to start`)
+      else {
+        logEvent('warn', 'theme', `${previous.name}: could not be restored after ${name} failed to start`)
+        if (previous.kind === 'hot' && !await stopFailedMount(previous.name)) break
+      }
     }
     writeDisabled(activeProfileDir, disabledThemes)
-    return false
+    return failure
   }
 
   return { installedThemeNames, setEntryDisabled, activateTheme }

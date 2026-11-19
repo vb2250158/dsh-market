@@ -2,10 +2,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createOfficialDesktopRuntime, type OfficialPluginManagerLike } from '../src/official-desktop.ts'
+import { createOfficialDesktopRuntime, forgetRestartPending, type OfficialPluginManagerLike } from '../src/official-desktop.ts'
 import type { HostPackageManager } from '../src/dsh-cli.ts'
 import { PendingUpdateJournal, pendingUpdatesFile } from '../src/pending-updates.ts'
 import { withHoistRecovery } from '../src/install.ts'
+import { classifyPnpmFailure } from '../src/pnpm-compat.ts'
 import { routesFor, setActiveRegion } from '../src/regions.ts'
 import { progress } from '../src/dsh-cli.ts'
 import { localizeBilingual } from '../src/client/market-data.ts'
@@ -15,6 +16,7 @@ const roots: string[] = []
 beforeEach(() => {
   vi.stubEnv('DSHM_NPM_MIRROR', '')
   setActiveRegion('global')
+  forgetRestartPending()
 })
 
 function profile(): string {
@@ -244,7 +246,10 @@ describe('official Electron profile runtime', () => {
       const runtime = createOfficialDesktopRuntime(() => service, 'desktop', profile())
 
       const removing = runtime.runPlugin('desktop', ['remove', 'example'])
-      await vi.advanceTimersByTimeAsync(300_001)
+      // Past the host's own ten-minute silence watchdog plus the margin the
+      // market leaves it to answer (#1250): a shorter bound decides the
+      // answer before the host can state its own failure.
+      await vi.advanceTimersByTimeAsync(660_001)
       const result = await removing
 
       expect(result.exitCode).toBe(1)
@@ -257,6 +262,62 @@ describe('official Electron profile runtime', () => {
       expect(result.stderr).toContain('没有在限定时间内答复这次操作')
       expect(result.stderr).toContain('did not answer this operation in time')
       expect(result.stderr).not.toContain('新版本却还没装上')
+      await runtime.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('lets the host\'s own stall diagnosis decide instead of the market bound (#1250)', async () => {
+    // Reported: a GitHub install on a slow network. pnpm printed nothing for
+    // ten minutes, so the host's own watchdog killed it and answered
+    // `dsh: pnpm printed nothing for 600000ms and was terminated` — the
+    // sentence `classifyPnpmFailure` turns into "the network stalled, nothing
+    // was installed". The market's bound was the same 600 s, so it fired
+    // first and replaced that sentence with `operation-incomplete`, which
+    // tells the user the profile may already have been changed. Nothing had
+    // touched it.
+    vi.useFakeTimers()
+    try {
+      const service = manager()
+      const stalled = 'dsh: pnpm printed nothing for 600000ms and was terminated'
+      service.installBundle.mockImplementationOnce(() => new Promise(resolve => {
+        setTimeout(() => resolve({ application: 'failed', error: { code: 'operation-error', diagnostic: stalled } }), 600_500)
+      }))
+      const runtime = createOfficialDesktopRuntime(() => service, 'desktop', profile())
+
+      const installing = runtime.runPlugin('desktop', ['add', 'github:o/r'])
+      await vi.advanceTimersByTimeAsync(600_500)
+      const result = await installing
+
+      expect(result.exitCode).toBe(1)
+      // The host's answer survives all the way to what the route shows.
+      expect(result.stderr).toContain(stalled)
+      expect(classifyPnpmFailure(result.stderr, result.exitCode)?.code).toBe('pnpm-stalled')
+      expect(result.stderr).not.toContain('没有在限定时间内答复这次操作')
+      // The host answered, so there is nothing for the next start to repair.
+      expect(result.repairOnRestart).toBeUndefined()
+      await runtime.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('still ends an install the manager never answers, past that longer bound (#1250)', async () => {
+    // Raising the bound to let the host's watchdog fire first must not turn
+    // into waiting forever again (#1066): a plain install is bounded like any
+    // other single manager call, not by the longer whole-operation backstop.
+    vi.useFakeTimers()
+    try {
+      const service = manager()
+      service.installBundle.mockImplementationOnce(() => new Promise(() => {}))
+      const runtime = createOfficialDesktopRuntime(() => service, 'desktop', profile())
+
+      const installing = runtime.runPlugin('desktop', ['add', 'example@2.0.0'])
+      await vi.advanceTimersByTimeAsync(660_001)
+      const result = await installing
+
+      expect(result).toMatchObject({ exitCode: 1, repairOnRestart: true, refusalCode: 'operation-incomplete' })
       await runtime.dispose()
     } finally {
       vi.useRealTimers()
@@ -621,6 +682,42 @@ describe('official Electron profile runtime', () => {
     }
   })
 
+  it('answers "restart first" when bundle-in-use follows an update that landed behind a restart (#1253)', async () => {
+    const service = manager()
+    service.installBundle
+      .mockResolvedValueOnce({ application: 'failed', error: { code: 'already-installed' }, packageResult: { exitCode: 1, output: '' } })
+      .mockResolvedValueOnce({ application: 'restart-required', packageResult: { exitCode: 0, output: 'installed' } })
+      .mockResolvedValueOnce({ application: 'failed', error: { code: 'already-installed' }, packageResult: { exitCode: 1, output: '' } })
+    service.removeBundle
+      .mockResolvedValueOnce({ application: 'applied', packageResult: { exitCode: 0, output: 'removed' } })
+      .mockResolvedValueOnce({ application: 'failed', error: { code: 'bundle-in-use' } })
+    const runtime = createOfficialDesktopRuntime(() => service, 'desktop', profile())
+    try {
+      await expect(runtime.runPlugin('desktop', ['add', 'first@2.0.0'])).resolves.toMatchObject({ exitCode: 0 })
+      const second = await runtime.runPlugin('desktop', ['add', 'second@2.0.0'])
+      expect(second).toMatchObject({ exitCode: 1, wroteNothing: true, needsRestart: true, refusalCode: 'bundle-in-use' })
+      expect(second.stderr).toContain('重启后再点「全部更新」继续')
+      expect(second.stderr).toContain('Restart')
+      expect(second.stderr).not.toContain('bundle-in-use')
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
+  it('keeps bundle-in-use a plain refusal when no update has settled behind a restart (#1253)', async () => {
+    const service = manager()
+    service.installBundle.mockResolvedValueOnce({ application: 'failed', error: { code: 'already-installed' }, packageResult: { exitCode: 1, output: '' } })
+    service.removeBundle.mockResolvedValueOnce({ application: 'failed', error: { code: 'bundle-in-use' } })
+    const runtime = createOfficialDesktopRuntime(() => service, 'desktop', profile())
+    try {
+      const result = await runtime.runPlugin('desktop', ['add', 'example@2.0.0'])
+      expect(result.needsRestart).toBeUndefined()
+      expect(result.stderr).toContain('(bundle-in-use)')
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
   it('says so when a refusal happened before pnpm ran, and not when it did (#897)', async () => {
     const service = manager()
     // Before pnpm: no packageResult — the profile is untouched.
@@ -722,7 +819,7 @@ describe('official Electron profile runtime', () => {
     const runtime = createOfficialDesktopRuntime(() => service, 'desktop', dir)
     try {
       const running = runtime.runPlugin('desktop', ['add', 'example@2.0.0'])
-      await vi.advanceTimersByTimeAsync(300_000)
+      await vi.advanceTimersByTimeAsync(660_000)
       const result = await running
       expect(result).toMatchObject({
         exitCode: 1,

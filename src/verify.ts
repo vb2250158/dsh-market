@@ -31,7 +31,7 @@ import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { createRequire, isBuiltin } from 'node:module'
 import { Script } from 'node:vm'
 import { join } from 'node:path'
-import { listHotMounts, patchBlockerReason, scanPatch } from './hot.ts'
+import { hotMountFailure, listLiveHotMounts, patchBlockerReason, scanPatch } from './hot.ts'
 import { userPatchPackageReferences } from './patch.ts'
 import { nameMatchesPackage } from './entry-identity.ts'
 import { bundlePatchInsertedIds, declaredBundlePatchFiles, hasDshManifest, hasLoadableEntry, pluginSubdirs, profileDir, readInstalled } from './profile.ts'
@@ -97,6 +97,21 @@ function profilePatchMentions(activeProfileDir: string, name: string): boolean {
     return Object.values(row).some(visit)
   }
   return rows.some(visit)
+}
+
+const isRow = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** The Agent presets in the profile's own patch that mount this package (#1144).
+ * A preset owns its plugin rows and mounts them per session, so nothing there
+ * ever reaches the loader — this row is the only evidence it runs, and where. */
+function presetLoadsReason(dir: string, name: string): string | null {
+  const rows = parsePatchFile(join(dir, 'cordis.patch.yml')) ?? []
+  const ids = rows.flatMap(row => !isRow(row) || row.id !== 'agent-preset' || !isRow(row.config) || !Array.isArray(row.config.presets) ? []
+    : row.config.presets.flatMap(preset => !isRow(preset) || typeof preset.id !== 'string' || !Array.isArray(preset.plugins) ? []
+      : preset.plugins.some(p => isRow(p) && nameMatchesPackage(p.name, name)) ? [preset.id] : []))
+  if (ids.length === 0) return null
+  const list = [...new Set(ids)]
+  return `已装入预设组合（${list.join('、')}）：运行于这些预设的会话会加载它 / loaded by these Agent presets (${list.join(', ')}): sessions running them load it`
 }
 
 /** The profile manifest's `dsh.profile.bundles` — what the CLI reconciled. */
@@ -473,7 +488,7 @@ export function defaultHostRuntimeFacts(activeProfileDir: string): HostRuntimeFa
 export function verifyActivation(
   profile: string,
   name: string,
-  live: ReadonlySet<string> = new Set(listHotMounts()),
+  live: ReadonlySet<string> = new Set(listLiveHotMounts()),
   explicitDir?: string,
   isDisabled = false,
   hostFacts?: HostRuntimeFacts,
@@ -510,6 +525,9 @@ export function verifyActivation(
       hot: false,
     }
   }
+
+  const mountFailure = hotMountFailure(name, activeProfileDir)
+  if (mountFailure !== null) return { state: 'failed', reasons: [mountFailure], bundle: inBundles, hot: false }
 
   const dir = join(activeProfileDir, 'node_modules', name)
   // OBSERVED beats INFERRED (#135): the loader inventory is ground truth, so
@@ -557,6 +575,10 @@ export function verifyActivation(
     const more = carried.length > 3 ? `等 ${carried.length} 个` : ''
     const shownEn = carried.slice(0, 3).join(', ')
     const moreEn = carried.length > 3 ? ` and ${carried.length - 3} more` : ''
+    // #1144: a dependency with no dsh field loads per session when an Agent
+    // preset names it — nothing else can show that.
+    const reason = carried.length === 0 ? presetLoadsReason(activeProfileDir, name) : null
+    if (reason !== null) return { state: 'inert', loadedByProfile: true, reasons: [reason], bundle: false, hot: false }
     return {
       state: 'inert',
       reasons: [carried.length > 0

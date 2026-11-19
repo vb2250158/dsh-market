@@ -13,6 +13,7 @@ import { en, ja, zh } from './locales.ts'
 import { InstallToast } from './InstallToast.tsx'
 import { MarketErrorBoundary } from './ErrorBoundary.tsx'
 import { MarketSection } from './MarketSection.tsx'
+import { SettingsNoticeFrame } from './SettingsNotice.tsx'
 import { marketElement } from './market-element.ts'
 import { createSectionGate } from './section-gate.ts'
 import { createEntryVisibility } from './entry-visibility.ts'
@@ -24,6 +25,8 @@ import { createHostNavigation } from './host-navigation.ts'
 import { createSidebarEntry, SIDEBAR_PANEL_ID, SIDEBAR_PANEL_ORDER } from './sidebar-entry.ts'
 import type { SidebarEntry } from './sidebar-entry.ts'
 import { MarketLogo } from './MarketSection.tsx'
+import { updateNotifications } from './update-notifications.ts'
+import { installPluginsUpdateIndicator } from './PluginsUpdateIndicator.tsx'
 import css from './Market.module.css'
 import type { ThemeSnapshot, Translate } from './market-data.ts'
 
@@ -168,6 +171,8 @@ export function apply(ctx: MarketClientContext): void {
 function mountMarket(ctx: MarketClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja }), 'dsh-market: dictionaries')
   const t = ctx.locale.bind(NS)
+  ctx.effect(() => updateNotifications.start(), 'dsh-market: update snapshots')
+  ctx.effect(() => installPluginsUpdateIndicator(ctx, t, ctx.locale), 'dsh-market: Plugins update indicator')
 
   // The section's nav glyph. Before dsh 0.2.2 the shell picked icons from its
   // own ids and a registration had nothing to pass, so the market claimed its
@@ -239,7 +244,11 @@ function mountMarket(ctx: MarketClientContext): void {
       label: () => t('nav'),
       locale: NS,
       inject: () => ({ t }),
-    }, (ownerProps: { preferredSubsectionId?: string } = {}) => buildMarketElement({ ...ownerProps, surface: 'settings' }))
+    }, (ownerProps: { preferredSubsectionId?: string } = {}) => h(
+      SettingsNoticeFrame,
+      { t, entries, hostNavigation },
+      buildMarketElement({ ...ownerProps, surface: 'settings' }) as ReactNode,
+    ))
     // `slots.register` may not hand back a disposer on every host; the gate
     // needs one regardless, so the absence becomes a no-op rather than a
     // silently unretractable entry.
@@ -350,9 +359,14 @@ function mountMarket(ctx: MarketClientContext): void {
   // below: naming the service in the module-level `inject` would keep the
   // whole plugin unmounted on every host without it, and this one is young.
   ;(ctx as unknown as {
-    inject(services: string[], callback: (scoped: { pluginNavigation: { openBundle(name: string): void } }) => void): void
+    inject(services: string[], callback: (scoped: { pluginNavigation: { openBundle(name: string): void; openList?(): void } }) => void): void
   }).inject(['pluginNavigation'], (scoped) => {
-    hostNavigation.attach({ openBundle: (name) => { scoped.pluginNavigation.openBundle(name) } })
+    hostNavigation.attach({
+      openBundle: (name) => { scoped.pluginNavigation.openBundle(name) },
+      ...(typeof scoped.pluginNavigation.openList === 'function'
+        ? { openList: () => { scoped.pluginNavigation.openList?.() } }
+        : {}),
+    })
   })
   const retire = (): void => {
     entries.retire()
@@ -404,7 +418,7 @@ function mountMarket(ctx: MarketClientContext): void {
       key: NS,
       locale: NS,
       inject: () => ({ t }),
-    }, () => h(SettingsCard, { t, sidebar, entries, onRemoved: retire })))
+    }, () => h(SettingsCard, { t, locale: ctx.locale, sidebar, entries, onRemoved: retire })))
   })
 
   // The card's seat on 0.1.7+ (#677). The host moved a plugin's own
@@ -434,7 +448,7 @@ function mountMarket(ctx: MarketClientContext): void {
     // `summary` is this entry's one-liner in the list, which the market's own
     // description already carries; the card is the page.
     ? null
-    : h(SettingsCard, { t, sidebar, entries, onRemoved: retire })))
+    : h(SettingsCard, { t, locale: ctx.locale, sidebar, entries, onRemoved: retire })))
 
   // The seat on the 0.1.7 line (#722). That release renamed the client's
   // `settingsScope` service to `settings`, so the nested inject above stopped
@@ -469,7 +483,7 @@ function mountMarket(ctx: MarketClientContext): void {
     label: () => t('nav'),
     locale: NS,
     inject: () => ({ t }),
-  }, () => h(SettingsCard, { t, sidebar, entries, onRemoved: retire })))
+  }, () => h(SettingsCard, { t, locale: ctx.locale, sidebar, entries, onRemoved: retire })))
 
   // The Plugins page tab itself (#1015). Its registration now lives behind
   // `pluginsTabGate` above; this only tells the controller the slot exists,

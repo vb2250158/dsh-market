@@ -8,12 +8,51 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  entryForDep, installCommandFor, extractReadmeImageCandidates, extractReadmeImages, formatCount, groupSwitchState, installedForCatalog, isInstalled, isMarketItself, localizeBilingual, localizeBilingualList, looksTerminal, matchInstalledName, orderedCategories, pageItems, pluginCategories, pluginScreenshotCandidates, pluginsForFavorites, previewDimensionScore, rankThemeScreenshots, releaseNotesHttpsImage, resetGithubRouting, resetScreenshotsCache, safeScreenshots, sanitizeReleaseNotesBody, staleFavoriteUrls, themePlugins, visiblePlugins, humanOutput, failureText, catalogEntryForInstalled} from '../src/client/market-data.ts'
+  entryForDep, installCommandFor, extractReadmeImageCandidates, extractReadmeImages, formatCount, groupSwitchState, installedForCatalog, isInstalled, isMarketItself, localizeBilingual, localizeBilingualList, looksTerminal, matchInstalledName, orderedCategories, pageItems, pluginCategories, pluginName, pluginScreenshotCandidates, pluginsForFavorites, previewDimensionScore, rankThemeScreenshots, releaseNotesHttpsImage, resetGithubRouting, resetScreenshotsCache, safeScreenshots, sanitizeReleaseNotesBody, staleFavoriteUrls, themePlugins, visiblePlugins, humanOutput, failureText, catalogEntryForInstalled, profileBlockedText, profileBlockStillHolds } from '../src/client/market-data.ts'
 import type { RegistryPlugin, ScreenshotCandidate, ScreenshotRejection } from '../src/client/market-data.ts'
 
 function plugin(partial: Partial<RegistryPlugin>): RegistryPlugin {
   return { name: 'x', owner: 'o', url: 'https://github.com/o/x', category: 'tool', ...partial }
 }
+
+describe('profileBlockedText (#1252)', () => {
+  const t = (key: string): string => ({
+    profileBlockedNote: 'wait for {0} {1} until {2}',
+    profileBlockedNoteUnknown: 'wait for {0} {1}, time unknown',
+  } as Record<string, string>)[key] ?? key
+
+  it('names the package, the version and the time', () => {
+    const text = profileBlockedText({ name: 'dsh-mobile-plugin', version: '0.5.71', readyAt: '2999-11-19T04:56:47.000Z' }, t)
+    expect(text).toMatch(/^wait for dsh-mobile-plugin 0\.5\.71 until \S/)
+    expect(text).not.toContain('{')
+  })
+
+  it('says the time is unknown instead of inventing one', () => {
+    expect(profileBlockedText({ name: 'a', version: '1.0.0', readyAt: null }, t)).toBe('wait for a 1.0.0, time unknown')
+    expect(profileBlockedText({ name: 'a', version: '1.0.0', readyAt: 'garbage' }, t)).toBe('wait for a 1.0.0, time unknown')
+  })
+
+  it('holds until the end, and for as long as the end is unknown', () => {
+    const now = Date.parse('2026-11-18T00:00:00Z')
+    expect(profileBlockStillHolds({ readyAt: '2026-11-18T01:00:00Z' }, now)).toBe(true)
+    expect(profileBlockStillHolds({ readyAt: '2026-11-17T23:00:00Z' }, now)).toBe(false)
+    expect(profileBlockStillHolds({ readyAt: null }, now)).toBe(true)
+    expect(profileBlockStillHolds(undefined, now)).toBe(false)
+  })
+})
+
+describe('catalog plugin titles (#1174)', () => {
+  it.each([
+    ['deepseek-time#dsh', null, 'deepseek-time'],
+    ['dsh-paperflight#packages/PLUGIN', null, 'dsh-paperflight'],
+    ['dsh-web#packages/dsh-web-all', null, 'dsh-web-all'],
+    ['workspace#plugin', '@author/tool', '@author/tool'],
+    ['workspace#plugins/', null, 'workspace'],
+    ['dsh', null, 'dsh'],
+  ])('formats %s with npm mapping %s as %s', (name, npm, title) => {
+    expect(pluginName(name, npm)).toBe(title)
+  })
+})
 
 describe('looksTerminal', () => {
   it('does not label a web plugin as terminal-only when the description says a CLI is not required', () => {
@@ -1228,5 +1267,78 @@ describe('installCommandFor (#872)', () => {
   it('handles the --profile=name spelling', () => {
     expect(installCommandFor('dsh plugin --profile=web add x', 'work').command)
       .toBe('dsh plugin --profile work add x')
+  })
+})
+
+describe('entryForDep answers a monorepo subpackage with its own row', () => {
+  // Registry order is the collection root first, then the subpackages — the
+  // order the Installed tab walks. A subpackage manifest states the parent
+  // repository plus a directory, so its identities carry the bare repo as
+  // well as repo#path:/sub; the bare half used to match the root row first,
+  // and the subpackage card then showed the root plugin's description.
+  const catalog = [
+    plugin({
+      name: 'dsh-subagent-control',
+      npm: 'dsh-subagent-control',
+      url: 'https://github.com/SpaceRelay/dsh-subagent-control',
+    }),
+    plugin({
+      name: 'dsh-subagent-control#human-wait',
+      npm: 'dsh-human-wait',
+      url: 'https://github.com/SpaceRelay/dsh-subagent-control/tree/main/human-wait',
+    }),
+    plugin({
+      name: 'dsh-subagent-control#team-limits',
+      npm: 'dsh-team-limits',
+      url: 'https://github.com/SpaceRelay/dsh-subagent-control/tree/main/team-limits',
+    }),
+  ]
+
+  it('picks the subpackage row, not the collection root', () => {
+    expect(entryForDep(catalog, 'dsh-human-wait', '0.2.1', [
+      'spacerelay/dsh-subagent-control',
+      'spacerelay/dsh-subagent-control#path:/human-wait',
+    ])?.npm).toBe('dsh-human-wait')
+    expect(entryForDep(catalog, 'dsh-team-limits', '1.3.6', [
+      'spacerelay/dsh-subagent-control',
+      'spacerelay/dsh-subagent-control#path:/team-limits',
+    ])?.npm).toBe('dsh-team-limits')
+  })
+
+  it('still answers the root package from the bare repo identity', () => {
+    expect(entryForDep(catalog, 'dsh-subagent-control', '1.0.6', [
+      'spacerelay/dsh-subagent-control',
+    ])?.npm).toBe('dsh-subagent-control')
+  })
+})
+
+describe('catalogEntryForInstalled: Release archives match only the approved repo + asset', () => {
+  const entry = {
+    name: 'x', url: 'https://github.com/Owner/Repo',
+    tarball: 'https://github.com/Owner/Repo/releases/latest/download/x.tgz',
+  } as unknown as RegistryPlugin
+  const base = 'https://github.com/Owner/Repo/releases/'
+  it.each([
+    base + 'latest/download/x.tgz',
+    base + 'download/v1.2.3/x-1.2.3.tgz',
+    'https://github.com/owner/repo/releases/latest/download/x.tgz',
+  ])('matches %s even when the installed package name differs', spec => {
+    expect(catalogEntryForInstalled([entry], 'other-name', spec, [], [])).toBe(entry)
+  })
+  it.each([
+    'https://github.com/Owner/Repo2/releases/latest/download/x.tgz',
+    'https://github.com/Owner/Repo-fork/releases/latest/download/x.tgz',
+    'https://github.com/Other/Repo/releases/latest/download/x.tgz',
+    'https://github.com.evil.com/Owner/Repo/releases/latest/download/x.tgz',
+    'https://user@github.com/Owner/Repo/releases/latest/download/x.tgz',
+    'http://github.com/Owner/Repo/releases/latest/download/x.tgz',
+    base + 'latest/download/x.tgz?a=1',
+    base + 'latest/download/x.tgz#f',
+    base + 'latest/download/x.tgz/extra',
+    base + 'download/v1.2.3/y.tgz',
+    base + 'download/v1.2.3/x-1.2.4.tgz',
+    'https://github.com/Owner/Repo.git/releases/latest/download/x.tgz',
+  ])('does not match look-alike %s', spec => {
+    expect(catalogEntryForInstalled([entry], 'other-name', spec, [], [])).toBeUndefined()
   })
 })

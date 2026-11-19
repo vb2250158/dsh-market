@@ -19,6 +19,7 @@ import { isNumericReleaseAgeWindow, readMinimumReleaseAgeMs } from './install.ts
 import { isStableReleaseVersion, selectMatureUpdate, versionMaturity, type MatureUpdateSelection, type NpmPackument } from './release-candidates.ts'
 import { hasDshManifest, profileDir, readGitResolutionCommit, readInstalled, readInstalledVersion, readLockCommits, readProfileBundles } from './profile.ts'
 import { userPatchPackageReferences } from './patch.ts'
+import { activeReleaseBlockers, headlineBlocker } from './release-blockers.ts'
 import { catalogRepoKey, gitCommitOfTarget, gitRefOfTarget, gitUploadPackUrl, hasSemverSelector, hostedRepoKey, githubCommitOfTarget, githubRefOfTarget, isGenerationLink, isGitHostedSpec, lookupRepoFromUrl, parseGitHubRemote, repoOfTarget } from './sources.ts'
 
 export interface UpdateStatus {
@@ -38,6 +39,10 @@ export interface UpdateStatus {
    * as "there is an upgrade" and labels a button accordingly.
    */
   updateAvailable: boolean
+  /** Source lookup failed; notification surfaces may retain a previous confirmed result. */
+  checkError?: 'unavailable'
+  /** The upstream check failed, so this row does not establish that the plugin is current. */
+  checkFailed?: true
   /** Exact mature npm stable target for Desktop; `latest` remains the registry tag. */
   eligibleVersion?: string
   /**
@@ -91,6 +96,14 @@ export interface UpdateStatus {
    * `until` is when the newer held release should become installable.
    */
   heldUpdate?: { latest: string; until: string; estimated?: true }
+  /**
+   * An update exists, but ANOTHER release already in this profile's lockfile
+   * is still inside the safety wait, and pnpm refuses every change until it is
+   * past (#1252). Separate from {@link heldUpdate}, which is about this
+   * plugin's own target. `readyAt` is null when the end time is unknown.
+   * `updateAvailable` is false while this is set.
+   */
+  profileBlocked?: { name: string; version: string; readyAt: string | null }
   /**
    * The version this package's channel points at, when it differs from what
    * is installed and is NOT newer.
@@ -147,7 +160,8 @@ export function isUpdatablePlugin(activeProfileDir: string, name: string, bundle
 
 const UPDATES_TTL_MS = 30 * 60 * 1000
 const GIT_REMOTE_HEAD_TIMEOUT_MS = 6000
-let updatesCache: { key: string; at: number; recheckAt: number; data: Record<string, UpdateStatus> } | null = null
+let updatesCache: { key: string; recheckAt: number; data: Record<string, UpdateStatus> } | null = null
+let updateCheckGeneration = 0
 
 /**
  * HEAD for an arbitrary smart-HTTP git remote (Gitea, GitLab, …). Same
@@ -258,6 +272,7 @@ export function invalidateUpdates(): void {
   // disk yet; dropping the listing there would make the UI re-check releases
   // because a request merely entered the queue.
   if (inProbe()) return
+  updateCheckGeneration += 1
   updatesCache = null
 }
 
@@ -285,6 +300,7 @@ export function setUpdateRegistry(base: string): void {
   const next = base.replace(/\/+$/, '')
   if (next === registryBase) return
   registryBase = next
+  updateCheckGeneration += 1
   updatesCache = null
 }
 
@@ -484,7 +500,7 @@ export async function readVersionMaturity(name: string, version: string, profile
   }
 }
 
-async function fetchJson(url: string): Promise<unknown> {
+async function fetchJson(url: string, allowNotFound = false): Promise<unknown> {
   // Through the proxy when one is configured: Node's global fetch ignores
   // HTTP_PROXY, so on a machine whose route out is a local proxy every
   // update check silently took the slow path — or none at all.
@@ -492,6 +508,7 @@ async function fetchJson(url: string): Promise<unknown> {
     headers: { accept: 'application/json', 'user-agent': 'dsh-market' },
     signal: AbortSignal.timeout(10_000),
   })
+  if (allowNotFound && res.status === 404) return undefined
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json() as unknown
 }
@@ -807,6 +824,25 @@ async function releaseAgeHold(name: string, latest: string | null, profile: stri
   return until > Date.now() ? { until: new Date(until).toISOString(), estimated: false } : 'past'
 }
 
+/**
+ * Mark the updates a known profile-level blocker would turn into a failed
+ * click (#1252). Applied to what is served, not to the cached registry
+ * answer, so a blocker learned a second ago and one that just ended both show
+ * on the very next read without another round of registry traffic.
+ */
+export function applyProfileBlockers(
+  statuses: Record<string, UpdateStatus>,
+  activeProfileDir: string,
+  now = Date.now(),
+): Record<string, UpdateStatus> {
+  if (!Object.values(statuses).some(status => status.updateAvailable === true)) return statuses
+  const blocker = headlineBlocker(activeReleaseBlockers(activeProfileDir, now))
+  if (blocker === null) return statuses
+  const profileBlocked = { name: blocker.name, version: blocker.version, readyAt: blocker.readyAt }
+  return Object.fromEntries(Object.entries(statuses).map(([name, status]) =>
+    [name, status.updateAvailable === true ? { ...status, updateAvailable: false, profileBlocked } : status]))
+}
+
 /** A hold expiration invalidates evidence; it cannot itself authorize an install. */
 function nextHoldRecheck(data: Record<string, UpdateStatus>): number {
   return Math.min(...Object.values(data).flatMap(status => status.heldUpdate === undefined ? [] : [Date.parse(status.heldUpdate.until)]))
@@ -827,7 +863,7 @@ function profilePolicyFingerprint(dir: string): string {
   return hash.digest('hex')
 }
 
-/** Per-plugin update checks; a failed check reports no update rather than failing the listing. */
+/** Check each plugin independently so a failed lookup leaves the other results usable. */
 export async function checkUpdates(
   profile: string,
   force = false,
@@ -863,16 +899,19 @@ export async function checkUpdates(
   options: { holdYoungReleases?: boolean; releaseSources?: ReadonlyMap<string, CatalogReleaseSource> } = {},
 ): Promise<Record<string, UpdateStatus>> {
   const activeProfileDir = profileDir(profile, explicitDir)
+  const installed = readInstalled(profile, activeProfileDir)
+  const lockCommits = readLockCommits(profile, activeProfileDir)
+  const installedIdentity = JSON.stringify(Object.entries(installed).sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, spec]) => [name, spec, readInstalledVersion(profile, name, activeProfileDir), readGitResolutionCommit(profile, spec, activeProfileDir)]))
   // The channel is part of the key: switching to betas has to change the
   // answer immediately, and a cache keyed on the profile alone would serve
   // the stable verdict for the rest of the TTL — reading as "the setting did
   // nothing".
-  const cacheKey = `${activeProfileDir}\u0000${options.holdYoungReleases === true ? 'hold' : 'any'}\u0000${[...channelFor].map(([n, c]) => `${n}:${c}`).sort().join(',')}\u0000${[...onlineSourceFor].map(([n, s]) => `${n}:${s}`).sort().join(',')}\u0000${[...catalogNpmByRepo].map(([n, s]) => `${n}:${s}`).sort().join(',')}\u0000${options.holdYoungReleases === true ? profilePolicyFingerprint(activeProfileDir) : ''}` + JSON.stringify([...(options.releaseSources ?? [])])
+  const cacheKey = `${activeProfileDir}\u0000${options.holdYoungReleases === true ? 'hold' : 'any'}\u0000${[...channelFor].map(([n, c]) => `${n}:${c}`).sort().join(',')}\u0000${[...onlineSourceFor].map(([n, s]) => `${n}:${s}`).sort().join(',')}\u0000${[...catalogNpmByRepo].map(([n, s]) => `${n}:${s}`).sort().join(',')}\u0000${options.holdYoungReleases === true ? profilePolicyFingerprint(activeProfileDir) : ''}` + JSON.stringify([...(options.releaseSources ?? [])]) + installedIdentity + JSON.stringify([...lockCommits].sort())
   if (!force && updatesCache?.key === cacheKey && Date.now() < updatesCache.recheckAt) {
     return updatesCache.data
   }
-  const installed = readInstalled(profile, activeProfileDir)
-  const lockCommits = readLockCommits(profile, activeProfileDir)
+  const generation = ++updateCheckGeneration
   const result: Record<string, UpdateStatus> = {}
   let nextCandidateMaturityAt = Infinity
   await Promise.all(Object.entries(installed).map(async ([name, spec]) => {
@@ -890,6 +929,7 @@ export async function checkUpdates(
         result[name] = {
           kind: 'linked', version, current: version, latest,
           updateAvailable: upgrade && !held,
+          ...(latest === null ? { checkFailed: true as const, checkError: 'unavailable' as const } : {}),
           ...(held ? { heldUpdate: { latest: latest!, until: hold.until, ...(hold.estimated ? { estimated: true as const } : {}) } } : {}),
           ...(upgrade ? { restoreRequired: true } : {}),
         }
@@ -918,6 +958,7 @@ export async function checkUpdates(
           kind: 'generation', version, current: version,
           latest: isUpgrade(version, newest) ? newest : null,
           updateAvailable: false,
+          ...(onlineSource !== undefined && newest === null ? { checkFailed: true as const, checkError: 'unavailable' as const } : {}),
         }
         return
       }
@@ -958,6 +999,7 @@ export async function checkUpdates(
         result[name] = {
           kind: 'github', version, current, latest,
           updateAvailable: byVersion ?? (current !== null && latest !== null && current !== latest),
+          ...(latest === null && byVersion === null ? { checkFailed: true as const, checkError: 'unavailable' as const } : {}),
           ...(byVersion === false && current !== null && latest !== null && current !== latest
             ? { unreleasedCommit: latest } : {}),
         }
@@ -984,6 +1026,7 @@ export async function checkUpdates(
         result[name] = {
           kind: 'github', version, current, latest,
           updateAvailable: byVersion ?? (current !== null && latest !== null && current !== latest),
+          ...(latest === null && byVersion === null ? { checkFailed: true as const, checkError: 'unavailable' as const } : {}),
           ...(byVersion === false && current !== null && latest !== null && current !== latest
             ? { unreleasedCommit: latest } : {}),
         }
@@ -997,7 +1040,7 @@ export async function checkUpdates(
           const source = options.releaseSources?.get(name)
           if (source !== undefined) {
             const release = await publishedReleaseUpdate(source, name)
-            result[name] = { kind: 'npm', version, current: version, latest: release?.version ?? null, updateAvailable: isUpgrade(version, release?.version ?? null) }
+            result[name] = { kind: 'npm', version, current: version, latest: release?.version ?? null, updateAvailable: isUpgrade(version, release?.version ?? null), ...(release === null ? { checkFailed: true as const, checkError: 'unavailable' as const } : {}) }
             return
           }
           const repo = lookupRepoFromUrl(spec)
@@ -1007,8 +1050,9 @@ export async function checkUpdates(
             return
           }
         }
-        const meta = (await fetchJson(npmUrl(`${encodeURIComponent(name)}/latest`))) as { version?: string }
-        const stable = typeof meta.version === 'string' ? meta.version : null
+        const meta = (await fetchJson(npmUrl(`${encodeURIComponent(name)}/latest`), true)) as { version?: unknown } | null | undefined
+        const stable = typeof meta?.version === 'string' && parseSemver(meta.version) !== null ? meta.version : null
+        if (meta !== undefined && stable === null) throw new Error('npm latest response has no valid version')
         const channel = channelFor.get(name)
         const latest = channel === undefined ? stable : await versionOnChannel(name, channel, stable)
         // Forwards is an update; a difference in the other direction is a
@@ -1049,6 +1093,7 @@ export async function checkUpdates(
         result[name] = {
           kind: 'npm', version, current: version, latest,
           updateAvailable: mature === null ? upgrade && !held : mature.candidate !== null,
+          ...(mature?.reason === 'registry-unavailable' ? { checkFailed: true as const, checkError: 'unavailable' as const } : {}),
           ...(mature?.candidate !== null && mature?.candidate !== undefined ? { eligibleVersion: mature.candidate } : {}),
           ...(mature?.heldUpdate !== undefined ? { heldUpdate: mature.heldUpdate }
             : hold !== null && hold !== 'past' ? { heldUpdate: { latest: latest!, until: hold.until, ...(hold.estimated ? { estimated: true as const } : {}) } } : {}),
@@ -1057,7 +1102,10 @@ export async function checkUpdates(
         }
       }
     } catch {
-      result[name] = { kind: (spec.startsWith('github:') || isGitHostedSpec(spec)) ? 'github' : 'npm', version, current: null, latest: null, updateAvailable: false }
+      result[name] = {
+        kind: (spec.startsWith('github:') || isGitHostedSpec(spec)) ? 'github' : 'npm',
+        version, current: null, latest: null, updateAvailable: false, checkFailed: true, checkError: 'unavailable',
+      }
     }
   }))
   // A plain dependency can have a newer release; it is just not an update the
@@ -1068,7 +1116,17 @@ export async function checkUpdates(
     if (status.updateAvailable !== true || isUpdatablePlugin(activeProfileDir, name, composed)) continue
     result[name] = { ...status, updateAvailable: false, notAPlugin: true }
   }
-  const now = Date.now()
-  updatesCache = { key: cacheKey, at: now, recheckAt: Math.min(now + UPDATES_TTL_MS, nextHoldRecheck(result), nextCandidateMaturityAt), data: result }
+  // A delayed check must not replace a newer snapshot or refill a cache that
+  // was invalidated while the request was in flight.
+  if (generation === updateCheckGeneration) {
+    const now = Date.now()
+    if (Object.values(result).some(status => status.checkFailed === true || status.checkError !== undefined)) {
+      // Keep the last confirmed data, but let the next ordinary refresh try
+      // again even when this was a forced refresh during the normal TTL.
+      if (updatesCache?.key === cacheKey) updatesCache.recheckAt = now
+    } else {
+      updatesCache = { key: cacheKey, recheckAt: Math.min(now + UPDATES_TTL_MS, nextHoldRecheck(result), nextCandidateMaturityAt), data: result }
+    }
+  }
   return result
 }

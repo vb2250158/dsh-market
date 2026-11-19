@@ -25,12 +25,15 @@
  *   chains) are protected and refuse to toggle.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { accessSync, constants, lstatSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { logEvent } from './log.ts'
+import { packageOfEntryName } from './entry-identity.ts'
 import { parsePatchFile, parsePatchText } from './check.ts'
 import { bundleOptOutRowIds, bundlePatchInsertedIds, declaredBundlePatchFiles, parsePatchRows } from './profile.ts'
+import { NPM_NAME_RE } from './sources.ts'
 
 /** The slice of the loader tree this module needs. */
 export interface PatchHost {
@@ -171,10 +174,29 @@ function nextPatchContentLine(lines: readonly string[], from: number): number {
  *   does not carry the key at all.
  */
 function entryKeyValue(lines: readonly string[], start: number, key: string): string | null {
-  const pattern = new RegExp(`^ {2}${key}:[ \\t]*(.*?)[ \\t]*$`, 'u')
+  return fieldValue(lines, start, 0, key)
+}
+
+/**
+ * The value of one field inside a row that starts before `start`.
+ *
+ * The field sits two spaces deeper than the `- id:` marker that opens the row.
+ * A top-level row is therefore written at two spaces and an inserted row — one
+ * nested under `- insert:` — at six, because the row itself sits at four. The
+ * block ends at the next line indented no deeper than the id; a comment at
+ * that depth is not structural and does not end it.
+ *
+ * @param indent - the column of the row's own `- id:` marker.
+ * @returns the scalar as written (comments stripped), or null when absent.
+ */
+function fieldValue(lines: readonly string[], start: number, indent: number, key: string): string | null {
+  const fieldIndent = indent + 2
+  const pattern = new RegExp(`^ {${String(fieldIndent)}}${key}:[ \\t]*(.*?)[ \\t]*$`, 'u')
   for (let index = start; index < lines.length; index += 1) {
     const line = lines[index] ?? ''
-    if (/^- /u.test(line)) return null
+    const body = line.trimStart()
+    if (body === '') continue
+    if (line.length - body.length < fieldIndent && !body.startsWith('#')) return null
     const match = pattern.exec(line)
     // A `#` starts a comment only after whitespace; `#` inside a bare scalar
     // is data, and YAML would keep it.
@@ -210,12 +232,16 @@ function rowApplies(name: unknown, expected: string | null): boolean {
  * treats a subpath name and a foreign package name the same way (#1113).
  */
 export function composedRowName(host: PatchHost, rowId: string): string | null {
+  const prefix = includePrefix(host)
+  const profileId = prefix === '' ? rowId : prefix + rowId
+  let directName: string | null = null
   for (const entry of host.loader.entries()) {
-    if (loaderEntryId(entry) !== rowId) continue
-    const name = entry.options?.name
-    return typeof name === 'string' && name !== '' ? name : null
+    const id = loaderEntryId(entry)
+    const candidate = entry.options?.name
+    if (id === profileId && candidate) return candidate
+    if (id === rowId && candidate) directName = candidate
   }
-  return null
+  return directName
 }
 
 /**
@@ -231,18 +257,7 @@ export function rowFlagApplies(state: PatchState, rowId: string, expected: strin
   return carried === undefined || rowApplies(carried, expected)
 }
 
-/** The state with one row's flags dropped when its `name` does not apply. */
-function withoutMismatchedRow(state: PatchState, rowId: string, expected: string | null): PatchState {
-  if (rowFlagApplies(state, rowId, expected)) return state
-  return {
-    disables: state.disables.filter(id => id !== rowId),
-    forced: state.forced.filter(id => id !== rowId),
-    inserts: state.inserts,
-    ...(state.names !== undefined ? { names: state.names } : {}),
-  }
-}
-
-export function readUserPatchState(patchPath: string): PatchState {
+export function readUserPatchState(patchPath: string, expectedNameFor?: (id: string) => string | null): PatchState {
   // The host composes the file in order, later entries override earlier ones,
   // so a row has one final flag: listing it as both disabled and forced showed
   // a plugin as off while the file had it on (#1099).
@@ -264,7 +279,21 @@ export function readUserPatchState(patchPath: string): PatchState {
     if (/^- /u.test(line)) inInsert = false
     if (inInsert) {
       const insertRow = /^ {4}- id: ([A-Za-z0-9_.-]+)/u.exec(line)
-      if (insertRow !== null) inserts.push(insertRow[1])
+      if (insertRow !== null) {
+        const inserted = insertRow[1]!
+        inserts.push(inserted)
+        // An inserted row's own fields sit at six spaces, and the include
+        // composition applies `disabled` from either indent. Stopping at the id
+        // left every inserted row out of the flag map, so the market showed a
+        // plugin as on — with a toggle that could not be answered — while the
+        // loader had the row off.
+        const insertFlag = fieldValue(lines, index + 1, 4, 'disabled')
+        if (insertFlag === 'true' || insertFlag === 'false') flags.set(inserted, insertFlag)
+        const insertNamed = fieldValue(lines, index + 1, 4, 'name')
+        const insertName = insertNamed === null ? null : insertNamed.replace(/^(['"])(.*)\1$/u, '$2')
+        if (insertName !== null && insertName !== '') names.set(inserted, insertName)
+        else names.delete(inserted)
+      }
       continue
     }
     const disableRow = /^- id: (?:([A-Za-z0-9_.-]+)|'([A-Za-z0-9_.-]+)'|"([A-Za-z0-9_.-]+)")[ \t]*$/u.exec(line)
@@ -272,12 +301,13 @@ export function readUserPatchState(patchPath: string): PatchState {
     const id = (disableRow[1] ?? disableRow[2] ?? disableRow[3])!
     const value = entryKeyValue(lines, index + 1, 'disabled')
     if (value !== 'true' && value !== 'false') continue
-    flags.set(id, value)
     // A row that names a module is only applied by the host when that name is
     // the one the row's id composes to; the flag stays here so the caller can
     // make that comparison (#1113).
     const named = entryKeyValue(lines, index + 1, 'name')
     const unwrapped = named === null ? null : named.replace(/^(['"])(.*)\1$/u, '$2')
+    if (expectedNameFor !== undefined && !rowApplies(unwrapped, expectedNameFor(id))) continue
+    flags.set(id, value)
     if (unwrapped !== null && unwrapped !== '') names.set(id, unwrapped)
     else names.delete(id)
   }
@@ -377,7 +407,10 @@ export function userPatchPackageReferences(patchPath: string, packageName: strin
  * @returns the id as a string, '' when absent or not a string/number.
  */
 export function loaderEntryId(entry: { options?: { id?: unknown } } | null | undefined): string {
-  const id = entry?.options?.id
+  return normalizeRowId(entry?.options?.id)
+}
+
+function normalizeRowId(id: unknown): string {
   if (typeof id === 'string') return id
   if (typeof id === 'number' && Number.isFinite(id)) return String(id)
   return ''
@@ -584,7 +617,13 @@ export function packagePatchFlags(
     // host, so it is not a decision about this package (#1113): the shape a
     // package rename leaves behind.
     const applies = (id: string): boolean => rowFlagApplies(state, id, composedRowName(host, id))
-    if (rows.some(id => decidedByUser(id) && applies(id) && state.disables.includes(id))) disabled.push(name)
+    // A package counts as off only when nothing of it is left running: a
+    // multi-component plugin with some components switched off is still on
+    // (#1150). One disabled row used to flip the whole package, which kept
+    // it out of 「全部更新」.
+    // Rows that name another module do not count either way (#1113).
+    const decidedRows = rows.filter(id => decidedByUser(id) && applies(id))
+    if (decidedRows.length > 0 && decidedRows.every(id => state.disables.includes(id))) disabled.push(name)
     if (rows.some(id => decidedByUser(id) && applies(id) && state.forced.includes(id))) forced.push(name)
   }
   return { disabled, forced }
@@ -602,22 +641,40 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
 }
 
-function rowBlock(rowId: string, disabled: boolean): string {
-  return `- id: ${rowId}\n  disabled: ${disabled ? 'true' : 'false'}\n`
+const MARKET_ROW_MARKER = '# dsh-market'
+const COMPONENT_MODULE_RE = /^@?[A-Za-z0-9_.~-]+(?:\/[A-Za-z0-9_.~-]+)*$/u
+
+/** Named switch rows can point at an export inside their owning package
+ * (#1242). Keep the full module identity for the host's exact-name match;
+ * cleanup may own the package, but not a similarly prefixed package. */
+function isNamedSwitchModule(name: string, owner: string | null): boolean {
+  const packageName = NPM_NAME_RE.test(name) ? name : packageOfEntryName(name)
+  return COMPONENT_MODULE_RE.test(name) && packageName !== null && NPM_NAME_RE.test(packageName)
+    && (owner === null || name === owner || packageName === owner)
+}
+
+function moduleNameLine(name: string): string {
+  return `  name: '${name}' ${MARKET_ROW_MARKER}`
+}
+
+function rowBlock(rowId: string, disabled: boolean, name: string | null = null): string {
+  const block = `- id: ${rowId}\n  disabled: ${disabled ? 'true' : 'false'}\n`
+  return name === null ? block : block + moduleNameLine(name) + '\n'
 }
 
 /**
  * Rewrite standalone id/flag rows while preserving the surrounding file.
- * Comments and blank lines may separate the fields (#930). Look beyond them
- * after the flag too: an indented config/name/key makes this a longer entry,
- * whose first lines must never be removed (#821). Trailing comments stay put.
+ * Also accept the module name market adds to its own rows (#1196). Any
+ * other key makes the entry a user configuration to preserve (#821).
  */
 function rewriteRowBlocks(
   text: string,
   rowId: string,
   disabled: 'true' | 'false' | 'any',
-  replace: (block: string) => string,
+  replace: (block: string, name: string | null) => string,
   expected: string | null = null,
+  owner: string | null = expected,
+  componentsOnly = false,
 ): string {
   const id = escapeRegExp(rowId)
   const idLine = new RegExp(`^- id: (?:${id}|'${id}'|"${id}")[ \t]*$`, 'u')
@@ -627,21 +684,215 @@ function rewriteRowBlocks(
   let result = '', copied = 0
   for (let index = 0; index < lines.length; index += 1) {
     if (!idLine.test(lines[index]!.replace(/\r?\n$/u, ''))) continue
-    // A row that names another module is skipped by the host, so rewriting it
-    // would report a change that never happens (#1113).
-    const named = entryKeyValue(lines, index + 1, 'name')
-    if (!rowApplies(named === null ? null : named.replace(/^(['"])(.*)\1$/u, '$2'), expected)) continue
     const flagIndex = nextPatchContentLine(lines, index + 1)
-    const flag = /^ {2}disabled: (true|false)[ \t]*(?:\r?\n)?$/u.exec(lines[flagIndex] ?? '')
+    const flag = /^ {2}disabled: (true|false)(?:[ \t]+# dsh-market package-switch (\S+))?[ \t]*(?:\r?\n)?$/u.exec(lines[flagIndex] ?? '')
     if (flag === null || (disabled !== 'any' && flag[1] !== disabled)) continue
-    const following = nextPatchContentLine(lines, flagIndex + 1)
+    const componentOwner = flag[2]
+    if (componentsOnly && componentOwner === undefined) continue
+    if (componentOwner !== undefined && componentOwner !== owner) continue
+    let lastKey = flagIndex
+    let name: string | null = null
+    let following = nextPatchContentLine(lines, lastKey + 1)
+    const marker = /^ {2}name: (['"])([^'"]+)\1[ \t]+# dsh-market[ \t]*(?:\r?\n)?$/u.exec(lines[following] ?? '')
+    if (marker !== null) {
+      name = marker[2]!
+      const validName = componentOwner === undefined
+        ? isNamedSwitchModule(name, owner) : COMPONENT_MODULE_RE.test(name)
+      if (!validName || !rowApplies(name, expected)) continue
+      lastKey = following
+      following = nextPatchContentLine(lines, lastKey + 1)
+    }
     if (/^[ \t]/u.test(lines[following] ?? '')) continue
-    const start = offsets[index]!, end = offsets[flagIndex + 1]!
-    result += text.slice(copied, start) + replace(text.slice(start, end))
+    const start = offsets[index]!, end = offsets[lastKey + 1]!
+    result += text.slice(copied, start) + replace(text.slice(start, end), name)
     copied = end
-    index = flagIndex
+    index = lastKey
   }
   return result + text.slice(copied)
+}
+
+interface ComponentSwitchPatch {
+  before: string
+  resumed: string
+  rows: ReadonlyMap<string, string | null>
+  suspended: boolean
+  customized: boolean
+  keepOff: ReadonlySet<string>
+  ownOff: ReadonlySet<string>
+  legacyAllOff: boolean
+}
+
+function componentChoices(text: string, rows: ReadonlyMap<string, string | null>): Map<string, boolean | 'expression'> | null {
+  const parsed = parsePatchText(withPlaceholderRestored(text))
+  if (parsed === null) return null
+  const choices = new Map<string, boolean | 'expression'>()
+  for (const item of parsed) {
+    if (item === null || typeof item !== 'object') continue
+    const insert = (item as { insert?: unknown }).insert
+    for (const row of Array.isArray(insert) ? insert as unknown[] : [item]) {
+      if (row === null || typeof row !== 'object') continue
+      const { id, name, disabled } = row as { id?: unknown; name?: unknown; disabled?: unknown }
+      const rowId = normalizeRowId(id)
+      if (!rows.has(rowId) || !rowApplies(name, rows.get(rowId) ?? null)) continue
+      if (typeof disabled === 'boolean') choices.set(rowId, disabled)
+      else if (disabled !== null && typeof disabled === 'object' && '__jsExpr' in disabled) choices.set(rowId, 'expression')
+    }
+  }
+  return choices
+}
+
+/**
+ * View the user's component choices without the temporary package-wide
+ * disable overrides. A named override the official page changed to false
+ * is a new choice, so only the still-disabled market overrides are removed.
+ */
+export function readComponentSwitchPatch(
+  patchPath: string,
+  packageName: string,
+  rows: ReadonlyMap<string, string | null>,
+  bundleDecides: ReadonlySet<string>,
+): ComponentSwitchPatch | null {
+  let before = ''
+  try {
+    before = readPatchText(patchPath)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return null
+  }
+  let resumed = before
+  for (const [id, expected] of rows) {
+    resumed = rewriteRowBlocks(resumed, id, 'true', () => '', expected, packageName, true)
+  }
+  const choices = componentChoices(resumed, rows)
+  if (choices === null) return null
+  const keepOff = new Set<string>()
+  const ownOff = new Set<string>()
+  for (const id of rows.keys()) {
+    const choice = choices.get(id)
+    if (choice === true) ownOff.add(id)
+    if (choice === true || choice === 'expression' || (choice !== false && bundleDecides.has(id))) keepOff.add(id)
+  }
+  const customized = [...choices].some(([id, choice]) => choice !== true || !bundleDecides.has(id))
+  const suspended = before !== resumed
+  // Only the old switch's standalone flags are ambiguous. If any exact
+  // user row still holds a component off without them, preserve that choice.
+  let legacyAllOff = false
+  if (!suspended && ownOff.size === rows.size) {
+    let legacyCleared = resumed
+    for (const [id, expected] of rows) {
+      legacyCleared = rewriteRowBlocks(legacyCleared, id, 'true', () => '', expected, packageName)
+    }
+    const remaining = componentChoices(legacyCleared, rows)
+    legacyAllOff = remaining !== null && ![...remaining.values()].includes(true)
+  }
+  return { before, resumed, rows, suspended, customized, keepOff, ownOff, legacyAllOff }
+}
+
+interface ComponentPatchChange {
+  before: string | null
+  after: string
+}
+
+type PatchWrite = { ok: boolean; reason: string | null }
+
+const PATCH_CHANGED = { ok: false, reason: '组件配置刚刚发生变化。请检查设置后重试 / The component settings changed. Check them and retry.' }
+
+function readComponentPatchFile(patchPath: string): string | null {
+  try {
+    return readFileSync(patchPath, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    return null
+  }
+}
+
+/** Preserve the original YAML even when the write fails partway through. */
+function replaceComponentPatch(patchPath: string, expected: string | null, contents: string | null): PatchWrite {
+  let temporary: string | undefined
+  try {
+    if (readComponentPatchFile(patchPath) !== expected) return PATCH_CHANGED
+    const existing = lstatSync(patchPath, { throwIfNoEntry: false })
+    const target = existing === undefined ? patchPath : realpathSync(patchPath)
+    if (existing !== undefined) accessSync(target, constants.W_OK)
+    if (contents === null) {
+      // Only a regular file created by this switch can be removed on rollback.
+      if (existing?.isFile() !== true) return PATCH_CHANGED
+      unlinkSync(patchPath)
+    } else {
+      temporary = target + '.dsh-market-' + randomUUID()
+      const mode = existing === undefined ? 0o666 : statSync(target).mode & 0o777
+      writeFileSync(temporary, contents, { flag: 'wx', mode })
+      if (readComponentPatchFile(patchPath) !== expected
+        || (existing !== undefined && realpathSync(patchPath) !== target)) return PATCH_CHANGED
+      renameSync(temporary, target)
+      temporary = undefined
+    }
+    return { ok: true, reason: null }
+  } catch (error) {
+    return patchWriteError(error)
+  } finally {
+    if (temporary !== undefined) {
+      try { unlinkSync(temporary) } catch { /* retain the original write result */ }
+    }
+  }
+}
+
+/** Roll back only an unchanged file this switch wrote. */
+export function rollbackComponentSwitchPatch(patchPath: string, change: ComponentPatchChange): PatchWrite {
+  return replaceComponentPatch(patchPath, change.after, change.before)
+}
+
+/** Only the switch's own overrides are written or removed. Keep the user's
+ * component flags and accompanying configuration in the file verbatim. */
+export function writeComponentSwitchPatch(
+  patchPath: string,
+  packageName: string,
+  patch: ComponentSwitchPatch,
+  enabled: boolean,
+): Promise<PatchWrite & { change?: ComponentPatchChange }> {
+  return queuedWrite(async () => commitComponentSwitchPatch(patchPath, packageName, patch, enabled))
+}
+
+/** The OFF transaction calls this while holding the host profile lock. */
+export function commitComponentSwitchPatch(
+  patchPath: string,
+  packageName: string,
+  patch: ComponentSwitchPatch,
+  enabled: boolean,
+): PatchWrite & { change?: ComponentPatchChange } {
+  let latest: string | null
+  try {
+    latest = readComponentPatchFile(patchPath)
+  } catch {
+    return { ok: false, reason: '无法读取组件配置 / could not read the component settings' }
+  }
+  if (withoutPatchBom(latest ?? '') !== patch.before) return PATCH_CHANGED
+  let change: ComponentPatchChange | undefined
+  const publish = (file: string, content: string): PatchWrite => {
+    if (latest === content) return { ok: true, reason: null }
+    const result = replaceComponentPatch(file, latest, content)
+    if (result.ok) change = { before: latest, after: content }
+    return result
+  }
+  if (enabled) {
+    return patch.suspended
+      ? publish(patchPath, withPlaceholderRestored(patch.resumed))
+      : { ok: true, reason: null }
+  }
+  const overrides: string[] = []
+  const alreadyOff = patch.ownOff.size === patch.rows.size
+  for (const [id, name] of patch.rows) {
+    // A carrier can still affect other packages when all its entries are
+    // off. Record the package-level switch without changing that flag.
+    if (patch.ownOff.has(id) && (!alreadyOff || overrides.length > 0)) continue
+    if (!ROW_ID_RE.test(id)) {
+      return { ok: false, reason: '组件编号无法写入。请在官方插件页停用 / A component ID could not be saved. Turn it off on the DSH Plugins page.' }
+    }
+    const marker = MARKET_ROW_MARKER + ' package-switch ' + packageName
+    const qualifiedName = name !== null && COMPONENT_MODULE_RE.test(name) ? moduleNameLine(name) + '\n' : ''
+    overrides.push('- id: ' + id + '\n  disabled: true ' + marker + '\n' + qualifiedName)
+  }
+  const result = appendPatchEntry(patchPath, overrides.join(''), patch.resumed, publish)
+  return change === undefined ? result : { ...result, change }
 }
 
 /**
@@ -674,7 +925,7 @@ function composedRowFlag(text: string, rowId: string, expected: string | null = 
   for (const row of rows) {
     if (row === null || typeof row !== 'object' || Array.isArray(row)) continue
     const entry = row as { id?: unknown; disabled?: unknown; name?: unknown }
-    if (entry.id !== rowId) continue
+    if (normalizeRowId(entry.id) !== rowId) continue
     // A row naming another module never reaches this id's entry (#1113).
     if (!rowApplies(entry.name, expected)) continue
     // An `!!js` expression arrives as a function (or a tag object): it decides
@@ -723,37 +974,41 @@ function lastRowFlag(text: string, rowId: string, expected: string | null = null
  * after it and wrote a second top-level node. The market's own writes drop
  * the BOM from then on. Throws like `readFileSync` when the file is missing.
  */
-function readPatchText(patchPath: string): string {
-  const text = readFileSync(patchPath, 'utf8')
-  return text.startsWith('﻿') ? text.slice(1) : text
+function withoutPatchBom(text: string): string {
+  return text.startsWith('\uFEFF') ? text.slice(1) : text
 }
 
-function writePatchFile(patchPath: string, contents: string): { ok: boolean; reason: string | null } {
+function readPatchText(patchPath: string): string {
+  return withoutPatchBom(readFileSync(patchPath, 'utf8'))
+}
+
+function writePatchFile(patchPath: string, contents: string): PatchWrite {
   try {
     writeFileSync(patchPath, contents)
     return { ok: true, reason: null }
   } catch (error) {
-    const code = error !== null && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : ''
-    const detail = code === 'EACCES' || code === 'EPERM' || code === 'EROFS'
-      ? '文件不可写（只读或被系统保护）'
-      : code === 'ENOSPC'
-        ? '磁盘空间不足'
-        : error instanceof Error ? error.message : String(error)
-    return {
-      ok: false,
-      reason: `补丁层文件写不进去：${detail} / the patch file could not be written: ${code === 'EACCES' || code === 'EPERM' || code === 'EROFS' ? 'it is read-only' : detail}`,
-    }
+    return patchWriteError(error)
   }
 }
 
-function appendPatchEntry(patchPath: string, block: string): { ok: boolean; reason: string | null } {
-  let text = ''
-  try {
-    text = readPatchText(patchPath)
-  } catch { /* created below */ }
+function patchWriteError(error: unknown): PatchWrite {
+  const code = error !== null && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : ''
+  const readOnly = code === 'EACCES' || code === 'EPERM' || code === 'EROFS'
+  const detail = readOnly
+    ? '文件不可写。解除只读或检查权限后重试'
+    : code === 'ENOSPC'
+      ? '磁盘空间不足。腾出空间后重试'
+      : error instanceof Error ? error.message : String(error)
+  return {
+    ok: false,
+    reason: '补丁层文件写不进去：' + detail + ' / the patch file could not be written: ' + (readOnly ? 'it is read-only. Check permissions and retry.' : code === 'ENOSPC' ? 'free up disk space and retry.' : detail),
+  }
+}
+
+function appendPatchEntry(patchPath: string, block: string, text: string, publish = writePatchFile): PatchWrite {
   const core = text.trim()
   if (core === '') {
-    return writePatchFile(patchPath, block)
+    return publish(patchPath, block)
   }
   // The dsh profile template ships an empty `[]` placeholder (a valid
   // empty list). Appending after it would create TWO top-level elements in
@@ -763,12 +1018,12 @@ function appendPatchEntry(patchPath: string, block: string): { ok: boolean; reas
   // Comments only (the user dropped the placeholder): append after them.
   if (withoutComments === '') {
     const next = text.endsWith('\n') ? text : `${text}\n`
-    return writePatchFile(patchPath, `${next}${block}`)
+    return publish(patchPath, `${next}${block}`)
   }
   if (withoutComments === '[]' || withoutComments === '[ ]') {
     const commented = text.replace(/^[ \t]*\[[ \t]*\][ \t]*(?:#.*)?(?:\r?\n|$)/mu, '# []\n')
     const next = commented.endsWith('\n') ? commented : `${commented}\n`
-    return writePatchFile(patchPath, `${next}${block}`)
+    return publish(patchPath, `${next}${block}`)
   }
   // A top-level flow LIST (other than the placeholder above) cannot be
   // appended to: `- id: X` after `[1, 2]` would create two top-level
@@ -786,14 +1041,14 @@ function appendPatchEntry(patchPath: string, block: string): { ok: boolean; reas
   }
   // The dsh entry-list dialect decides: anything that does not parse as a
   // top-level array is left untouched (appending would deepen the break).
-  if (parsePatchFile(patchPath) === null) {
+  if (parsePatchText(text) === null) {
     return {
       ok: false,
       reason: '补丁层不是合法的条目数组,已拒绝追加以免破坏;请先修正 YAML / the patch layer is not a valid entry list; refused to append — fix the YAML first',
     }
   }
   const next = text.endsWith('\n') ? text : `${text}\n`
-  return writePatchFile(patchPath, `${next}${block}`)
+  return publish(patchPath, `${next}${block}`)
 }
 
 /**
@@ -808,8 +1063,11 @@ function appendPatchEntry(patchPath: string, block: string): { ok: boolean; reas
 export function disableRow(
   patchPath: string,
   rowId: string,
-  options: { expectedName?: string | null } = {},
+  options: { expectedName?: string | null; recordModuleName?: boolean; packageName?: string } = {},
 ): Promise<{ ok: boolean; reason: string | null }> {
+  const expected = options.expectedName ?? null
+  const name = options.recordModuleName === true && expected !== null
+    && isNamedSwitchModule(expected, options.packageName ?? expected) ? expected : null
   return queuedWrite(async () => {
     if (!ROW_ID_RE.test(rowId)) {
       return { ok: false, reason: `行 id 含特殊字符,不支持写入补丁层 / row id ${rowId} cannot be written to the patch layer` }
@@ -818,28 +1076,29 @@ export function disableRow(
       try { return readPatchText(patchPath) } catch { return '' }
     })()
     let kept = false
-    const next = rewriteRowBlocks(text, rowId, 'any', block => {
+    const next = rewriteRowBlocks(text, rowId, 'any', (block, recordedName) => {
       if (kept) return ''
       kept = true
-      return block.replace(/^ {2}disabled: false(?=[ \t]*(?:\r?\n|$))/mu, '  disabled: true')
-    }, options.expectedName ?? null)
+      const flipped = block.replace(/^ {2}disabled: false(?=[ \t]*(?:\r?\n|$))/mu, '  disabled: true')
+      if (recordedName !== null || name === null) return flipped
+      const eol = block.includes('\r\n') ? '\r\n' : '\n'
+      return (flipped.endsWith('\n') ? flipped : flipped + eol) + moduleNameLine(name) + eol
+    }, expected, options.packageName ?? expected)
     if (next !== text) {
-      const flipped = writePatchFile(patchPath, next)
-      if (!flipped.ok) return flipped
       // A longer entry for the row further down still has the last word.
-      if (lastRowFlag(next, rowId, options.expectedName ?? null) !== 'true') {
-        const result = appendPatchEntry(patchPath, rowBlock(rowId, true))
-        if (!result.ok) return result
-      }
+      const result = lastRowFlag(next, rowId, expected) === 'true'
+        ? writePatchFile(patchPath, next)
+        : appendPatchEntry(patchPath, rowBlock(rowId, true, name), next)
+      if (!result.ok) return result
       logEvent('info', 'patch', `disabled row ${rowId} in ${patchPath}`)
       return { ok: true, reason: null }
     }
     // A row whose `name` is not this entry's owns nothing here: counting it
     // as already-disabled would answer "off" and change nothing, leaving the
     // plugin running (#1113).
-    const state = withoutMismatchedRow(readUserPatchState(patchPath), rowId, options.expectedName ?? null)
+    const state = readUserPatchState(patchPath, id => id === rowId ? expected ?? options.packageName ?? null : null)
     if (state.disables.includes(rowId)) return { ok: true, reason: null }
-    const result = appendPatchEntry(patchPath, rowBlock(rowId, true))
+    const result = appendPatchEntry(patchPath, rowBlock(rowId, true, name), text)
     if (result.ok) logEvent('info', 'patch', `disabled row ${rowId} in ${patchPath}`)
     return result
   })
@@ -858,38 +1117,43 @@ export function disableRow(
 export function enableRow(
   patchPath: string,
   rowId: string,
-  options: { cleanOnly?: boolean; expectedName?: string | null } = {},
-): Promise<{ ok: boolean; reason: string | null }> {
+  options: { cleanOnly?: boolean; expectedName?: string | null; packageName?: string } = {},
+): Promise<{ ok: boolean; reason: string | null; removedMarketName?: string }> {
   const cleanOnly = options.cleanOnly === true
   const expected = options.expectedName ?? null
   return queuedWrite(async () => {
     if (!ROW_ID_RE.test(rowId)) {
       return { ok: false, reason: `行 id 含特殊字符,不支持写入补丁层 / row id ${rowId} cannot be written to the patch layer` }
     }
-    const state = withoutMismatchedRow(readUserPatchState(patchPath), rowId, expected)
+    const state = readUserPatchState(patchPath, id => id === rowId ? expected ?? options.packageName ?? null : null)
     const text = (() => {
       try { return readPatchText(patchPath) } catch { return '' }
     })()
-    const next = rewriteRowBlocks(text, rowId, 'true', () => '', expected)
+    let removedMarketName: string | undefined
+    const next = rewriteRowBlocks(text, rowId, 'true', (_block, name) => {
+      if (name !== null) removedMarketName = name
+      return ''
+    }, expected, options.packageName ?? expected)
     if (next !== text) {
-      const written = writePatchFile(patchPath, withPlaceholderRestored(next))
-      if (!written.ok) return written
       // A longer entry for the row may still have the last word — and so may a
       // spelling the line scanner cannot see (#1112). Ask the parser the host
       // uses; when the file is not readable as its dialect, fall back to the
       // scanner.
-      const stillOff = composedRowFlag(next, rowId, expected) ?? lastRowFlag(next, rowId, expected)
-      if (!cleanOnly && stillOff === 'true') {
-        const result = appendPatchEntry(patchPath, rowBlock(rowId, false))
-        if (!result.ok) return result
-      }
+      const target = expected ?? removedMarketName ?? options.packageName ?? null
+      const stillOff = composedRowFlag(next, rowId, target) ?? lastRowFlag(next, rowId, target)
+      const written = !cleanOnly && stillOff === 'true'
+        ? appendPatchEntry(patchPath, rowBlock(rowId, false, removedMarketName ?? null), next)
+        : writePatchFile(patchPath, withPlaceholderRestored(next))
+      if (!written.ok) return written
       logEvent('info', 'patch', `${cleanOnly ? 'cleared the block on' : 'enabled'} row ${rowId} in ${patchPath}`)
-      return { ok: true, reason: null }
+      return removedMarketName === undefined
+        ? { ok: true, reason: null }
+        : { ok: true, reason: null, removedMarketName }
     }
     // Nothing of the market's own to clean: the row's default stands.
     if (cleanOnly) return { ok: true, reason: null }
     if (state.forced.includes(rowId)) return { ok: true, reason: null }
-    const result = appendPatchEntry(patchPath, rowBlock(rowId, false))
+    const result = appendPatchEntry(patchPath, rowBlock(rowId, false), text)
     if (result.ok) logEvent('info', 'patch', `force-enabled row ${rowId} in ${patchPath}`)
     return result
   })
@@ -914,13 +1178,13 @@ function withPlaceholderRestored(text: string): string {
 
 /** Remove every disable/force block the market (or the user) wrote for a
  * row — the uninstall cleanup, so a removed plugin leaves no orphan rows. */
-export function removeRowBlocks(patchPath: string, rowIds: readonly string[]): { ok: boolean; reason: string | null } {
+export function removeRowBlocks(patchPath: string, rowIds: readonly string[], packageName: string | null = null): { ok: boolean; reason: string | null } {
   let text = ''
   try {
     text = readPatchText(patchPath)
   } catch { return { ok: true, reason: null } } // no file, nothing to remove
   let next = text
-  for (const rowId of rowIds) next = rewriteRowBlocks(next, rowId, 'any', () => '')
+  for (const rowId of rowIds) next = rewriteRowBlocks(next, rowId, 'any', () => '', null, packageName)
   if (next === text) return { ok: true, reason: null }
   const written = writePatchFile(patchPath, withPlaceholderRestored(next))
   if (written.ok) logEvent('info', 'patch', `removed patch rows for ${rowIds.join(', ')}`)

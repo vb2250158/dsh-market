@@ -198,10 +198,30 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		//#region src/client/locales.ts
 		/** zh/en/ja dictionaries for the Market settings section and install toast. */
 		const zh = {
+			updateChecksTitle: "更新检查",
+			updateChecksAutomatic: "自动检查更新",
+			updateChecksNow: "立即检查",
+			updateChecksLegacyHint: "只提醒，不自动安装。",
+			updateChecksInterval: "检查周期",
+			updateChecksEveryHours: "每 {0} 小时",
+			updateChecksEveryDays: "每 {0} 天",
+			updateChecksHint: "默认关闭。开启后按所选周期检查。只提醒，不自动安装。",
+			updateChecksPending: "尚未检查",
+			updateChecksChecking: "正在检查…",
+			updateChecksFound: "发现 {0} 个可用更新",
+			updateChecksNone: "暂无更新提醒",
+			updateChecksFailed: "检查暂未完成",
+			updateChecksFailedHint: "部分信息暂时无法获取，保留上次结果。请稍后重试。",
+			updateChecksChanged: "插件清单已变更",
+			updateChecksChangedHint: "上次检查后有插件被安装或移除，之前的结果已不适用。重新检查即可刷新。",
+			updateChecksLastSuccess: "最近完整检查：{0}",
+			updateChecksOpenHost: "到插件页查看",
+			updateNotificationsAnnouncement: "有 {count} 个插件可更新。打开插件市场查看。",
 			nav: "插件市场",
 			setCardDesc: "查看插件市场版本与设置。",
 			setSelfUpToDate: "已是最新版本",
 			setSelfUpdateReady: "有新版本",
+			setSelfUpdateWaiting: "新版等待中",
 			setSelfUpdateHint: "更新会下载新版本，重启后生效。",
 			setSelfUpToDateHint: "",
 			setSelfHostManagedHint: "这份市场由桌面端安装，新版本请在桌面端更新。",
@@ -219,6 +239,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			setEntryLastDoorHint: "至少保留一个入口；这是当前唯一可用的入口。",
 			setEntryShow: "显示",
 			setEntryHide: "不显示",
+			noticeText: "插件市场已移到「插件」页，设置里的这个入口之后会逐步下线。",
+			noticeTextManual: "插件市场已移到「插件」页的「插件市场」页签，设置里的这个入口之后会逐步下线。",
+			noticeGo: "去插件页",
+			noticeFailed: "没能打开插件页。请在侧栏点「插件」，再选「插件市场」页签。",
 			setIndexSource: "官方 Discover 索引",
 			setIndexSourceHint: "dsh 0.2.1 起，官方的「插件 → 发现 → 索引源」可以添加 https://cdn.jsdelivr.net/npm/dsh-plugin-catalog/index.json —— 官方发现页和 plugin_market 智能体工具会搜索同一份目录。",
 			setSidebarOn: "显示",
@@ -266,6 +290,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			setSelfRemovedHint: "重启 DeepSeek Harness 后完全清理。",
 			setSelfFailed: "操作失败",
 			versionHint: "插件市场版本 — 反馈问题时请附上",
+			marketVersionWaiting: "（有新版）",
+			marketVersionAvailableAt: "{0} 于 {1} 可更新",
+			marketVersionAvailableNow: "{0} 现在可更新",
 			subtitle: "发现社区为 DeepSeek Harness 开发的插件",
 			submitPlugin: "申请收录插件 ↗",
 			descExpand: "展开",
@@ -359,7 +386,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			clearFilters: "清除筛选",
 			installedEmpty: "尚未安装社区插件，可前往「发现」页浏览",
 			marketGoneTitle: "插件市场已停止运行",
-			marketGoneBody: "DSH 重新加载插件时把市场一起卸载了。重启 DSH 即可恢复；刚才的操作可能已经完成。",
+			marketGoneBody: "DSH 重新加载插件时把市场一起卸载了。会自动重连；一直连不上，请完全退出 DSH 再打开。刚才的操作可能已经完成。",
 			marketGoneRecord: "市场被 DSH 卸载了，这次操作没有等到结果。市场恢复后，到「已安装」里确认。",
 			marketGoneReconnecting: "正在重新连接…",
 			marketGoneReconnect: "重新连接",
@@ -397,6 +424,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			agentDrainHistoryFailedShort: "上次排队的操作失败了。请检查「已安装」或导出的日志。",
 			agentDrainHistoryCancelled: "上次排队的操作已取消。",
 			favoriteFailed: "收藏失败，请稍后重试",
+			favoriteLimitReached: "最多可收藏 {0} 个插件。",
 			favoriteUnavailable: "收藏功能暂不可用。请刷新页面或重启 dsh web。",
 			favoriteBusy: "插件操作未结束，收藏未保存，请稍后重试",
 			compatRiskBanner: "检测到兼容性风险，建议重启前到诊断页处理，或回滚本次操作。",
@@ -421,8 +449,16 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			updateHeldTag: "新版等待中",
 			updateHeldTarget: "最新版 {0} 刚发布，还要约 {1} 小时。先更新到 {2}。",
 			updateHeldTargetUnknown: "最新版 {0} 的发布时间暂不确定，还需等待。先更新到 {2}。",
-			updateHeldHint: "这个 profile 要求新版本发布满一段时间才允许安装，大约还要 {1} 小时。",
-			updateHeldEstimatedHint: "新版本已经出现在 /latest，但镜像的完整信息还没同步，所以先不提供更新；大约 {1} 分钟后会重新检查。",
+			updateHeldBeside: "约 {1} h",
+			updateHeldBesideUnknown: "还需等待",
+			updateHeldBesideEstimated: "约 {1} min",
+			updateHeldHint: "当前设置要求新版本发布满一段时间才允许安装，大约还要 {1} 小时。",
+			updateHeldEstimatedHint: "新版本已出现，但目录信息还没同步，所以先不提供更新；大约 {1} 分钟后会再检查。",
+			profileBlockedBeside: "等待中",
+			profileBlockedNote: "要等 {0} {1} 满安全等待期（约 {2}）后才能更新。到时再点更新即可。",
+			profileBlockedNoteUnknown: "要等 {0} {1} 满安全等待期后才能更新（时间未知）。稍后市场会再确认。",
+			profileBlockedSkipped: "已跳过：{0}",
+			restartFirstNote: "这一轮只能更新到这里。重启后再点「全部更新」继续。",
 			newerPrereleaseAvailable: "预发布版 {0} 已发布",
 			newerPrereleaseHint: "npm 上的 latest 没有更新；你在跟的这条预发布线发布了更新的版本。",
 			unreleasedCommits: "有新提交（未发版）{0}",
@@ -432,8 +468,16 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			hostUpdateHint: "本市场由桌面端安装和更新，新版本请在桌面端更新",
 			notesLink: "更新内容",
 			notesRelease: "版本说明",
+			notesHistory: "本次更新",
+			notesHistoryPartial: "部分版本的说明暂缺。",
+			notesHistoryEmpty: "暂时读不到本次更新的版本说明。",
+			notesHistoryReleasePage: "查看发布页",
+			notesHistoryRetry: "请稍后重试。",
+			notesHistoryVersionMissing: "这个版本暂无更新说明。",
+			notesHeldRelease: "暂不可安装",
+			notesBeyondTarget: "下面是 {0} 的说明，这个版本还不能装。现在更新到的是 {1}。",
 			notesCommits: "提交记录",
-			notesCommitsRecent: "最近提交（无法对应你当前安装的版本，仅供参考）",
+			notesCommitsRecent: "最近提交（无法确认本次更新范围，仅供参考）",
 			notesNpm: "版本发布时间",
 			notesNone: "该插件未提供更新说明。",
 			notesSource: "市场还没收录这个插件的更新说明。",
@@ -458,7 +502,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			renameContinue: "迁移并更新",
 			restoreOnline: "换用线上版本",
 			restoreHint: "将卸载本地版本并安装线上版本，之后照常检查更新。此操作无法撤销。",
-			hostIncompatibleTitle: "这个新版本要求更新的 DSH",
+			hostIncompatibleTitle: "这个插件版本与当前 DSH 不兼容",
 			hostIncompatibleBody: "{plugin} 声明需要 DSH {requirement}，而你现在运行的是 {host}。装上去很可能用不了，只能手动装回旧版。\n已停止，插件仍是原来的版本。\n如果你确定这个版本号不准（例如桌面端自带的 DSH 不报告版本），仍可继续更新。",
 			hostIncompatibleUnknown: "未知版本",
 			hostIncompatibleSearching: "正在查找还兼容当前 DSH 的版本…",
@@ -480,6 +524,11 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			hostIncompatibleBodyInstall: "{plugin} 声明需要 DSH {requirement}，而你现在运行的是 {host}。装上去很可能用不了。\n已停止，没有安装任何东西。\n如果你确定这个版本号不准（例如桌面端自带的 DSH 不报告版本），仍可继续安装。",
 			hostIncompatibleCancel: "取消安装",
 			hostIncompatibleInstallAnyway: "仍然安装",
+			installedIncompatTitle: "与当前 DSH 不兼容",
+			installedIncompatWhy: "它需要 DSH {0}，你正在运行 {1}。",
+			installedIncompatNextUpdate: "可以先试更新插件；若仍不行再升级 DSH。",
+			installedIncompatNextHost: "需要升级 DSH 后才能用。",
+			installedIncompatNextUnknown: "更新插件或升级 DSH 后再看这里。",
 			restoreNameOnlyHint: "本地副本未注明来源仓库，市场只能按包名在精选目录中匹配。下方插件可能是其他作者的同名插件，并非你本地副本的来源。确认前请核对作者和仓库地址。此操作会卸载本地版本并安装该插件，无法撤销。",
 			restoreContinue: "继续更新",
 			restoreProceed: "确认恢复",
@@ -518,6 +567,25 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			conflictOutcomeRemove: "卸载",
 			conflictWhy: "cordis 不接受重复的条目 id，保留它会让 DeepSeek Harness 下次启动失败。",
 			opTitle: "任务",
+			startupRepairBadge: "启动恢复",
+			startupRepairTitle: "启动时处理的中断更新",
+			startupRepairReinstalled: "已重新装好。",
+			startupRepairVerified: "已核对，现有版本完整。",
+			startupRepairPending: "下次启动时会检查是否还能重试。",
+			startupRepairAbandoned: "已停止自动重试。请从「设置 → 插件」重新安装。",
+			startupRepairVersion: "现有版本与原计划不同，已保留现有版本。下次启动时会重新核对。请到「已安装」检查。",
+			startupRepairRefused: "桌面端拒绝重新安装。请到「设置 → 插件」检查是否可以安装该插件。",
+			startupRepairNotComposed: "文件已装好，桌面端未能加载插件。请到「已安装」检查插件状态。",
+			startupRepairTimeout: "等待桌面端操作完成时超时。请等操作结束后到「已安装」确认结果。",
+			startupRepairUnknown: "重新安装失败。导出日志可查看原因。",
+			checkoutRecoveryTitle: "本地链接未恢复",
+			checkoutSourceRetained: "源码仍在，链接未恢复。",
+			checkoutSourceUnconfirmed: "无法确认源码位置。请检查本地目录。",
+			checkoutRecoveryBusy: "市场无法确认插件操作已结束。",
+			checkoutRecoveryRun: "市场无法确认包管理器已结束。",
+			checkoutRecoveryLock: "插件设置的写入锁仍在。",
+			checkoutRecoveryCheck: "市场无法核实原链接能否安全接回。",
+			checkoutRecoveryRetry: "请在插件操作结束后重启 DSH。",
 			opInstalling: "正在安装",
 			opNeedsYou: "项需处理",
 			opQueued: "排队中",
@@ -574,8 +642,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			hostCompatible: "兼容当前 DSH {0}",
 			hostDetecting: "正在识别宿主版本…",
 			hostUnknown: "宿主版本未知",
-			hostFilterLoading: "正在检查宿主要求 {0}/{1}；未声明或无法确认的插件仍会显示",
-			hostFilterActive: "已隐藏 {1} 个与 DSH {0} 不兼容的插件；未声明版本的仍在列表里",
+			hostFilterLoading: "正在检查宿主要求（本页 {0}/{1}）。要求未知的插件仍会显示。",
+			hostFilterActive: "本页已隐藏 {1} 个与 DSH {0} 不兼容的插件。要求未知的插件仍会显示。",
+			hostFilterEmpty: "本页插件均与当前 DSH 不兼容。",
+			hostFilterIncomplete: "本页已隐藏 {1} 个与 DSH {0} 不兼容的插件。另有 {2} 个暂时无法确认，仍会显示。",
 			hostRequirement: "DSH {0}",
 			hostRequirementLoading: "正在读取宿主要求…",
 			hostRequirementUndeclared: "未声明宿主要求",
@@ -614,6 +684,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			perPage: "每页",
 			marketUpdate: "更新插件市场",
 			updateAll: "全部更新",
+			updateCheckFailed: "暂时无法检查更新",
+			sponsorsLabel: "赞助",
+			updateCheckRetry: "重试检查更新",
 			heldReleaseNotice: "已安装，但不是最新版：这个 profile 的 minimumReleaseAge 挡住了 {0}，安装的是 {1}。",
 			versionUnverifiedNote: "已安装，但版本没能确认：registry 两次都查不到，这次装的是 {0}。插件页会显示实际版本，可以在那里核对。",
 			versionUnverifiedNoteUnknown: "已安装，但版本没能确认：registry 两次都查不到。插件页会显示实际版本，可以在那里核对。",
@@ -656,7 +729,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			credsWarning: "请注意：备份包含 profile 配置，以及可能含密钥的文件（config.toml、.env 等）。本地导出的文件会原样包含这些内容，上传 WebDAV 前请确认目标可信。",
 			gist: "GitHub Gist",
 			gistToken: "GitHub token（仅本次会话内存，刷新后需重新输入；留空则使用服务端 DSH_GITHUB_TOKEN 或已登录的 gh CLI）",
-			gistId: "Gist ID 或链接（导出留空则新建私有 Gist）",
+			gistId: "Gist ID 或链接",
 			gistVerify: "验证连接",
 			gistExport: "导出到 Gist…",
 			gistImport: "从 Gist 导入",
@@ -670,6 +743,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			gistSelectAll: "全选",
 			gistSelectNone: "全不选",
 			gistIncludeConfig: "包含配置文件（可能含密钥）",
+			gistConfigWarning: "备份包含可能含有密钥的配置文件。持有链接的人可以查看备份。",
+			bundleTag: "插件包（Bundle）",
 			gistNoPlugins: "当前 profile 没有可导出的插件",
 			gistSpecLocal: "本地",
 			gistExportGo: "导出",
@@ -681,9 +756,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			gistErrRateLimit: "GitHub 限流或 Token 权限不足",
 			gistErrInvalid: "Gist 内容无效或备份格式不受支持",
 			gistModeUpdate: "更新到输入框中的 Gist",
-			gistModeCreate: "新建一个私有 Gist",
+			gistModeCreate: "新建 Secret Gist",
 			gistErrNoId: "更新模式需要 Gist ID：请填写，或切换为「新建」",
-			gistNote: "与本地导出（本机存档）不同，Gist 用于跨机器同步：导出到私有 Gist 后，可在其他电脑用同一账号导入复用。Token 仅保存在本次会话内存中，绝不写入浏览器存储；已登录 gh CLI 或设置 DSH_GITHUB_TOKEN 则无需输入。Gist 为私有，单文件上限 1 MB。",
+			gistNote: "Gist 用于跨机器同步：导出后，可在其他电脑用同一账号导入复用。持有链接的人可以查看新建的 Gist。Token 仅保存在本次会话内存中，绝不写入浏览器存储；已登录 gh CLI 或设置 DSH_GITHUB_TOKEN 则无需输入。单文件上限 1 MB。",
 			backupWorking: "处理中…",
 			backupDone: "备份已上传",
 			restoreDone: "恢复完成，请重启 DeepSeek Harness",
@@ -739,6 +814,15 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			actWhy: "为什么未生效？",
 			tabList: "列表",
 			tabGroups: "分组",
+			installedSort: "排序",
+			installedSortLabel: "已安装列表排序",
+			installedSortDefault: "默认（运行中优先）",
+			installedSortName: "名称",
+			installedSortNewest: "安装时间：新→旧",
+			installedSortOldest: "安装时间：旧→新",
+			installedAtLabel: "安装于",
+			updatedAtLabel: "最近更新",
+			installedAtUnknown: "市场没有记录安装时间（不是通过市场安装的）",
 			repoLink: "在 GitHub 上查看仓库",
 			viewSourceRepo: "查看仓库↗",
 			disabledState: "已停用",
@@ -773,6 +857,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			groupConfirmDelete: "删除分组？",
 			groupExpand: "展开 {0}",
 			groupFold: "收起 {0}",
+			groupCollapseAll: "全部收起",
+			groupExpandAll: "全部展开",
 			groupThemeTaken: "已有主题",
 			groupSearchEmpty: "没有匹配的插件",
 			groupStateInert: "未生效",
@@ -993,10 +1079,30 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			hostRecoveryNote: "恢复前会自动存快照，随时能退回。"
 		};
 		const en = {
+			updateChecksTitle: "Update checks",
+			updateChecksAutomatic: "Check for updates automatically",
+			updateChecksNow: "Check now",
+			updateChecksLegacyHint: "Updates are never installed automatically.",
+			updateChecksInterval: "Check interval",
+			updateChecksEveryHours: "Every {0} hours",
+			updateChecksEveryDays: "Every {0} days",
+			updateChecksHint: "Off by default. When enabled, checks at the selected interval while running. Updates are never installed automatically.",
+			updateChecksPending: "Not checked yet",
+			updateChecksChecking: "Checking…",
+			updateChecksFound: "{0} updates available",
+			updateChecksNone: "No pending update reminders",
+			updateChecksFailed: "Check incomplete",
+			updateChecksFailedHint: "Some information is unavailable. Previous results are kept; try again later.",
+			updateChecksChanged: "Plugin list changed",
+			updateChecksChangedHint: "A plugin was installed or removed after the last check, so earlier results no longer apply. Re-check to refresh them.",
+			updateChecksLastSuccess: "Last complete check: {0}",
+			updateChecksOpenHost: "View in Plugins",
+			updateNotificationsAnnouncement: "{count} plugin updates available. Open Plugin Market to review.",
 			nav: "Plugin Market",
 			setCardDesc: "View the plugin market version and settings.",
 			setSelfUpToDate: "Up to date",
 			setSelfUpdateReady: "New version available:",
+			setSelfUpdateWaiting: "New version pending",
 			setSelfUpdateHint: "Updating downloads the new version; it takes effect after a restart.",
 			setSelfUpToDateHint: "",
 			setSelfHostManagedHint: "This copy was installed by the desktop app; update it from there.",
@@ -1014,6 +1120,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			setEntryLastDoorHint: "Keep at least one entry; this is the only one left.",
 			setEntryShow: "Show",
 			setEntryHide: "Hide",
+			noticeText: "The plugin market has moved to the Plugins page. This entry in Settings will be phased out.",
+			noticeTextManual: "The plugin market has moved to the Plugin Market tab on the Plugins page. This entry in Settings will be phased out.",
+			noticeGo: "Go to Plugins",
+			noticeFailed: "Couldn't open the Plugins page. Open Plugins in the sidebar, then the Plugin Market tab.",
 			setIndexSource: "Discover index",
 			setIndexSourceHint: "On dsh 0.2.1 and newer, add https://cdn.jsdelivr.net/npm/dsh-plugin-catalog/index.json under Plugins → Discover → Index sources — the official Discover tab and the plugin_market agent tool then search the same catalog.",
 			setSidebarOn: "Show",
@@ -1061,6 +1171,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			setSelfRemovedHint: "Restart DeepSeek Harness to finish cleaning up.",
 			setSelfFailed: "The operation failed",
 			versionHint: "Plugin market version — include it when reporting an issue",
+			marketVersionWaiting: "(New version)",
+			marketVersionAvailableAt: "{0} available at {1}",
+			marketVersionAvailableNow: "{0} available now",
 			subtitle: "Discover community plugins for DeepSeek Harness",
 			submitPlugin: "Submit a plugin ↗",
 			descExpand: "Show more",
@@ -1153,7 +1266,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			clearFilters: "Clear filters",
 			installedEmpty: "No community plugins yet — browse the Discover tab",
 			marketGoneTitle: "The plugin market stopped running",
-			marketGoneBody: "DSH unloaded the market while reloading plugins. Restart DSH to bring it back. The last operation may already have finished.",
+			marketGoneBody: "DSH unloaded the market while reloading plugins. It reconnects on its own. If it stays gone, quit DSH completely and open it again. The last operation may already have finished.",
 			marketGoneRecord: "DSH unloaded the market, so this operation got no result. Once the market is back, check Installed.",
 			marketGoneReconnecting: "Reconnecting…",
 			marketGoneReconnect: "Reconnect",
@@ -1191,6 +1304,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			agentDrainHistoryFailedShort: "The last deferred operation failed. Check Installed or the exported log.",
 			agentDrainHistoryCancelled: "The last deferred operation was cancelled.",
 			favoriteFailed: "Could not update favorites. Try again.",
+			favoriteLimitReached: "You can save up to {0} favorites.",
 			favoriteUnavailable: "Favorites are unavailable. Refresh the page or restart dsh web.",
 			favoriteBusy: "A plugin operation is still running. Favorites were not saved — try again shortly.",
 			compatRiskBanner: "Compatibility risk detected — open Diagnostics before restarting, or roll this operation back.",
@@ -1215,8 +1329,16 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			updateHeldTag: "new version waiting",
 			updateHeldTarget: "Latest {0} was just released; about {1} hours to wait. Update to {2} for now.",
 			updateHeldTargetUnknown: "The release time of latest {0} is unknown, so it still needs to wait. Update to {2} for now.",
-			updateHeldHint: "This profile waits a while before it installs a fresh release; about {1} hour(s) left.",
+			updateHeldBeside: "~{1} h",
+			updateHeldBesideUnknown: "still waiting",
+			updateHeldBesideEstimated: "~{1} min",
+			updateHeldHint: "Your settings wait a while before installing a fresh release; about {1} hour(s) left.",
 			updateHeldEstimatedHint: "The new version is listed, but the registry mirror has not caught up with its metadata, so the update is held; the market checks again in about {1} minute(s).",
+			profileBlockedBeside: "waiting",
+			profileBlockedNote: "Updates wait until {0} {1} has passed the safety wait (about {2}). Update again then.",
+			profileBlockedNoteUnknown: "Updates wait until {0} {1} has passed the safety wait (time unknown). The market will check again shortly.",
+			profileBlockedSkipped: "Skipped: {0}",
+			restartFirstNote: "This run can only go this far. Restart, then click Update all to continue.",
 			newerPrereleaseAvailable: "prerelease {0} published",
 			newerPrereleaseHint: "The package's latest tag has no update; the prerelease line you are on published a newer build.",
 			unreleasedCommits: "New commits (unreleased) {0}",
@@ -1226,8 +1348,16 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			hostUpdateHint: "Installed and updated by the desktop app; update it there.",
 			notesLink: "What changed",
 			notesRelease: "Release notes",
+			notesHistory: "This update",
+			notesHistoryPartial: "Some release notes are missing.",
+			notesHistoryEmpty: "Release notes for this update are unavailable right now.",
+			notesHistoryReleasePage: "View release page",
+			notesHistoryRetry: "Try again later.",
+			notesHistoryVersionMissing: "Release notes for this version are missing.",
+			notesHeldRelease: "Not yet available to install",
+			notesBeyondTarget: "These are the notes for {0}, which cannot be installed yet. Update installs {1}.",
 			notesCommits: "Commits",
-			notesCommitsRecent: "Recent commits (do not match your installed version — for reference only)",
+			notesCommitsRecent: "Recent commits (update range unconfirmed, for reference only)",
 			notesNpm: "Version publish times",
 			notesNone: "This plugin does not publish update notes.",
 			notesSource: "The market doesn't have update notes for this plugin yet.",
@@ -1252,7 +1382,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			renameContinue: "Migrate and update",
 			restoreOnline: "Use online version",
 			restoreHint: "This uninstalls the local version and installs the online version. Update checks continue as usual. This cannot be undone.",
-			hostIncompatibleTitle: "This release needs a newer DSH",
+			hostIncompatibleTitle: "This plugin release is incompatible with your DSH",
 			hostIncompatibleBody: "{plugin} declares that it needs DSH {requirement}, and you are running {host}. Installing it would most likely break the plugin, leaving a manual downgrade as the only way back.\nNothing was changed — the plugin is still on its current version.\nIf you know the version number is wrong (a bundled DSH that does not report one, for example), you can update anyway.",
 			hostIncompatibleUnknown: "an unknown version",
 			hostIncompatibleSearching: "Looking for a version that still supports this DSH…",
@@ -1274,6 +1404,11 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			hostIncompatibleBodyInstall: "{plugin} declares that it needs DSH {requirement}, and you are running {host}. Installing it would most likely break the plugin.\nNothing was installed.\nIf you know the version number is wrong (a bundled DSH that does not report one, for example), you can install anyway.",
 			hostIncompatibleCancel: "Cancel install",
 			hostIncompatibleInstallAnyway: "Install anyway",
+			installedIncompatTitle: "Incompatible with this DSH",
+			installedIncompatWhy: "It needs DSH {0}; you are running {1}.",
+			installedIncompatNextUpdate: "Try updating the plugin first; if it still fails, upgrade DSH.",
+			installedIncompatNextHost: "Upgrade DSH before this plugin can run.",
+			installedIncompatNextUnknown: "Update the plugin or upgrade DSH, then check here again.",
 			restoreNameOnlyHint: "Your local copy does not name its source repository, so the market could only match it by package name. The plugin below may be another author's plugin with the same name, not the source of your copy. Check the owner and repository before confirming. This uninstalls the local version, installs that plugin, and cannot be undone.",
 			restoreContinue: "Continue update",
 			restoreProceed: "Confirm restore",
@@ -1283,7 +1418,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			restoreFail: "Restore failed",
 			exportLog: "Export log",
 			crashTitle: "The plugin market could not be displayed",
-			crashHint: "'The market could not be displayed. Your plugins are unaffected and nothing was changed.\nReload usually fixes this. If it keeps happening, export the log and attach it to an issue — the log records where the error occurred.\nIf your browser is translating this page, turn translation off and reload. This is a known cause.'",
+			crashHint: "The market could not be displayed. Your plugins are unaffected and nothing was changed.\nReload usually fixes this. If it keeps happening, export the log and attach it to an issue — the log records where the error occurred.\nIf your browser is translating this page, turn translation off and reload. This is a known cause.",
 			crashReload: "Reload",
 			crashDetails: "Error details",
 			exportingLog: "Exporting…",
@@ -1312,6 +1447,25 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			conflictOutcomeRemove: "uninstall",
 			conflictWhy: "cordis rejects duplicate entry ids; keeping this plugin would stop DeepSeek Harness from starting.",
 			opTitle: "Tasks",
+			startupRepairBadge: "Startup recovery",
+			startupRepairTitle: "Interrupted updates at startup",
+			startupRepairReinstalled: "Reinstalled.",
+			startupRepairVerified: "The installed version is intact.",
+			startupRepairPending: "The next start will check whether another retry is available.",
+			startupRepairAbandoned: "Automatic retries stopped. Reinstall it from Settings → Plugins.",
+			startupRepairVersion: "The installed version differs from the planned update and has been kept. DSH will check it again on the next start. Check Installed for the current version.",
+			startupRepairRefused: "The desktop app refused to reinstall the plugin. Check whether it can be installed in Settings → Plugins.",
+			startupRepairNotComposed: "The files are installed. The desktop app could not load the plugin. Check its status in Installed.",
+			startupRepairTimeout: "Timed out waiting for the desktop app. When the operation finishes, check Installed.",
+			startupRepairUnknown: "Reinstalling failed. Export the log to see why.",
+			checkoutRecoveryTitle: "Local link needs attention",
+			checkoutSourceRetained: "The source files are still there. The link was not restored.",
+			checkoutSourceUnconfirmed: "The source location could not be confirmed. Check the local directory.",
+			checkoutRecoveryBusy: "The market could not confirm that the plugin operation had finished.",
+			checkoutRecoveryRun: "The market could not confirm that the package manager had finished.",
+			checkoutRecoveryLock: "The lock on the plugin settings is still present.",
+			checkoutRecoveryCheck: "The market could not confirm that it was safe to restore the original link.",
+			checkoutRecoveryRetry: "Reopen DSH after the plugin operation has finished.",
 			opInstalling: "Installing",
 			opNeedsYou: "need attention",
 			opQueued: "Queued",
@@ -1368,8 +1522,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			hostCompatible: "Compatible with current DSH {0}",
 			hostDetecting: "Detecting host version…",
 			hostUnknown: "Host version unknown",
-			hostFilterLoading: "Checking host requirements {0}/{1}; undeclared or unavailable plugins remain visible",
-			hostFilterActive: "Hid {1} plugins incompatible with DSH {0}; those declaring no version stay listed",
+			hostFilterLoading: "Checking host requirements on this page ({0}/{1}). Plugins with unknown requirements stay visible.",
+			hostFilterActive: "Hid {1} plugins on this page that are incompatible with DSH {0}. Plugins with unknown requirements stay visible.",
+			hostFilterEmpty: "All plugins on this page are incompatible with the current DSH.",
+			hostFilterIncomplete: "Hid {1} plugins on this page that are incompatible with DSH {0}. {2} could not be checked and are still shown.",
 			hostRequirement: "DSH {0}",
 			hostRequirementLoading: "Reading host requirement…",
 			hostRequirementUndeclared: "Host requirement undeclared",
@@ -1408,6 +1564,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			perPage: "Per page",
 			marketUpdate: "Update the plugin market",
 			updateAll: "Update all",
+			updateCheckFailed: "Could not check for updates",
+			sponsorsLabel: "Sponsor",
+			updateCheckRetry: "Retry update check",
 			heldReleaseNotice: "Installed, but not the newest: this profile's minimumReleaseAge held {0} back, so {1} was installed.",
 			versionUnverifiedNote: "Installed, but the version could not be confirmed: both registry lookups failed, so {0} is what pnpm chose. The plugin page shows the version actually on disk.",
 			versionUnverifiedNoteUnknown: "Installed, but the version could not be confirmed: both registry lookups failed. The plugin page shows the version actually on disk.",
@@ -1450,7 +1609,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			credsWarning: "Note: backups include profile configuration and files that may hold secrets (config.toml, .env, …). Local exports are unmodified, so upload only to a WebDAV target you trust.",
 			gist: "GitHub Gist",
 			gistToken: "GitHub token (session memory only — re-enter after refresh; leave empty to use server-side DSH_GITHUB_TOKEN or a logged-in gh CLI)",
-			gistId: "Gist ID or URL (leave empty on export to create a new private Gist)",
+			gistId: "Gist ID or URL",
 			gistVerify: "Verify connection",
 			gistExport: "Export to Gist…",
 			gistImport: "Import from Gist",
@@ -1464,6 +1623,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			gistSelectAll: "Select all",
 			gistSelectNone: "Select none",
 			gistIncludeConfig: "Include config files (may contain secrets)",
+			gistConfigWarning: "This backup includes configuration files that may contain secrets. Anyone with the link can view it.",
+			bundleTag: "Bundle",
 			gistNoPlugins: "This profile has no plugins to export",
 			gistSpecLocal: "local",
 			gistExportGo: "Export",
@@ -1475,9 +1636,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			gistErrRateLimit: "GitHub rate limit hit, or the token lacks the gist scope",
 			gistErrInvalid: "Gist content is invalid or uses an unsupported backup format",
 			gistModeUpdate: "Update the Gist in the field",
-			gistModeCreate: "Create a new private Gist",
+			gistModeCreate: "Create a secret Gist",
 			gistErrNoId: "Update mode needs a Gist ID — fill it in, or switch to “Create”",
-			gistNote: "Unlike local export (this-machine archive), Gist is for cross-machine sync: export to a private Gist, then import it on another computer with the same account to reuse your plugins. The token lives in this session's memory only and is never written to browser storage; a logged-in gh CLI or DSH_GITHUB_TOKEN skips entering it. Gists are private, 1 MB per file.",
+			gistNote: "Export to a Gist and import it on another computer with the same account to reuse your plugins. Anyone with the link can view the new Gist. The token lives in this session's memory only and is never written to browser storage; a logged-in gh CLI or DSH_GITHUB_TOKEN skips entering it. The limit is 1 MB per file.",
 			backupWorking: "In progress…",
 			backupDone: "Backup uploaded",
 			restoreDone: "Restore complete — restart DeepSeek Harness",
@@ -1533,6 +1694,15 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			actWhy: "Why is it not active?",
 			tabList: "List",
 			tabGroups: "Groups",
+			installedSort: "Sort",
+			installedSortLabel: "Installed order",
+			installedSortDefault: "Default (running first)",
+			installedSortName: "Name",
+			installedSortNewest: "Install time: newest",
+			installedSortOldest: "Install time: oldest",
+			installedAtLabel: "Installed",
+			updatedAtLabel: "Last updated",
+			installedAtUnknown: "The market did not record an install time (installed another way)",
 			repoLink: "View the repository on GitHub",
 			viewSourceRepo: "View the repository↗",
 			disabledState: "Disabled",
@@ -1567,6 +1737,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			groupConfirmDelete: "Delete group?",
 			groupExpand: "Expand {0}",
 			groupFold: "Collapse {0}",
+			groupCollapseAll: "Collapse all",
+			groupExpandAll: "Expand all",
 			groupThemeTaken: "Already has a theme",
 			groupSearchEmpty: "No matching plugins",
 			groupStateInert: "Not active",
@@ -1787,10 +1959,30 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			hostRecoveryNote: "A snapshot is taken first, so you can roll this back."
 		};
 		const ja = {
+			updateChecksTitle: "更新の確認",
+			updateChecksAutomatic: "更新を自動で確認",
+			updateChecksNow: "今すぐ確認",
+			updateChecksLegacyHint: "自動でインストールはしません。",
+			updateChecksInterval: "確認の間隔",
+			updateChecksEveryHours: "{0} 時間ごと",
+			updateChecksEveryDays: "{0} 日ごと",
+			updateChecksHint: "初期設定はオフです。オンにすると選択した間隔で確認します。自動でインストールはしません。",
+			updateChecksPending: "未確認",
+			updateChecksChecking: "確認中…",
+			updateChecksFound: "{0} 件の更新があります",
+			updateChecksNone: "通知する更新はありません",
+			updateChecksFailed: "確認が完了していません",
+			updateChecksFailedHint: "一部の情報を取得できないため、前回の結果を保持しています。後でもう一度お試しください。",
+			updateChecksChanged: "プラグイン構成が変更されました",
+			updateChecksChangedHint: "前回の確認後にプラグインが追加または削除されたため、以前の結果は適用できません。再確認すると更新されます。",
+			updateChecksLastSuccess: "前回の確認完了：{0}",
+			updateChecksOpenHost: "プラグイン画面で確認",
+			updateNotificationsAnnouncement: "{count} 件のプラグイン更新があります。プラグインマーケットで確認してください。",
 			nav: "プラグインマーケット",
 			setCardDesc: "プラグインマーケットのバージョンと設定を確認します。",
 			setSelfUpToDate: "最新バージョンです",
 			setSelfUpdateReady: "新しいバージョンがあります",
+			setSelfUpdateWaiting: "新バージョン（更新待ち）",
 			setSelfUpdateHint: "更新すると新しいバージョンをダウンロードし、再起動後に有効になります。",
 			setSelfUpToDateHint: "",
 			setSelfHostManagedHint: "このマーケットはデスクトップアプリがインストールしたものです。新しいバージョンへの更新はデスクトップアプリで行ってください。",
@@ -1808,6 +2000,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			setEntryLastDoorHint: "入口を最低 1 つ残してください。現在はこれが唯一の入口です。",
 			setEntryShow: "表示",
 			setEntryHide: "表示しない",
+			noticeText: "プラグインマーケットは「プラグイン」ページに移動しました。設定のこの入口は順次廃止されます。",
+			noticeTextManual: "プラグインマーケットは「プラグイン」ページの「プラグインマーケット」タブに移動しました。設定のこの入口は順次廃止されます。",
+			noticeGo: "プラグインへ",
+			noticeFailed: "プラグインページを開けませんでした。サイドバーの「プラグイン」から「プラグインマーケット」タブを開いてください。",
 			setIndexSource: "公式 Discover インデックス",
 			setIndexSourceHint: "dsh 0.2.1 以降では、公式の「プラグイン → 見つける → インデックスソース」に https://cdn.jsdelivr.net/npm/dsh-plugin-catalog/index.json を追加できます。公式の見つけるページと plugin_market エージェントツールが同じカタログを検索するようになります。",
 			setSidebarOn: "表示",
@@ -1855,6 +2051,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			setSelfRemovedHint: "DeepSeek Harness を再起動すると完全にクリーンアップされます。",
 			setSelfFailed: "操作に失敗しました",
 			versionHint: "プラグインマーケットのバージョン — 問題を報告するときに添えてください",
+			marketVersionWaiting: "（新バージョン）",
+			marketVersionAvailableAt: "{0} は {1} に更新可能",
+			marketVersionAvailableNow: "{0} は今すぐ更新可能",
 			subtitle: "DeepSeek Harness のためにコミュニティが開発したプラグインを見つけましょう",
 			submitPlugin: "プラグインの収録を申請 ↗",
 			descExpand: "展開",
@@ -1947,7 +2146,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			clearFilters: "絞り込みをクリア",
 			installedEmpty: "コミュニティプラグインはまだインストールされていません。「見つける」ページで探せます",
 			marketGoneTitle: "プラグインマーケットが停止しました",
-			marketGoneBody: "DSH がプラグインを再読み込みした際に、マーケットも一緒にアンロードされました。DSH を再起動すれば復旧します。直前の操作は完了している可能性があります。",
+			marketGoneBody: "DSH がプラグインを再読み込みした際に、マーケットも一緒にアンロードされました。自動で再接続します。戻らない場合は DSH を完全に終了してから開き直してください。直前の操作は完了している可能性があります。",
 			marketGoneRecord: "マーケットが DSH からアンロードされたため、この操作の結果は届きませんでした。マーケットが戻ったら、「インストール済み」で確認してください。",
 			marketGoneReconnecting: "再接続しています…",
 			marketGoneReconnect: "再接続",
@@ -1985,6 +2184,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			agentDrainHistoryFailedShort: "前回の保留操作は失敗しました。「インストール済み」またはエクスポートしたログを確認してください。",
 			agentDrainHistoryCancelled: "前回の保留操作はキャンセルされました。",
 			favoriteFailed: "お気に入りを更新できませんでした。しばらくしてから再試行してください",
+			favoriteLimitReached: "お気に入りには最大 {0} 件まで登録できます。",
 			favoriteUnavailable: "お気に入り機能は現在使えません。ページを更新するか、dsh web を再起動してください。",
 			favoriteBusy: "プラグインの操作が終わっていないため、お気に入りは保存されませんでした。しばらくしてから再試行してください",
 			compatRiskBanner: "互換性のリスクが検出されました。再起動する前に診断ページで対処するか、この操作をロールバックすることをおすすめします。",
@@ -2009,8 +2209,16 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			updateHeldTag: "新しいバージョンは保留中",
 			updateHeldTarget: "最新版 {0} は公開されたばかりで、あと約 {1} 時間待つ必要があります。まずは {2} に更新してください。",
 			updateHeldTargetUnknown: "最新版 {0} の公開時刻が不明なため、まだ待つ必要があります。まずは {2} に更新してください。",
-			updateHeldHint: "この profile では、新しいバージョンが公開されてから一定期間が経つまでインストールできません。あと約 {1} 時間です。",
-			updateHeldEstimatedHint: "新しいバージョンは /latest に現れていますが、ミラーの完全な情報がまだ同期されていないため、更新は保留しています。約 {1} 分後に再確認します。",
+			updateHeldBeside: "約 {1} h",
+			updateHeldBesideUnknown: "待機中",
+			updateHeldBesideEstimated: "約 {1} min",
+			updateHeldHint: "現在の設定では、新しいバージョンが公開されてから一定期間が経つまでインストールできません。あと約 {1} 時間です。",
+			updateHeldEstimatedHint: "新しいバージョンは出ていますが、ディレクトリ情報がまだ同期されていないため、更新は保留しています。約 {1} 分後に再確認します。",
+			profileBlockedBeside: "待機中",
+			profileBlockedNote: "{0} {1} が安全待機期間を過ぎる（約 {2}）まで更新できません。その頃にもう一度更新してください。",
+			profileBlockedNoteUnknown: "{0} {1} が安全待機期間を過ぎるまで更新できません（時刻は不明）。しばらくしてからもう一度確認します。",
+			profileBlockedSkipped: "スキップしました：{0}",
+			restartFirstNote: "今回の更新はここまでです。再起動してから「すべて更新」をもう一度押してください。",
 			newerPrereleaseAvailable: "プレリリース版 {0} が公開されました",
 			newerPrereleaseHint: "npm の latest は更新されていません。あなたが追っているプレリリースの系列で、より新しいバージョンが公開されました。",
 			unreleasedCommits: "新しいコミットがあります（未リリース）{0}",
@@ -2020,8 +2228,16 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			hostUpdateHint: "このマーケットはデスクトップアプリがインストールと更新を行います。新しいバージョンへの更新はデスクトップアプリで行ってください",
 			notesLink: "変更内容",
 			notesRelease: "リリースノート",
+			notesHistory: "今回の更新",
+			notesHistoryPartial: "一部のリリースノートがありません。",
+			notesHistoryEmpty: "今回の更新のリリースノートを現在確認できません。",
+			notesHistoryReleasePage: "リリースページを見る",
+			notesHistoryRetry: "しばらくしてから再試行してください。",
+			notesHistoryVersionMissing: "このバージョンのリリースノートはありません。",
+			notesHeldRelease: "まだインストールできないバージョン",
+			notesBeyondTarget: "以下は {0} の説明です。このバージョンはまだ入れられません。今回の更新で入るのは {1} です。",
 			notesCommits: "コミット履歴",
-			notesCommitsRecent: "最近のコミット（現在のインストール済みバージョンには対応しません。参考情報です）",
+			notesCommitsRecent: "最近のコミット（今回の更新範囲を確認できないため、参考情報として表示しています）",
 			notesNpm: "バージョンの公開日時",
 			notesNone: "このプラグインは更新内容を公開していません。",
 			notesSource: "このプラグインの更新内容は、マーケットにはまだ収録されていません。",
@@ -2046,7 +2262,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			renameContinue: "移行して更新",
 			restoreOnline: "オンライン版に切り替える",
 			restoreHint: "ローカル版をアンインストールしてオンライン版をインストールします。その後も通常どおり更新を確認します。この操作は取り消せません。",
-			hostIncompatibleTitle: "この新しいバージョンには、より新しい DSH が必要です",
+			hostIncompatibleTitle: "このプラグインのバージョンは現在の DSH に対応していません",
 			hostIncompatibleBody: "{plugin} は DSH {requirement} が必要だと宣言していますが、現在動作しているのは {host} です。インストールしてもほぼ確実に使えなくなり、手動で古い版に戻すしかなくなります。\n何も変更されていません。プラグインは現在のバージョンのままです。\nバージョン番号が正しくないと分かっている場合（バージョンを報告しない同梱の DSH など）は、そのまま更新できます。",
 			hostIncompatibleUnknown: "不明なバージョン",
 			hostIncompatibleSearching: "現在の DSH と互換性のあるバージョンを探しています…",
@@ -2068,6 +2284,11 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			hostIncompatibleBodyInstall: "{plugin} は DSH {requirement} が必要だと宣言していますが、現在動作しているのは {host} です。インストールしてもほぼ確実に使えなくなります。\n何もインストールされていません。\nバージョン番号が正しくないと分かっている場合（バージョンを報告しない同梱の DSH など）は、そのままインストールできます。",
 			hostIncompatibleCancel: "インストールをキャンセル",
 			hostIncompatibleInstallAnyway: "それでもインストールする",
+			installedIncompatTitle: "現在の DSH と互換性がありません",
+			installedIncompatWhy: "DSH {0} が必要ですが、実行中は {1} です。",
+			installedIncompatNextUpdate: "まずはプラグインの更新を試してください。だめなら DSH をアップグレードしてください。",
+			installedIncompatNextHost: "このプラグインを使うには DSH のアップグレードが必要です。",
+			installedIncompatNextUnknown: "プラグインの更新か DSH のアップグレード後にもう一度確認してください。",
 			restoreNameOnlyHint: "あなたのローカルコピーには入手元のリポジトリが記されていないため、マーケットはパッケージ名で厳選カタログと照合することしかできませんでした。下のプラグインは、別の作者による同名のプラグインで、あなたのコピーの入手元ではない可能性があります。確認する前に作者とリポジトリのアドレスを確かめてください。この操作はローカル版をアンインストールしてそのプラグインをインストールし、取り消せません。",
 			restoreContinue: "更新を続行",
 			restoreProceed: "復元を確認",
@@ -2106,6 +2327,25 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			conflictOutcomeRemove: "アンインストール",
 			conflictWhy: "cordis は重複したエントリ id を受け付けません。これを残すと、DeepSeek Harness は次回起動できなくなります。",
 			opTitle: "タスク",
+			startupRepairBadge: "起動時の復旧",
+			startupRepairTitle: "起動時に確認した中断済みの更新",
+			startupRepairReinstalled: "再インストールしました。",
+			startupRepairVerified: "インストール済みのバージョンが正常なことを確認しました。",
+			startupRepairPending: "次回起動時に再試行できるか確認します。",
+			startupRepairAbandoned: "自動での再試行を終了しました。「設定 → プラグイン」から再インストールしてください。",
+			startupRepairVersion: "更新予定とは異なるため、現在のバージョンはそのままです。次回起動時に再確認します。「インストール済み」で確認してください。",
+			startupRepairRefused: "デスクトップアプリが再インストールを拒否しました。「設定 → プラグイン」でインストールできるか確認してください。",
+			startupRepairNotComposed: "ファイルはインストール済みです。デスクトップアプリでプラグインを読み込めませんでした。「インストール済み」で状態を確認してください。",
+			startupRepairTimeout: "デスクトップアプリの操作完了を待機中にタイムアウトしました。操作が終わってから「インストール済み」で結果を確認してください。",
+			startupRepairUnknown: "再インストールに失敗しました。ログをエクスポートして原因を確認してください。",
+			checkoutRecoveryTitle: "ローカルリンクを復元できませんでした",
+			checkoutSourceRetained: "ソースは残っています。リンクを復元できませんでした。",
+			checkoutSourceUnconfirmed: "ソースの場所を確認できませんでした。ローカルフォルダーを確認してください。",
+			checkoutRecoveryBusy: "プラグイン操作が終了したか確認できませんでした。",
+			checkoutRecoveryRun: "パッケージマネージャーが終了したか確認できませんでした。",
+			checkoutRecoveryLock: "プラグイン設定の書き込みロックが残っています。",
+			checkoutRecoveryCheck: "元のリンクを安全に復元できるか確認できませんでした。",
+			checkoutRecoveryRetry: "プラグイン操作が終了した後、DSH を起動し直してください。",
 			opInstalling: "インストール中",
 			opNeedsYou: "件は対応が必要です",
 			opQueued: "キュー待ち",
@@ -2162,8 +2402,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			hostCompatible: "現在の DSH {0} と互換性あり",
 			hostDetecting: "ホストのバージョンを識別中…",
 			hostUnknown: "ホストのバージョンは不明です",
-			hostFilterLoading: "ホストの要件を確認中 {0}/{1}。宣言していない、または確認できないプラグインも引き続き表示されます",
-			hostFilterActive: "DSH {0} と互換性のないプラグイン {1} 件を隠しました。バージョンを宣言していないものは一覧に残っています",
+			hostFilterLoading: "このページのホスト要件を確認中 {0}/{1}。要件が不明なプラグインも表示されます。",
+			hostFilterActive: "このページで DSH {0} と互換性のないプラグインを {1} 件非表示にしました。要件が不明なプラグインも表示されます。",
+			hostFilterEmpty: "このページのプラグインはすべて現在の DSH と互換性がありません。",
+			hostFilterIncomplete: "このページで DSH {0} と互換性のないプラグインを {1} 件非表示にしました。確認できなかった {2} 件は表示されたままです。",
 			hostRequirement: "DSH {0}",
 			hostRequirementLoading: "ホストの要件を読み取り中…",
 			hostRequirementUndeclared: "ホストの要件は宣言されていません",
@@ -2201,6 +2443,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			perPage: "1 ページあたり",
 			marketUpdate: "プラグインマーケットを更新",
 			updateAll: "すべて更新",
+			updateCheckFailed: "更新を確認できませんでした",
+			sponsorsLabel: "スポンサー",
+			updateCheckRetry: "更新確認を再試行",
 			heldReleaseNotice: "インストールしましたが、最新版ではありません。この profile の minimumReleaseAge が {0} を保留したため、{1} がインストールされました。",
 			versionUnverifiedNote: "インストールしましたが、バージョンを確認できませんでした。レジストリの照会が 2 回とも失敗したため、pnpm が選んだ {0} が入っています。実際のバージョンはプラグイン画面で確認できます。",
 			versionUnverifiedNoteUnknown: "インストールしましたが、バージョンを確認できませんでした。レジストリの照会が 2 回とも失敗しました。実際のバージョンはプラグイン画面で確認できます。",
@@ -2243,7 +2488,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			credsWarning: "注意：バックアップには profile の設定と、キーを含む可能性のあるファイル（config.toml、.env など）が含まれます。ローカルにエクスポートしたファイルにはそれらがそのまま入るため、WebDAV にアップロードする前に、送信先が信頼できることを確認してください。",
 			gist: "GitHub Gist",
 			gistToken: "GitHub token（このセッションのメモリにのみ保持され、更新後は再入力が必要です。空欄にすると、サーバー側の DSH_GITHUB_TOKEN またはサインイン済みの gh CLI を使います）",
-			gistId: "Gist ID またはリンク（エクスポート時に空欄なら、新しい非公開 Gist を作成します）",
+			gistId: "Gist ID または URL",
 			gistVerify: "接続を確認",
 			gistExport: "Gist にエクスポート…",
 			gistImport: "Gist からインポート",
@@ -2257,6 +2502,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			gistSelectAll: "すべて選択",
 			gistSelectNone: "すべて解除",
 			gistIncludeConfig: "設定ファイルを含める（キーを含むことがあります）",
+			gistConfigWarning: "このバックアップには、シークレットが含まれる可能性のある設定ファイルが入っています。リンクを知っている人は閲覧できます。",
+			bundleTag: "バンドル",
 			gistNoPlugins: "現在の profile にはエクスポートできるプラグインがありません",
 			gistSpecLocal: "ローカル",
 			gistExportGo: "エクスポート",
@@ -2268,9 +2515,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			gistErrRateLimit: "GitHub のレート制限に達したか、Token に gist スコープがありません",
 			gistErrInvalid: "Gist の内容が無効か、対応していないバックアップ形式です",
 			gistModeUpdate: "入力欄の Gist を更新",
-			gistModeCreate: "新しい非公開 Gist を作成",
+			gistModeCreate: "Secret Gist を作成",
 			gistErrNoId: "更新モードには Gist ID が必要です。記入するか、「新規作成」に切り替えてください",
-			gistNote: "ローカルエクスポート（このマシンのアーカイブ）と違い、Gist はマシン間の同期のためのものです。非公開 Gist にエクスポートすれば、他のコンピュータで同じアカウントからインポートして再利用できます。Token はこのセッションのメモリにのみ保持され、ブラウザのストレージに書き込まれることは決してありません。gh CLI にサインイン済みか DSH_GITHUB_TOKEN が設定されていれば、入力は不要です。Gist は非公開で、1 ファイルあたり上限 1 MB です。",
+			gistNote: "Gist にエクスポートすると、他のコンピュータでも同じアカウントからインポートしてプラグインを再利用できます。作成した Gist は、リンクを知っている人なら誰でも閲覧できます。Token はこのセッションのメモリにのみ保持され、ブラウザのストレージには書き込まれません。gh CLI にサインイン済みか DSH_GITHUB_TOKEN が設定されていれば、入力は不要です。ファイルの上限は 1 MB です。",
 			backupWorking: "処理中…",
 			backupDone: "バックアップをアップロードしました",
 			restoreDone: "復元が完了しました。DeepSeek Harness を再起動してください",
@@ -2326,6 +2573,15 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			actWhy: "なぜ有効にならないのですか？",
 			tabList: "一覧",
 			tabGroups: "グループ",
+			installedSort: "並び替え",
+			installedSortLabel: "インストール済みの並び順",
+			installedSortDefault: "既定（稼働中を優先）",
+			installedSortName: "名前",
+			installedSortNewest: "インストール日時：新しい順",
+			installedSortOldest: "インストール日時：古い順",
+			installedAtLabel: "インストール",
+			updatedAtLabel: "最終更新",
+			installedAtUnknown: "この市場はインストール日時を記録していません（別の方法でインストールされました）",
 			repoLink: "GitHub でリポジトリを見る",
 			viewSourceRepo: "リポジトリを見る↗",
 			disabledState: "無効",
@@ -2360,6 +2616,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			groupConfirmDelete: "グループを削除しますか？",
 			groupExpand: "{0} を展開",
 			groupFold: "{0} を折りたたむ",
+			groupCollapseAll: "すべて折りたたむ",
+			groupExpandAll: "すべて展開",
 			groupThemeTaken: "テーマはすでにあります",
 			groupSearchEmpty: "一致するプラグインはありません",
 			groupStateInert: "未有効",
@@ -2751,9 +3009,45 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		* installable pnpm target. Pure string logic, no I/O.
 		*/
 		const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+		const MARKET_REPO = "dsh-market/dsh-market";
+		const MARKET_NPM_NAME = "dshmarket";
 		function validSubpath(subpath) {
 			if (!/^[A-Za-z0-9_./-]+$/.test(subpath)) return false;
 			return !subpath.split("/").some((seg) => seg === "" || seg === "." || seg === "..");
+		}
+		/** Registry tarball names must be plain npm package names, nothing fancier. */
+		const NPM_NAME_RE = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
+		/**
+		* A curated, prebuilt GitHub Release archive accepted as a pnpm target —
+		* but only one belonging to `repo`, the entry's own `owner/name`.
+		*
+		* The binding is the whole point. `npm` gets the same treatment one branch
+		* up (repo-verified, "name-squatting protection"); without it here, an entry
+		* could name a trusted repo and install an archive from somewhere else:
+		*
+		*     url:     https://github.com/good/plugin
+		*     tarball: https://github.com/evil/repo/releases/download/v1/p.tgz
+		*
+		* That is also why the release CDNs (`objects.githubusercontent.com`,
+		* `release-assets.githubusercontent.com`) are not accepted: their paths
+		* carry no owner or repo, so there is nothing to bind the archive to and no
+		* way to tell whose release it is. All 70 entries carrying `tarball` today
+		* use github.com and match their own repo, so nothing real is turned away.
+		*/
+		function releaseTarballTarget(value, repo) {
+			if (typeof value !== "string") return null;
+			const target = value.trim();
+			let url;
+			try {
+				url = new URL(target);
+			} catch {
+				return null;
+			}
+			if (url.protocol !== "https:" || url.hostname !== "github.com") return null;
+			if (!url.pathname.endsWith(".tgz") && !url.pathname.endsWith(".tar.gz")) return null;
+			const segments = url.pathname.split("/").filter((segment) => segment !== "");
+			if (segments.length < 4 || segments[2] !== "releases") return null;
+			return `${segments[0]}/${segments[1]}`.toLowerCase() === repo.toLowerCase() ? target : null;
 		}
 		/**
 		* Parse a registry source url: a github repo, optionally with a
@@ -2771,6 +3065,51 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				repo: m[1],
 				subpath
 			};
+		}
+		/**
+		* The pnpm install target for a registry entry. Repo-verified npm packages
+		* win, followed by author-supplied prebuilt GitHub Release tarballs; both avoid
+		* full-repo downloads and local build scripts.
+		* @returns the target spec, or null when the source url is unsupported.
+		*/
+		function installTargetFor(entry) {
+			const source = parseSourceUrl(entry.url);
+			if (source === null) return null;
+			if (source.subpath === null && source.repo.toLowerCase() === MARKET_REPO) return MARKET_NPM_NAME;
+			if (typeof entry.npm === "string" && NPM_NAME_RE.test(entry.npm)) return entry.npm;
+			const tarball = releaseTarballTarget(entry.tarball, source.repo);
+			if (tarball !== null) return tarball;
+			return githubSourceTarget(source);
+		}
+		/** Only the catalog's own floating asset opts an existing archive into updates. */
+		function catalogReleaseSourceOf(spec, entry) {
+			if (entry.npm !== null && entry.npm !== void 0) return null;
+			const source = parseSourceUrl(entry.url);
+			if (source === null || typeof entry.tarball !== "string" || installTargetFor(entry) !== entry.tarball) return null;
+			try {
+				const approved = new URL(entry.tarball);
+				const installed = new URL(spec);
+				const asset = /^\/[^/]+\/[^/]+\/releases\/latest\/download\/([A-Za-z0-9._-]+\.(?:tgz|tar\.gz))$/.exec(approved.pathname)?.[1];
+				if (asset === void 0) return null;
+				for (const url of [approved, installed]) if (url.protocol !== "https:" || url.host !== "github.com" || url.username !== "" || url.password !== "" || url.search !== "" || url.hash !== "") return null;
+				const match = /^\/([^/]+\/[^/]+)\/releases\/(?:latest\/download|download\/([^/]+))\/([^/]+)$/.exec(installed.pathname);
+				if (match === null || match[1].toLowerCase() !== source.repo.toLowerCase()) return null;
+				const [, , tag, installedAsset] = match;
+				if (installedAsset !== asset) {
+					const version = /^v?(\d+\.\d+\.\d+)$/.exec(tag ?? "")?.[1];
+					if (version === void 0 || installedAsset !== asset.replace(/\.(?:tgz|tar\.gz)$/, (extension) => `-${version}${extension}`)) return null;
+				}
+				return {
+					repo: source.repo,
+					asset,
+					manifest: source.subpath === null ? "package.json" : `${source.subpath}/package.json`
+				};
+			} catch {
+				return null;
+			}
+		}
+		function githubSourceTarget(source) {
+			return source.subpath !== null ? `github:${source.repo}#path:/${source.subpath}` : `github:${source.repo}`;
 		}
 		//#endregion
 		//#region src/client/market-data.ts
@@ -2810,7 +3149,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		}
 		/** Keep GitHub packages in one repository distinct, independently of their display names. */
 		function hostCompatibilityKey(plugin) {
-			if (typeof plugin.npm === "string" && plugin.npm !== "") return plugin.npm;
+			if (typeof plugin.npm === "string" && plugin.npm !== "") return NPM_NAME_RE.test(plugin.npm) ? plugin.npm : null;
 			return parseSourceUrl(plugin.url) === null ? null : plugin.url;
 		}
 		/**
@@ -2835,7 +3174,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				return world.plugins.some((plugin) => plugin.url === row.url) ? null : "gone";
 			}
 			if (world.installed[row.name] === void 0) return "gone";
-			if (row.kind === "update" && world.updates[row.name]?.updateAvailable !== true) {
+			if (row.kind === "update" && world.updates[row.name]?.updateAvailable !== true && world.updates[row.name]?.profileBlocked === void 0) {
 				if (row.restore === true && world.updates[row.name]?.kind === "linked" && findCatalogEntryForLocal(world.plugins, row.name) !== null) return null;
 				return "no-update";
 			}
@@ -2914,6 +3253,34 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			for (const member of list) if (disabled.has(member)) anyOff = true;
 			else anyOn = true;
 			return anyOn && anyOff ? "mixed" : anyOff ? "off" : "on";
+		}
+		/** Match the languages for which the market registers its own dictionary. */
+		function marketUiLocale(active) {
+			const language = active.toLowerCase().split(/[-_]/)[0];
+			return language === "zh" ? "zh-CN" : language === "ja" ? "ja" : "en";
+		}
+		/** Release versions get a prefix and commit targets get a short SHA. */
+		function displayLatest(latest) {
+			if (/^\d/.test(latest)) return "v" + latest;
+			if (/^[0-9a-f]{12,40}$/i.test(latest)) return latest.slice(0, 7);
+			return latest;
+		}
+		/** A time is shown only when a future eligibility deadline is known. */
+		function marketHeldVersionText(held, locale, t) {
+			const version = displayLatest(held.latest);
+			const until = new Date(typeof held.until === "string" ? held.until : NaN);
+			const now = /* @__PURE__ */ new Date();
+			if (held.estimated === true || !(until.getTime() > now.getTime())) return version;
+			const time = new Intl.DateTimeFormat(marketUiLocale(locale), {
+				...until.toDateString() === now.toDateString() ? {} : {
+					month: "short",
+					day: "numeric"
+				},
+				hour: "2-digit",
+				minute: "2-digit",
+				hourCycle: "h23"
+			}).format(until);
+			return t("marketVersionAvailableAt").replace("{0}", version).replace("{1}", time);
 		}
 		function avatarColor(name) {
 			let hash = 0;
@@ -3057,8 +3424,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				const categories = pluginCategories(plugin);
 				if (options.category !== "all" && !categories.includes(options.category)) return [];
 				if (options.sinceDays !== void 0 && !withinDays(plugin.added, options.sinceDays)) return [];
-				const compatibilityKey = hostCompatibilityKey(plugin);
-				if (options.compatibleWithHost === true && compatibilityKey !== null && options.hostCompatibility?.[compatibilityKey]?.status === "incompatible") return [];
+				const compatibilityKey = options.compatibleWithHost === true ? hostCompatibilityKey(plugin) : null;
+				if (compatibilityKey !== null && options.hostCompatibility?.[compatibilityKey]?.status === "incompatible") return [];
 				const relevance = query === "" ? 0 : pluginRelevance(plugin, query, tokens, options.lang, options.categories);
 				return relevance === 0 && query !== "" ? [] : [{
 					plugin,
@@ -3232,12 +3599,35 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		function repoRoots(ids) {
 			return new Set([...ids].map((id) => id.split("#path:/")[0]));
 		}
-		function sameSourceConflict(plugin, spec, repoIdentities = []) {
-			const entry = repoRoots(entryRepoIds(plugin));
+		/**
+		* An entry's repository roots, per entry object. A pure function of an object
+		* that outlives every call, like `entryIdCache` above, and asked about every
+		* entry on every pass of the installed matching (#1097).
+		*/
+		const entryRootCache = /* @__PURE__ */ new WeakMap();
+		function entryRoots(plugin) {
+			const cached = entryRootCache.get(plugin);
+			if (cached !== void 0) return cached;
+			const roots = repoRoots(entryRepoIds(plugin));
+			entryRootCache.set(plugin, roots);
+			return roots;
+		}
+		/**
+		* `sameSourceConflict` for ONE dependency against many entries: the
+		* dependency's half is built once, not once per entry (#1097).
+		*/
+		function sourceConflictWith(spec, repoIdentities = []) {
 			const dep = repoRoots(depRepoIds(spec, repoIdentities));
-			if (entry.size === 0 || dep.size === 0) return false;
-			for (const id of dep) if (entry.has(id)) return false;
-			return true;
+			if (dep.size === 0) return () => false;
+			return (plugin) => {
+				const entry = entryRoots(plugin);
+				if (entry.size === 0) return false;
+				for (const id of dep) if (entry.has(id)) return false;
+				return true;
+			};
+		}
+		function sameSourceConflict(plugin, spec, repoIdentities = []) {
+			return sourceConflictWith(spec, repoIdentities)(plugin);
 		}
 		function repoHintMatches(plugin, hints) {
 			const entry = entryRepoIds(plugin);
@@ -3298,8 +3688,13 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					continue;
 				}
 				if (depRepoIds(specStr, repos).size === 0 && plugins !== void 0 && looseMatchCount(plugins, name) > 1 && !repoHintMatches(plugin, repoHints[name] ?? [])) continue;
-				if (sameSourceConflict(plugin, specStr, repos)) continue;
-				for (const id of depIdentities(name, specStr, repos)) if (ids.has(id)) return name;
+				let meets = false;
+				for (const id of depIdentities(name, specStr, repos)) if (ids.has(id)) {
+					meets = true;
+					break;
+				}
+				if (!meets || sameSourceConflict(plugin, specStr, repos)) continue;
+				return name;
 			}
 			return null;
 		}
@@ -3309,10 +3704,23 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				if (plugins.find((plugin) => repoHintMatches(plugin, repoHints) && looseMatches(plugin, name)) === void 0) return void 0;
 			}
 			const ids = depIdentities(name, String(spec), repoIdentities);
+			const conflicts = sourceConflictWith(String(spec), repoIdentities);
+			const subpaths = new Set([...ids].filter((id) => id.includes("#path:/")));
+			if (subpaths.size > 0) {
+				const exact = plugins.find((plugin) => {
+					if (conflicts(plugin)) return false;
+					for (const id of entryIdentities(plugin)) if (subpaths.has(id)) return true;
+					return false;
+				});
+				if (exact !== void 0) return exact;
+			}
 			return plugins.find((plugin) => {
-				if (sameSourceConflict(plugin, String(spec), repoIdentities)) return false;
-				for (const id of entryIdentities(plugin)) if (ids.has(id)) return true;
-				return false;
+				let meets = false;
+				for (const id of entryIdentities(plugin)) if (ids.has(id)) {
+					meets = true;
+					break;
+				}
+				return meets && !conflicts(plugin);
 			});
 		}
 		function isInstalled(plugin, installed, repoIdentities = {}, plugins, repoHints = {}) {
@@ -3838,8 +4246,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		* The repository name IS the plugin name in the ordinary case, because a
 		* repository holding one plugin is named after it. Only the compound form
 		* needs unpicking. Prefer its mapped npm package when available: a generic
-		* directory such as `plugin` is not the product name. Without that mapping,
-		* keep the directory-leaf fallback for source-only entries.
+		* directory such as `plugin` is not the product name. For a source-only entry,
+		* use the repository name when its directory leaf is empty or generic.
 		*
 		* Not a substitute for the identity: every key, lookup and install still
 		* uses `name` unchanged.
@@ -3850,7 +4258,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			if (typeof npm === "string" && npm.trim() !== "") return npm.trim();
 			const sub = name.slice(hash + 1);
 			const leaf = sub.slice(sub.lastIndexOf("/") + 1);
-			return leaf === "" ? name.slice(0, hash) : leaf;
+			return leaf === "" || /^(?:dsh|plugin)$/i.test(leaf) ? name.slice(0, hash) : leaf;
 		}
 		/**
 		* The catalog package name used for the local block list (#657).
@@ -3891,7 +4299,84 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		/** Catalog row for an installed dependency — strict for local link:/file: specs. */
 		function catalogEntryForInstalled(plugins, name, spec, repoIdentities = [], repoHints = []) {
 			if (/^(?:link|file):/i.test(spec)) return findCatalogEntryForLocal(plugins, name, repoIdentities, repoHints) ?? void 0;
+			if (spec.startsWith("https://github.com/") && spec.includes("/releases/")) {
+				const matches = plugins.filter((plugin) => catalogReleaseSourceOf(spec, plugin) !== null && !sameSourceConflict(plugin, spec, repoIdentities));
+				if (matches.length === 1) return matches[0];
+			}
 			return entryForDep(plugins, name, spec, repoIdentities, repoHints);
+		}
+		/** The date a row shows, in the reader's own timezone; null when unknown. */
+		function installedDateText(stamp) {
+			if (stamp === void 0) return null;
+			const at = new Date(stamp);
+			if (Number.isNaN(at.getTime())) return null;
+			const pad = (value) => String(value).padStart(2, "0");
+			return `${String(at.getFullYear())}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+		}
+		function installedAtMs(stamp) {
+			if (stamp === void 0) return null;
+			const at = Date.parse(stamp);
+			return Number.isFinite(at) ? at : null;
+		}
+		/**
+		* Order two installed rows by the chosen field.
+		*
+		* `default` answers 0 on purpose: the list already has an order that means
+		* something (a plugin that is off sinks below every one that is on, #745),
+		* and the caller applies that first. This only decides what happens INSIDE
+		* those groups.
+		*
+		* A row with no install time goes last in BOTH directions. "Sort by install
+		* time" cannot place something whose time nobody recorded, and flipping the
+		* arrow must not lift a guess above a fact — the whole point of showing `—`
+		* is that the market says when it does not know.
+		*/
+		function compareInstalledRows(sort, a, b) {
+			if (sort === "default") return 0;
+			if (sort === "name") return a.name.localeCompare(b.name);
+			const left = installedAtMs(a.installedAt);
+			const right = installedAtMs(b.installedAt);
+			if (left === null && right === null) return a.name.localeCompare(b.name);
+			if (left === null) return 1;
+			if (right === null) return -1;
+			if (left === right) return a.name.localeCompare(b.name);
+			return sort === "newest" ? right - left : left - right;
+		}
+		/** Masonry column count for a given content width. `maxColumns` caps Discover(3) vs Installed(2). */
+		function masonryColumnCount(width, maxColumns, minColWidth = 290, minColumns = 1) {
+			if (!Number.isFinite(width) || width <= 0) return minColumns;
+			const fitted = Math.floor((width + 10) / minColWidth);
+			return Math.min(maxColumns, Math.max(minColumns, fitted));
+		}
+		/**
+		* The one plain sentence for "another release in this profile is still inside
+		* the safety wait" (#1252): what to wait for, and until when. Says the time is
+		* unknown when it is, instead of inventing one.
+		* @param blocked - the blocker the server named.
+		* @param t - the locale lookup; `{0}` package, `{1}` version, `{2}` time.
+		* @param now - injectable for tests.
+		*/
+		function profileBlockedText(blocked, t, now = /* @__PURE__ */ new Date()) {
+			const ready = blocked.readyAt === null ? NaN : Date.parse(blocked.readyAt);
+			if (!Number.isFinite(ready)) return t("profileBlockedNoteUnknown").replace("{0}", blocked.name).replace("{1}", blocked.version);
+			const at = new Date(ready);
+			const time = new Intl.DateTimeFormat(void 0, {
+				...at.toDateString() === now.toDateString() ? {} : {
+					month: "2-digit",
+					day: "2-digit"
+				},
+				hour: "2-digit",
+				minute: "2-digit",
+				hourCycle: "h23"
+			}).format(at);
+			return t("profileBlockedNote").replace("{0}", blocked.name).replace("{1}", blocked.version).replace("{2}", time);
+		}
+		/** Whether a blocker still holds at `now`; an unknown end is believed until the server says otherwise. */
+		function profileBlockStillHolds(blocked, now = Date.now()) {
+			if (blocked === null || blocked === void 0) return false;
+			if (blocked.readyAt === null) return true;
+			const ready = Date.parse(blocked.readyAt);
+			return !Number.isFinite(ready) || ready > now;
 		}
 		//#endregion
 		//#region src/client/InstallToast.tsx
@@ -3920,142 +4405,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			});
 		}
 		//#endregion
-		//#region src/client/ErrorBoundary.tsx
-		/**
-		* The market's last line of defence: a crash renders a way out, not a blank.
-		*
-		* Every part of the market UI is inside one React tree. When that tree
-		* throws during render or commit, React unmounts it — and what the user gets
-		* is an empty settings panel, with the "export log" button gone along with
-		* everything else. That is not hypothetical: it is #293, where browser page
-		* translation replaced text nodes under React and the resulting
-		* NotFoundError blanked the panel for months, and every request for a log
-		* came back empty because there was no longer a button to press.
-		*
-		* #513 fixed that particular trigger. This exists because the next one will
-		* be different, and the property worth having is not "translation is
-		* handled" but "a crash is survivable and reportable".
-		*
-		* Deliberately not a retry loop. If the same render throws again the
-		* boundary catches it again and the user is back here, which is honest —
-		* an automatic remount would flicker between a broken UI and this panel
-		* with no way to read either.
-		*/
-		/**
-		* The last crash this boundary caught, for the exported log.
-		*
-		* Module-level rather than component state because the log export runs
-		* outside this tree — and a crash the user has already dismissed is still
-		* the most useful line in their report.
-		*/
-		let lastCrash = null;
-		/** The crash to report in the exported log, or null when there was none. */
-		function lastMarketCrash() {
-			return lastCrash;
-		}
-		var MarketErrorBoundary = class extends react.Component {
-			state = { error: null };
-			static getDerivedStateFromError(error) {
-				return { error };
-			}
-			componentDidCatch(error, info) {
-				lastCrash = {
-					message: error.message,
-					stack: info.componentStack ?? error.stack ?? null,
-					at: (/* @__PURE__ */ new Date()).toISOString()
-				};
-				console.error("[dsh-market] the market UI crashed and was replaced by its recovery panel", error, info.componentStack);
-			}
-			render() {
-				const { error } = this.state;
-				if (error === null) return this.props.children;
-				const { text, actions } = this.props;
-				return (0, react.createElement)("div", {
-					"data-dsh-market-root": "",
-					"data-dsh-market-crashed": "",
-					translate: "no",
-					className: "notranslate",
-					style: {
-						padding: "24px",
-						display: "flex",
-						flexDirection: "column",
-						gap: "12px",
-						alignItems: "flex-start"
-					}
-				}, [
-					(0, react.createElement)("div", {
-						key: "title",
-						style: {
-							fontSize: "14px",
-							fontWeight: 600
-						}
-					}, text.title),
-					(0, react.createElement)("div", {
-						key: "hint",
-						style: {
-							fontSize: "12px",
-							lineHeight: "19px",
-							opacity: .8,
-							whiteSpace: "pre-wrap"
-						}
-					}, text.hint),
-					(0, react.createElement)("div", {
-						key: "actions",
-						style: {
-							display: "flex",
-							gap: "8px",
-							flexWrap: "wrap"
-						}
-					}, [(0, react.createElement)("button", {
-						key: "reload",
-						type: "button",
-						onClick: () => {
-							this.setState({ error: null });
-						}
-					}, text.reload), actions]),
-					(0, react.createElement)("details", {
-						key: "details",
-						style: {
-							fontSize: "11px",
-							opacity: .7
-						}
-					}, [(0, react.createElement)("summary", {
-						key: "summary",
-						style: { cursor: "pointer" }
-					}, text.details), (0, react.createElement)("pre", {
-						key: "body",
-						style: {
-							whiteSpace: "pre-wrap",
-							wordBreak: "break-word",
-							margin: "8px 0 0"
-						}
-					}, error.message)])
-				]);
-			}
-		};
-		//#endregion
-		//#region src/client/optional-primitives.ts
-		function optionalComponent(name) {
-			let value;
-			try {
-				value = _deepseek_ai_dsh_client_ui_primitives[name];
-			} catch {
-				return null;
-			}
-			if (typeof value === "function") return value;
-			if (value !== null && typeof value === "object" && "$$typeof" in value) return value;
-			return null;
-		}
-		/**
-		* `Tag` — the host's read-only chip, for facts with no status meaning
-		* (capabilities, categories). Null on hosts older than 0.1.7-rc.2.
-		*/
-		const HostTag = optionalComponent("Tag");
-		const HostSwitch = optionalComponent("Switch");
-		const HostCheckbox = optionalComponent("Checkbox");
-		//#endregion
 		//#region \0dsh-css:src/client/Market.module.css.mjs
-		const css = ".nUhMVa_root{min-width:0;height:100%;color:var(--dsw-alias-label-primary,#1f2328);flex-direction:column;display:flex;position:relative;container-type:inline-size}.nUhMVa_head{flex-direction:column;gap:8px;padding:0 4px 4px;display:flex}.nUhMVa_headTop{flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px 16px;min-width:0;display:flex}.nUhMVa_headTop>.nUhMVa_titleRow>.nUhMVa_sub{max-width:100%}.nUhMVa_title{white-space:nowrap;color:var(--dsw-alias-label-primary,#1f2328);margin:0;font-size:15px;font-weight:600;line-height:22px}.nUhMVa_sub{min-width:0;color:var(--dsw-alias-label-tertiary,#8b93a1);flex:auto;margin:0;font-size:12px;line-height:18px}.nUhMVa_sidebarTip{color:var(--dsw-alias-label-secondary,#5c6570);flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0;font-size:12px;line-height:18px;display:flex}.nUhMVa_submitLink{color:var(--dsw-alias-label-tertiary,#8b93a1);white-space:nowrap;font-size:12px;line-height:18px;text-decoration:none}.nUhMVa_submitLink:hover{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:underline}.nUhMVa_tabs{flex-wrap:wrap;align-items:center;gap:4px;padding:0 0 2px;display:flex;position:relative}.nUhMVa_tab{height:32px;font:inherit;color:var(--dsw-alias-label-secondary,#5c6570);border-radius:var(--dsw-radius-sm,#8px);cursor:pointer;white-space:nowrap;background:0 0;border:none;align-items:center;padding:0 10px;font-size:13px;line-height:20px;transition:background-color .12s,color .12s;display:inline-flex;position:relative}.nUhMVa_tab:hover:not(.nUhMVa_on){background:var(--dsw-alias-interactive-bg-hover,#2631480f);color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_tab.nUhMVa_on{color:var(--dsw-alias-label-primary,#1f2328);font-weight:600}.nUhMVa_tab.nUhMVa_on:after{content:\"\";background:var(--dsw-alias-label-primary,#1f2328);border-radius:1px;height:2px;position:absolute;bottom:3px;left:10px;right:10px}.nUhMVa_subTabs{flex-wrap:wrap;align-items:center;gap:4px;margin:0 0 2px;display:flex}.nUhMVa_banner{background:var(--dsw-alias-bg-layer-2,#fdf3e3);border:1px solid var(--dsw-alias-border-l2,#f3e3c3);border-radius:8px;align-items:center;gap:8px;margin:0;padding:8px 12px;font-size:12px;display:flex}.nUhMVa_bannerIcon{color:var(--dsw-alias-label-secondary,#6b7280);flex-shrink:0}.nUhMVa_bannerHint{color:var(--dsw-alias-label-tertiary,#8b93a1);cursor:help;display:inline-flex}.nUhMVa_body{overflow-anchor:none;flex:1;padding:8px 4px 64px;scroll-padding-bottom:64px;overflow-x:hidden;overflow-y:auto}.nUhMVa_stickyHead{z-index:5;background:var(--dsw-alias-bg-base,#fff);position:sticky;top:-1px}.nUhMVa_stickyHead:before{content:\"\";background:inherit;pointer-events:none;height:14px;position:absolute;bottom:100%;left:0;right:0}.nUhMVa_cats{margin:0 -4px 2px;padding:0 4px 4px}.nUhMVa_catsRow{align-items:flex-start;gap:6px;display:flex;position:relative}.nUhMVa_star{color:var(--dsw-alias-label-tertiary,#8b93a1);white-space:nowrap;flex:none;font-size:11px;line-height:18px}.nUhMVa_top{z-index:20;background:var(--dsw-alias-bg-layer-1,#fff);box-shadow:var(--dsw-shadow-lv1,0 4px 12px #1f232814);border-radius:99px;display:inline-flex;position:absolute;bottom:18px;right:18px}.nUhMVa_topBtn{border-radius:99px;width:38px;height:38px;padding:0}.nUhMVa_tag{border:.5px solid var(--dsw-alias-border-l3,#d9dde3);color:var(--dsw-alias-label-secondary,#5c6570);white-space:nowrap;border-radius:999px;flex-shrink:0;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.nUhMVa_hostRequirement{border:.5px solid var(--dsw-alias-border-l3,#d9dde3);color:var(--dsw-alias-label-secondary,#5c6570);text-overflow:ellipsis;white-space:nowrap;border-radius:999px;min-width:0;max-width:18em;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px;overflow:hidden}.nUhMVa_hostRequirementBad{border-color:var(--dsw-alias-state-error-primary,#dc2626);color:var(--dsw-alias-state-error-primary,#dc2626);background:#dc262614}.nUhMVa_hostFilterNote{color:var(--dsw-alias-label-tertiary,#8b93a1);margin-top:6px;font-size:12px;line-height:18px}.nUhMVa_okState{color:var(--dsw-alias-state-success-primary,#16a34a);white-space:nowrap;font-size:12px;font-weight:600}.nUhMVa_catsWrap{flex-wrap:wrap;flex:1;align-items:center;gap:6px;min-width:0;display:flex}.nUhMVa_catsCollapsed{max-height:62px;overflow:hidden}.nUhMVa_catsToggle.nUhMVa_catsToggle{height:26px;min-height:26px;color:var(--dsw-alias-label-secondary,#5c6570);flex:none;padding:0 6px}.nUhMVa_shots{-webkit-overflow-scrolling:touch;scrollbar-width:thin;gap:8px;margin:6px 0 8px;padding:2px 0 6px;display:flex;overflow-x:auto}.nUhMVa_shot{object-fit:cover;border-radius:var(--dsw-radius-lg,16px);border:.5px solid var(--dsw-alias-border-l3,#d9dde3);background:var(--dsw-alias-bg-layer-2,#f3f4f6);cursor:pointer;flex:none;width:220px;height:150px}.nUhMVa_cardShots{-webkit-overflow-scrolling:touch;scrollbar-width:thin;gap:6px;margin:0 0 6px;padding:0 0 2px;display:flex;overflow-x:auto}.nUhMVa_cardShot{object-fit:contain;border-radius:var(--dsw-radius-lg,16px);border:.5px solid var(--dsw-alias-border-l3,#d9dde3);background:var(--dsw-alias-bg-layer-2,#f3f4f6);cursor:pointer;flex:none;width:132px;height:88px;display:block}.nUhMVa_lightbox{z-index:10000;cursor:zoom-out;background:#000000d9;justify-content:center;align-items:center;display:flex;position:fixed;top:0;bottom:0;left:0;right:0}.nUhMVa_lightboxImg{object-fit:contain;cursor:default;border-radius:4px;max-width:90vw;max-height:85vh}.nUhMVa_lightboxClose{color:#fff;cursor:pointer;background:#ffffff1f;border:none;border-radius:99px;place-items:center;width:36px;height:36px;font-size:22px;line-height:1;display:grid;position:absolute;top:16px;right:16px}.nUhMVa_lightboxClose:hover{background:#ffffff38}.nUhMVa_lightboxNav{color:#fff;cursor:pointer;background:#ffffff1f;border:none;border-radius:99px;place-items:center;width:44px;height:44px;display:grid;position:absolute;top:50%;transform:translateY(-50%)}.nUhMVa_lightboxNav:hover{background:#ffffff38}.nUhMVa_lightboxPrev{left:16px}.nUhMVa_lightboxNext{right:16px}.nUhMVa_lightboxDots{gap:8px;display:flex;position:absolute;bottom:20px;left:50%;transform:translate(-50%)}.nUhMVa_lightboxDot{cursor:pointer;background:#fff6;border-radius:99px;width:7px;height:7px}.nUhMVa_lightboxDotOn{background:#fff}.nUhMVa_cmd{background:var(--dsw-alias-bg-layer-2,#f3f4f6);font-size:11px;line-height:18px;font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);word-break:break-all;border-radius:6px;margin:8px 0 0;padding:8px 10px}.nUhMVa_warnLine{color:var(--dsw-alias-state-warn-primary,#b45309);flex-wrap:wrap;align-items:center;gap:4px;margin:0;font-size:12px;font-weight:600;line-height:18px;display:flex}.nUhMVa_modalNote{color:var(--dsw-alias-label-tertiary,#8b93a1);align-items:center;gap:4px;margin:12px 0 0;font-size:12px;line-height:18px;display:flex}.nUhMVa_confirmBody{flex-direction:column;gap:12px;display:flex}.nUhMVa_confirmModal{width:min(560px,92vw);max-width:min(560px,92vw);max-height:100%}.nUhMVa_confirmContent{flex:auto;min-height:0;overflow:hidden}.nUhMVa_confirmContent>:first-child{flex-shrink:0}.nUhMVa_confirmContent>:last-child{overscroll-behavior:contain;flex:auto;min-height:0;margin-top:0;overflow-y:auto}.nUhMVa_confirmModal>:last-child{flex-shrink:0}.nUhMVa_confirmBody .nUhMVa_byline{flex-wrap:nowrap;margin-top:0}.nUhMVa_confirmBody .nUhMVa_owner{min-width:0}.nUhMVa_confirmBody .nUhMVa_shots{margin:0;padding:0}.nUhMVa_confirmBody .nUhMVa_modalNote{margin:0}.nUhMVa_confirmTags{flex-wrap:wrap;gap:6px;display:flex}.nUhMVa_confirmDesc{color:var(--dsw-alias-label-primary,#1f2328);white-space:pre-wrap;margin:0;font-size:13px;line-height:20px}.nUhMVa_confirmFold{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);flex-direction:column;gap:8px;padding-top:12px;display:flex}.nUhMVa_confirmPanel{--fold-bg:#f7f8fa;--fold-border:#e7e8ea;--fold-ink:#1c1d1f;--fold-on-ink:#fff;background:var(--fold-bg);border:1px solid var(--fold-border);border-radius:8px}body[data-ds-dark-theme] .nUhMVa_confirmPanel{--fold-bg:var(--dsw-alias-bg-layer-3,#353638);--fold-border:var(--dsw-alias-border-l2,#ffffff1f);--fold-ink:var(--dsw-alias-label-primary,#f9fafb);--fold-on-ink:var(--dsw-alias-bg-layer-2,#2c2c2e)}.nUhMVa_confirmPanelRow{box-sizing:border-box;width:100%;min-height:40px;color:inherit;font:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:8px;align-items:center;gap:8px;padding:0 12px;display:flex}.nUhMVa_confirmPanelRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4176e6);outline-offset:-2px}.nUhMVa_confirmPanelIcon{color:var(--fold-ink);flex:none;display:inline-flex}.nUhMVa_confirmTerminalIcon{color:var(--fold-ink);flex:none;display:block}.nUhMVa_confirmTerminalPrompt{stroke:var(--fold-on-ink);fill:none}.nUhMVa_confirmTerminalDot{fill:var(--fold-on-ink)}.nUhMVa_confirmPanelTitle{min-width:0;color:var(--fold-ink);flex:1 0 auto;font-size:13px;line-height:20px}.nUhMVa_confirmPanelRowStatic{cursor:default}.nUhMVa_confirmPanel[data-state=unchecked]{background:color-mix(in srgb, var(--fold-bg) 35%, transparent);border-style:dashed}.nUhMVa_confirmPanelMeta{min-width:0;color:var(--dsw-alias-label-secondary,#6b7280);text-align:right;flex:0 auto;font-size:12px;line-height:20px}.nUhMVa_confirmPanelChevron{color:var(--dsw-alias-label-tertiary,#8b93a1);flex:none}.nUhMVa_confirmPanelBody{flex-direction:column;gap:10px;padding:0 12px 10px 16px;display:flex}.nUhMVa_confirmCmd{align-items:center;gap:8px;display:flex}.nUhMVa_confirmPanel .nUhMVa_cmd{background:0 0;border-radius:0;flex:1;min-width:0;margin:0;padding:0;line-height:24px}.nUhMVa_confirmCopied{color:var(--dsw-alias-state-success-primary,#22c55e);white-space:nowrap;flex:none;font-size:12px;line-height:24px}.nUhMVa_confirmCopy{width:24px;height:24px;color:var(--fold-ink,#1c1d1f);cursor:pointer;background:0 0;border:0;border-radius:6px;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.nUhMVa_confirmCopy:hover{background:color-mix(in srgb, var(--fold-ink,#1c1d1f) 8%, transparent)}.nUhMVa_confirmCopy:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4176e6);outline-offset:1px}.nUhMVa_confirmPanel .nUhMVa_caps{gap:6px;padding:0}.nUhMVa_confirmPanel .nUhMVa_caps .nUhMVa_capChip{background:var(--fold-on-ink,#fff);border:1px solid var(--fold-border,#e7e8ea);color:var(--fold-ink,#1c1d1f);border-radius:999px;padding:2px 8px;font-size:12px;line-height:18px}.nUhMVa_confirmPanel .nUhMVa_caps .nUhMVa_capChip.nUhMVa_capChipUncommon{background:var(--fold-ink,#1c1d1f);border-color:var(--fold-ink,#1c1d1f);color:var(--fold-on-ink,#fff);font-weight:600}.nUhMVa_capGroups{grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:8px 12px;display:grid}.nUhMVa_capGroupLabel{color:var(--dsw-alias-label-secondary,#6b7280);white-space:nowrap;font-size:12px;line-height:22px}.nUhMVa_confirmPanel .nUhMVa_caps .nUhMVa_capMuted{border-color:var(--fold-border,#e7e8ea);color:var(--dsw-alias-label-secondary,#6b7280);padding:2px 8px;font-size:12px;line-height:18px}.nUhMVa_capAhead{flex-direction:column;gap:6px;display:flex}.nUhMVa_capAheadLabel{color:var(--dsw-alias-label-secondary,#6b7280);margin:0;font-size:12px;line-height:18px}.nUhMVa_capAheadRow{color:var(--dsw-alias-label-primary,#1f2328);align-items:flex-start;gap:8px;margin:0;font-size:13px;line-height:20px;display:flex}.nUhMVa_capAheadIcon{color:var(--dsw-alias-label-primary,#1f2328);flex:none;margin-top:2px}.nUhMVa_confirmPanel .nUhMVa_caps .nUhMVa_capAddress{color:var(--fold-ink,#1c1d1f);flex-basis:100%;margin:0 0 2px;font-size:13px;line-height:20px}.nUhMVa_capNote,.nUhMVa_confirmPanel .nUhMVa_capCaveat{color:var(--dsw-alias-label-secondary,#6b7280);margin:0;font-size:12px;line-height:18px}.nUhMVa_installCaution{background:color-mix(in srgb, var(--dsw-alias-state-warn-primary,#b45309) 12%, transparent);border-radius:8px;padding:12px 13px}.nUhMVa_installCautionLabel{color:var(--dsw-alias-label-secondary,#6b7280);margin:0 0 8px;font-size:12px;line-height:18px}.nUhMVa_installCautionHead{color:var(--dsw-alias-label-primary,#1f2328);align-items:center;gap:6px;margin:0;font-size:13px;font-weight:600;line-height:20px;display:flex}.nUhMVa_installCautionMark{flex:none;display:block}.nUhMVa_installCautionBody{color:var(--dsw-alias-label-primary,#1f2328);margin:6px 0 0;font-size:13px;line-height:20px}.nUhMVa_installCautionFoot{color:var(--dsw-alias-label-primary,#1f2328);align-items:baseline;gap:12px;margin:0;font-size:13px;line-height:20px;display:flex}.nUhMVa_installCautionLink{white-space:nowrap;color:var(--dsw-alias-link,#3b82f6);flex:none;margin-left:auto;font-size:13px;font-weight:600;line-height:20px;text-decoration:none}.nUhMVa_installCautionLink:hover{text-decoration:underline}.nUhMVa_confirmFineprint{color:var(--dsw-alias-label-secondary,#6b7280);margin:0;font-size:12px;line-height:18px}.nUhMVa_grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:10px;display:grid}.nUhMVa_recentBlock{margin:2px 0 4px;padding:0 0 8px}.nUhMVa_recentRow{-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--dsw-alias-border-l3,#d9dde3) transparent;align-items:stretch;gap:8px;margin-bottom:0;padding-bottom:4px;display:flex;overflow-x:auto}.nUhMVa_recentRow::-webkit-scrollbar{height:6px}.nUhMVa_recentRow::-webkit-scrollbar-thumb{background:var(--dsw-alias-border-l3,#d9dde3);border-radius:99px}.nUhMVa_recentRow::-webkit-scrollbar-track{background:0 0}.nUhMVa_recentRow>*{box-sizing:border-box;flex:none;width:min(320px,30.7692% - 7.38462px);min-width:220px}.nUhMVa_recentRow.nUhMVa_recentCollapsed{visibility:hidden;max-height:0;margin-bottom:0;padding-bottom:0;overflow:hidden}.nUhMVa_recentTile{box-sizing:border-box;background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-lg,16px);flex-direction:column;justify-content:space-between;gap:4px;height:80px;padding:8px 12px;transition:background-image .16s cubic-bezier(.16,1,.3,1);display:flex;overflow:hidden}.nUhMVa_recentTile .nUhMVa_installBtn.nUhMVa_installBtn{height:24px;min-height:24px;padding:0 8px}.nUhMVa_recentAv.nUhMVa_recentAv{flex-shrink:0;width:24px;height:24px;font-size:11px}.nUhMVa_recentTitle{align-items:center;gap:8px;min-width:0;display:flex}.nUhMVa_recentTitle>:last-child{flex-shrink:0}.nUhMVa_recentName{flex:1;min-width:0}.nUhMVa_recentTitle .nUhMVa_nm{font-size:14px;line-height:20px}.nUhMVa_recentBottom{align-items:flex-end;gap:8px;min-width:0;display:flex}.nUhMVa_recentBottom>:last-child{flex-shrink:0;margin-left:auto}.nUhMVa_recentBottom>:not(:last-child){flex:1;min-width:0}.nUhMVa_recentDesc{color:var(--dsw-alias-label-tertiary,#8b93a1);-webkit-line-clamp:2;-webkit-box-orient:vertical;margin:0;font-size:12px;line-height:16px;display:-webkit-box;overflow:hidden}.nUhMVa_recentBottom .nUhMVa_cardMore{padding:0}.nUhMVa_recentHead{justify-content:space-between;align-items:center;gap:8px;margin:10px 0 8px;padding:0 4px;display:flex}.nUhMVa_recentHead .nUhMVa_favoritesSectionHead{margin:0;padding:0;font-weight:600}.nUhMVa_recentToggle{font:inherit;color:inherit;cursor:pointer;background:0 0;border:0;align-items:center;gap:4px;margin:0;padding:0;display:inline-flex}.nUhMVa_recentToggle:hover{color:var(--dsw-alias-label-secondary,#6b7280)}.nUhMVa_recentHide.nUhMVa_recentHide{height:26px;min-height:26px;color:var(--dsw-alias-label-secondary,#6b7280);padding:0 6px}.nUhMVa_recentShow{font:inherit;color:var(--dsw-alias-label-secondary,#8b93a1);cursor:pointer;background:0 0;border:0;align-items:center;gap:4px;margin:0 0 8px;padding:0 4px;font-size:12px;line-height:18px;display:inline-flex}.nUhMVa_recentShow:hover{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_masonry{align-items:flex-start;gap:10px;display:flex}.nUhMVa_masonryCol{flex-direction:column;flex:1;gap:10px;min-width:0;display:flex}.nUhMVa_masonry>.nUhMVa_masonryCol>*{align-self:stretch;min-width:0}@media (max-width:680px){.nUhMVa_masonry{flex-direction:column}.nUhMVa_masonryCol{width:100%}.nUhMVa_grid{grid-template-columns:minmax(0,1fr)}}.nUhMVa_swatches{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;gap:0;height:34px;display:flex;overflow:hidden}.nUhMVa_themesGrid{margin-bottom:12px}.nUhMVa_swatches i{flex:1}.nUhMVa_themeToolbar{grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:0 4px 12px;display:grid}.nUhMVa_themeSearch{box-sizing:border-box;width:100%;min-width:0}.nUhMVa_themeToolbarActions{justify-content:flex-end;align-items:center;gap:8px;display:flex}.nUhMVa_themeFullscreenBtn.nUhMVa_themeFullscreenBtn{width:28px;min-width:28px;padding:0}.nUhMVa_themeResultBar{min-height:24px;color:var(--dsw-alias-label-tertiary,#8b93a1);align-items:center;padding:0 4px 8px;font-size:12px;line-height:18px;display:flex}.nUhMVa_favoritesSectionHead{color:var(--dsw-alias-label-primary,#1f2328);margin:16px 0 8px;padding:0 4px;font-size:14px;font-weight:500;line-height:22px}.nUhMVa_favoritesSectionHead:first-of-type{margin-top:0}.nUhMVa_brokenPluginNotice{flex-direction:column;gap:8px;margin:0 0 8px;display:flex}.nUhMVa_brokenPluginItem{border:1px solid var(--dsw-alias-state-warn-tertiary,#b4530933);background:var(--dsw-alias-state-warn-tertiary,#b453090f);color:var(--dsw-alias-state-warn-primary,#b45309);border-radius:8px;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:10px;padding:8px 10px;font-size:12px;line-height:18px;display:flex}.nUhMVa_brokenPluginText{flex-direction:column;gap:2px;min-width:0;display:flex}.nUhMVa_favoritesStaleBar{border:1px solid var(--dsw-alias-state-warn-tertiary,#b4530933);background:var(--dsw-alias-state-warn-tertiary,#b453090f);color:var(--dsw-alias-state-warn-primary,#b45309);border-radius:8px;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin:0 0 8px;padding:8px 10px;font-size:12px;line-height:18px;display:flex}.nUhMVa_favoritesStaleOnly{flex-direction:column;align-items:flex-start;gap:10px;display:flex}.nUhMVa_themeGallery{grid-template-columns:repeat(4,minmax(0,1fr));align-items:stretch;gap:10px;display:grid}.nUhMVa_themeCard{border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-lg,16px);background:var(--dsw-alias-bg-layer-1,#fff);flex-direction:column;min-width:0;transition:border-color .16s cubic-bezier(.16,1,.3,1),box-shadow .16s cubic-bezier(.16,1,.3,1),transform .16s cubic-bezier(.16,1,.3,1);display:flex;overflow:hidden}.nUhMVa_themeCard:hover{border-color:var(--dsw-alias-label-dimmed,#c8ccd4);box-shadow:var(--dsw-shadow-lv1,0 4px 12px #1f232814);transform:translateY(-1px)}.nUhMVa_themeCover{aspect-ratio:16/10;border:0;border-bottom:.5px solid var(--dsw-alias-border-l3,#d9dde3);background:var(--dsw-alias-bg-layer-2,#f3f4f6);width:100%;color:var(--dsw-alias-label-secondary,#6b7280);cursor:zoom-in;border-radius:0;padding:0;display:block;position:relative;overflow:hidden}.nUhMVa_themeCover img{object-fit:contain;background:var(--dsw-alias-bg-layer-2,#f3f4f6);width:100%;height:100%;transition:transform .18s cubic-bezier(.16,1,.3,1);display:block}.nUhMVa_themeCover:hover img{transform:scale(1.012)}.nUhMVa_themeCover:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4f6ef7);outline-offset:-3px}.nUhMVa_themeCoverEmpty{cursor:default;color:var(--dsw-alias-label-tertiary,#8b93a1);background:var(--dsw-alias-bg-module-platform,#f4f5f7);border-radius:var(--dsw-radius-lg,16px) 0 0 0;flex-direction:column;justify-content:center;align-items:center;gap:8px;font-size:12px;line-height:18px;display:flex}.nUhMVa_themePreviewAction,.nUhMVa_themePreviewCount{color:#fff;background:#14181fc7;border:1px solid #ffffff57;border-radius:4px;align-items:center;height:24px;padding:0 8px;font-size:11px;line-height:16px;display:inline-flex;position:absolute;bottom:8px}.nUhMVa_themePreviewAction{gap:4px;right:8px}.nUhMVa_themePreviewCount{left:8px}.nUhMVa_themeCardBody{flex-direction:column;flex:1;gap:8px;padding:14px;display:flex}.nUhMVa_themeCardHead{align-items:flex-start;gap:8px;min-width:0;display:flex}.nUhMVa_themeIdentity{flex:1;min-width:0}.nUhMVa_themeStatus,.nUhMVa_themeStatusMuted{white-space:nowrap;border-radius:4px;flex:none;align-items:center;min-height:22px;padding:0 8px;font-size:11px;font-weight:600;display:inline-flex}.nUhMVa_themeStatus{background:var(--dsw-alias-state-success-tertiary,#16a34a1a);color:var(--dsw-alias-state-success-primary,#15803d)}.nUhMVa_themeStatusMuted{background:var(--dsw-alias-bg-layer-2,#f3f4f6);color:var(--dsw-alias-label-secondary,#6b7280)}.nUhMVa_themeDescription{min-height:36px;color:var(--dsw-alias-label-tertiary,#8b93a1);-webkit-line-clamp:3;-webkit-box-orient:vertical;margin:0;font-size:12px;line-height:18px;display:-webkit-box;overflow:hidden}.nUhMVa_themeCardFooter{justify-content:space-between;align-items:center;gap:8px;margin-top:auto;padding-top:4px;display:flex}.nUhMVa_themeLifecycle{min-width:0;color:var(--dsw-alias-label-tertiary,#8b93a1);text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:18px;overflow:hidden}.nUhMVa_themeActions{flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;margin-left:auto;display:flex}@container (width<=900px){.nUhMVa_themeGallery{grid-template-columns:repeat(3,minmax(0,1fr))}}@container (width<=680px){.nUhMVa_themeGallery{grid-template-columns:repeat(2,minmax(0,1fr))}}@container (width<=460px){.nUhMVa_themeGallery{grid-template-columns:minmax(0,1fr)}}.nUhMVa_exportLogBtn{white-space:nowrap;flex-shrink:0}@container (width<=560px){.nUhMVa_headTop{flex-direction:column;align-items:stretch}.nUhMVa_headTop>.nUhMVa_titleRow{margin-left:0}}@container (width<=420px){.nUhMVa_exportLogBtn{align-self:center}.nUhMVa_themeToolbar{grid-template-columns:minmax(0,1fr)}.nUhMVa_themeCardHead{flex-wrap:wrap}.nUhMVa_themeStatus,.nUhMVa_themeStatusMuted{order:3}}@container (width<=280px){.nUhMVa_themeCardFooter{flex-direction:column;align-items:flex-start}.nUhMVa_themeActions{justify-content:flex-start;width:100%;margin-left:0}}@media (max-width:560px){[role=dialog]:has([data-dsh-market-root])>nav{display:none}[role=dialog]:has([data-dsh-market-root])>div{flex:100%;width:100%;min-width:0}}.nUhMVa_panelHost{box-sizing:border-box;height:100%;min-height:0;padding:calc(28px + var(--dsh-frame-top-clearance,0px)) 0 0;flex-direction:column;display:flex}.nUhMVa_panelHost>.nUhMVa_root{flex:1;width:100%;min-width:0;min-height:0;container-type:normal}.nUhMVa_panelHost .nUhMVa_head,.nUhMVa_panelHost .nUhMVa_body{padding-left:max(max(16px,min(4vw,48px)),50% - 480px);padding-right:max(max(16px,min(4vw,48px)),50% - 480px);container-type:inline-size}[data-dsh-market-plugins-tab=true]{--dshm-host-sticky-top:0px;--dshm-plugins-head-height:0px}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]){--dshm-empty-view-height:100vh;height:auto}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_body{min-height:calc(100vh - var(--dshm-host-sticky-top,0px) - var(--dshm-plugins-head-height,0px));flex-direction:column;flex:none;display:flex;overflow:visible}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_body>.nUhMVa_empty{box-sizing:border-box;width:100%;max-width:none;max-height:var(--dshm-empty-view-height,100vh);flex-direction:column;flex:auto;justify-content:center;align-items:center;margin:0;padding:32px;display:flex}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_top{position:fixed}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_stickyHead{display:contents}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_head{z-index:6;top:var(--dshm-host-sticky-top,0px);background:var(--dsw-alias-bg-base,#fff);margin:0 -4px;padding:4px 4px 6px;position:sticky}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_cats{z-index:5;top:calc(var(--dshm-host-sticky-top,0px) + var(--dshm-plugins-head-height,0px));background:var(--dsw-alias-bg-base,#fff);position:sticky}[role=dialog]:has([data-dsh-market-fullscreen=true]){border-radius:0;width:100vw;max-width:none;height:100vh;max-height:none;position:fixed;top:0;bottom:0;left:0;right:0}[data-dsh-market-plugins-tab=true][data-dsh-market-fullscreen=true]{z-index:60;background:var(--dsw-alias-bg-layer-1,#fff);position:fixed;top:0;bottom:0;left:0;right:0;height:100vh!important}@media (prefers-reduced-motion:reduce){.nUhMVa_themeCard,.nUhMVa_themeCover img{transition:none}.nUhMVa_themeCard:hover{transform:none}}.nUhMVa_card{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-xl,20px);flex-direction:column;align-self:start;gap:10px;min-width:0;padding:12px 14px;transition:background-image .16s cubic-bezier(.16,1,.3,1);display:flex}@media (hover:hover){.nUhMVa_card:hover,.nUhMVa_recentTile:hover{background-image:linear-gradient(var(--dsw-alias-interactive-bg-hover,#2631480f),var(--dsw-alias-interactive-bg-hover,#2631480f))}.nUhMVa_installBtn:hover:not(:disabled){background:var(--dsw-alias-button-primary-fill,#0f1115);color:var(--dsw-alias-label-primary-foreground,#fff);border-color:#0000}}.nUhMVa_row1{align-items:flex-start;gap:10px;min-width:0;display:flex}.nUhMVa_cardAction{flex-shrink:0;align-items:center;display:inline-flex}.nUhMVa_installBtn.nUhMVa_installBtn{min-width:64px}.nUhMVa_av{width:16px;height:16px;color:var(--dsw-alias-label-primary,#1f2328);object-fit:cover;background:var(--dsw-alias-bg-layer-2,#f3f4f6);border-radius:50%;flex-shrink:0;place-items:center;font-size:9px;font-weight:700;display:grid}.nUhMVa_nm{text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500;line-height:20px;overflow:hidden}.nUhMVa_nmLink{color:inherit;text-decoration:none;display:block}.nUhMVa_nmLink:hover{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:underline}.nUhMVa_repoMark{color:var(--dsw-alias-label-secondary,#6b7280);vertical-align:-1px;flex-shrink:0;margin-left:5px;display:inline-block}.nUhMVa_nmLink:hover .nUhMVa_repoMark{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_byline{flex-wrap:wrap;align-items:center;gap:6px;min-width:0;margin-top:2px;display:flex}.nUhMVa_meta{color:var(--dsw-alias-label-secondary,#9ca3af);margin-top:2px;font-size:11px}.nUhMVa_metaInline{color:var(--dsw-alias-label-secondary,#9ca3af);font-size:11px}.nUhMVa_owner{color:var(--dsw-alias-label-secondary,#5c6570);text-overflow:ellipsis;white-space:nowrap;flex:0 auto;min-width:44px;font-size:11px;line-height:18px;overflow:hidden}.nUhMVa_desc{color:var(--dsw-alias-label-tertiary,#8b93a1);margin:0;font-size:12px;line-height:18px}.nUhMVa_descClamp{-webkit-line-clamp:5;-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden}.nUhMVa_descClamp3{-webkit-line-clamp:3;-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden}.nUhMVa_descToggle{width:20px;height:16px;color:var(--dsw-alias-label-tertiary,#8b93a1);cursor:pointer;background:0 0;border:none;justify-content:center;align-items:center;margin-top:2px;padding:0;display:flex}.nUhMVa_descToggle:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_foot{flex-wrap:nowrap;align-items:flex-end;gap:8px;display:flex}.nUhMVa_foot .nUhMVa_metaInline,.nUhMVa_foot .nUhMVa_src{white-space:nowrap}.nUhMVa_footTags{flex-wrap:wrap;flex:1 1 0;align-items:center;gap:8px;min-width:0;display:flex}.nUhMVa_grow{flex:1}.nUhMVa_titleRow{flex-wrap:wrap;align-items:center;gap:8px 10px;display:flex}.nUhMVa_titleActions{flex-wrap:wrap;flex:0 auto;justify-content:flex-end;align-items:center;gap:4px 10px;min-width:0;margin-left:auto;display:flex}.nUhMVa_titleActions:empty{display:none}.nUhMVa_titleActions>*{white-space:nowrap;flex-shrink:0}.nUhMVa_version{color:var(--dsw-alias-label-tertiary,#8b93a1);font-variant-numeric:tabular-nums;flex-shrink:0;font-size:12px;line-height:20px}.nUhMVa_repoLink{color:var(--dsw-alias-label-tertiary,#8b93a1);flex-shrink:0;font-size:12px;line-height:20px;text-decoration:none}.nUhMVa_repoLink:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_noteRow{flex-wrap:wrap;align-items:baseline;gap:6px;min-width:0;display:flex}.nUhMVa_desc.nUhMVa_noteRow,.nUhMVa_desc.nUhMVa_noteRow+.nUhMVa_noteRow,.nUhMVa_noteEdit+.nUhMVa_noteRow{margin-top:6px}.nUhMVa_noteMine{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_noteToggle{font:inherit;color:var(--dsw-alias-label-tertiary,#8b93a1);cursor:pointer;white-space:nowrap;background:0 0;border:none;flex-shrink:0;padding:0;font-size:11px;line-height:16px}.nUhMVa_noteToggle:hover{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:underline}.nUhMVa_noteEdit{flex-direction:column;gap:6px;min-width:0;margin-top:6px;display:flex}.nUhMVa_noteInput{box-sizing:border-box;width:100%;min-width:0;max-width:100%;display:flex}.nUhMVa_noteInput input{box-sizing:border-box;flex:auto;width:100%;min-width:0}.nUhMVa_noteEditBar{justify-content:flex-end;align-items:center;gap:6px;display:flex}.nUhMVa_noteCount{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary,#8b93a1);margin-right:auto;font-size:11px;line-height:16px}.nUhMVa_descTight{min-height:0}.nUhMVa_src{color:var(--dsw-alias-label-secondary,#9ca3af);font-size:11px;text-decoration:none}.nUhMVa_src:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_dot{vertical-align:2px;margin-left:5px}.nUhMVa_act{flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;font-size:11px;display:flex}.nUhMVa_actLive{color:var(--dsw-alias-state-success-primary,#16a34a);align-items:center;gap:4px;font-weight:600;display:inline-flex}.nUhMVa_actWarn{color:var(--dsw-alias-state-warn-primary,#b45309);align-items:center;gap:4px;font-weight:600;display:inline-flex}.nUhMVa_actBroken{color:var(--dsw-alias-state-error-primary,#dc2626);align-items:center;gap:4px;font-weight:600;display:inline-flex}.nUhMVa_actWhy{color:var(--dsw-alias-label-secondary,#6b7280);margin-top:2px}.nUhMVa_loading{color:var(--dsw-alias-label-secondary,#9ca3af);flex-direction:column;align-items:center;gap:12px;padding:48px;font-size:13px;display:flex}.nUhMVa_spin{color:var(--dsw-alias-brand-primary,#4f6ef7);flex-shrink:0;animation:.8s linear infinite nUhMVa_sp;display:inline-flex}.nUhMVa_logoMark{color:var(--dsw-alias-brand-primary,#4f6ef7);flex-shrink:0;display:inline-flex}.nUhMVa_logoCell,.nUhMVa_logoPlug,.nUhMVa_logoPlugAmbient{--dshm-cycle:2.8s}.nUhMVa_logoMark .nUhMVa_logoCell,.nUhMVa_logoMark .nUhMVa_logoPlug{--dshm-cycle:2s}.nUhMVa_logoCell{--dshm-wave:0;animation:nUhMVa_dshmMarkWave var(--dshm-cycle) cubic-bezier(.4,0,.2,1) infinite;animation-delay:calc(var(--dshm-wave) * .11s)}.nUhMVa_logoPlug,.nUhMVa_logoPlugAmbient{transform-box:fill-box;transform-origin:50%;animation:nUhMVa_dshmMarkPlug var(--dshm-cycle) cubic-bezier(.4,0,.2,1) infinite}@keyframes nUhMVa_dshmMarkWave{0%,to{opacity:1}6%{opacity:.5}16%{opacity:1}}@keyframes nUhMVa_dshmMarkPlug{0%,8%{transform:rotate(9deg)}22%{transform:translate(-1.35px,1.34px)rotate(0)}30%,62%{transform:translate(-1.28px,1.27px)rotate(0)}76%,to{transform:rotate(9deg)}}@media (prefers-reduced-motion:reduce){.nUhMVa_logoCell,.nUhMVa_logoPlugAmbient{animation:none}.nUhMVa_logoPlug,.nUhMVa_spin{animation:1.5s ease-in-out infinite nUhMVa_dshmPlugFade}}@keyframes nUhMVa_dshmPlugFade{0%,to{opacity:1}50%{opacity:.35}}@keyframes nUhMVa_sp{to{transform:rotate(360deg)}}.nUhMVa_progress{background:var(--dsw-alias-bg-layer-2,#f3f4f6);border:1px solid var(--dsw-alias-border-l2,#e5e7eb);color:var(--dsw-alias-label-secondary,#6b7280);border-radius:8px;flex-wrap:wrap;align-items:center;gap:9px;margin:0;padding:8px 12px;font-size:12px;display:flex}.nUhMVa_bar{background:var(--dsw-alias-border-l1,#e5e7eb);border-radius:99px;width:100%;height:4px;overflow:hidden}.nUhMVa_barFill{background:var(--dsw-alias-brand-primary,#4f6ef7);border-radius:99px;height:100%;transition:width .6s}.nUhMVa_barWave{width:30%;animation:1.2s ease-in-out infinite nUhMVa_dshmSlide}@keyframes nUhMVa_dshmSlide{0%{margin-left:-30%}to{margin-left:100%}}.nUhMVa_irow .nUhMVa_progress{margin-top:8px}.nUhMVa_progress code{font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);text-overflow:ellipsis;white-space:nowrap;font-size:11px;overflow:hidden}.nUhMVa_empty{color:var(--dsw-alias-label-secondary,#5c6570);text-align:center;max-width:520px;margin:0 auto;padding:56px 32px 40px;font-size:13px;line-height:20px}.nUhMVa_err{color:var(--dsw-alias-state-error-primary,#dc2626);white-space:pre-wrap;word-break:break-all;margin:8px 0;font-size:12px}.nUhMVa_cardBlocked{border-color:var(--dsw-alias-state-error-primary,#dc2626)}.nUhMVa_conflictHead{align-items:flex-start;gap:8px;display:flex}.nUhMVa_conflictIcon{color:var(--dsw-alias-state-error-primary,#dc2626);flex-shrink:0;margin-top:1px}.nUhMVa_conflictTitle{color:var(--dsw-alias-state-error-primary,#dc2626);font-size:13px;font-weight:600;line-height:18px}.nUhMVa_conflictBody{margin:0;font-size:12px;line-height:19px}.nUhMVa_roster{background:var(--dsw-alias-border-l2,#e5e7eb);border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;flex-direction:column;gap:1px;display:flex;overflow:hidden}.nUhMVa_rosterRow{background:var(--dsw-alias-bg-layer-1,#fff);align-items:center;gap:8px;padding:7px 10px;display:flex}.nUhMVa_rosterMain{flex-direction:column;min-width:0;display:flex}.nUhMVa_rosterName{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:12px;font-weight:600;overflow:hidden}.nUhMVa_rosterAuthor{color:var(--dsw-alias-label-secondary,#9ca3af);text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;overflow:hidden}.nUhMVa_rosterTag{border-radius:4px;flex-shrink:0;margin-left:auto;padding:1px 6px;font-size:10.5px;font-weight:600}.nUhMVa_rosterTagKeep{color:var(--dsw-alias-state-success-primary,#16a34a);background:#16a34a1f}.nUhMVa_rosterTagDrop{color:var(--dsw-alias-state-error-primary,#dc2626);background:#dc26261f}.nUhMVa_rosterRowOut .nUhMVa_rosterName{text-decoration:line-through}.nUhMVa_rosterRowOut{opacity:.62}.nUhMVa_rosterSplit{background:var(--dsw-alias-border-l2,#e5e7eb);height:1px}.nUhMVa_reassure{color:var(--dsw-alias-label-secondary,#6b7280);align-items:center;gap:5px;margin:0;font-size:11.5px;line-height:17px;display:flex}.nUhMVa_reassureOk{color:var(--dsw-alias-state-success-primary,#16a34a);flex-shrink:0}.nUhMVa_conflictWhy{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:11px;line-height:17px;font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);overflow-wrap:anywhere;margin-top:2px}.nUhMVa_conflictWhyText{margin-top:5px;font-family:-apple-system,BlinkMacSystemFont,PingFang SC,sans-serif}.nUhMVa_choices{flex-direction:column;gap:7px;display:flex}.nUhMVa_choice{text-align:left;font:inherit;cursor:pointer;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l3,#d9dde3);border-radius:9px;align-items:flex-start;gap:9px;padding:9px 11px;display:flex}.nUhMVa_choice:has(input:disabled){cursor:default;opacity:.6}.nUhMVa_choiceOn{border-color:var(--dsw-alias-brand-primary,#4f6ef7);background:var(--dsw-alias-bg-layer-2,#f5f7ff)}.nUhMVa_choiceRadio{width:13px;height:13px;accent-color:var(--dsw-alias-brand-primary,#4f6ef7);flex-shrink:0;margin:2px 0 0}.nUhMVa_choiceMain{flex-direction:column;gap:3px;min-width:0;display:flex}.nUhMVa_choiceTitle{font-size:12px;font-weight:600;line-height:17px}.nUhMVa_choiceNote{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:11px;line-height:16px}.nUhMVa_choiceSafe{color:var(--dsw-alias-state-success-primary,#16a34a)}.nUhMVa_stateTag{white-space:nowrap;background:var(--dsw-alias-bg-layer-2,#f3f4f6);min-height:20px;color:var(--dsw-alias-label-secondary,#6b7280);border-radius:5px;flex-shrink:0;align-items:center;gap:5px;padding:1px 7px;font-size:11px;line-height:16px;display:inline-flex}.nUhMVa_stateTag[data-on=true]{color:var(--dsw-alias-state-success-primary,#16a34a);background:color-mix(in srgb, var(--dsw-alias-state-success-primary,#16a34a) 10%, transparent)}.nUhMVa_stateDot{background:var(--dsw-alias-label-tertiary,#8b93a1);border-radius:999px;flex:none;width:6px;height:6px}.nUhMVa_stateDot[data-on=true]{background:var(--dsw-alias-state-success-primary,#16a34a)}.nUhMVa_metaTag{text-overflow:ellipsis;white-space:nowrap;background:var(--dsw-alias-bg-layer-2,#f3f4f6);min-width:0;max-width:100%;min-height:20px;color:var(--dsw-alias-label-tertiary,#8b93a1);border-radius:5px;flex-shrink:1;padding:1px 7px;font-size:11px;line-height:18px;display:inline-block;overflow:hidden}.nUhMVa_metaTagOk{color:var(--dsw-alias-state-success-primary,#16a34a);background:color-mix(in srgb, var(--dsw-alias-state-success-primary,#16a34a) 10%, transparent)}.nUhMVa_irow{transition:background-image .16s cubic-bezier(.16,1,.3,1)}.nUhMVa_irow:hover{background-image:linear-gradient(var(--dsw-alias-interactive-bg-hover,#2631480f),var(--dsw-alias-interactive-bg-hover,#2631480f))}.nUhMVa_irowHead{align-items:flex-start;gap:8px;min-width:0;display:flex}.nUhMVa_irowHead .nUhMVa_irowName{flex:1 1 0;min-width:0}.nUhMVa_irowMenu{flex-shrink:0;margin-top:-4px;margin-left:auto;margin-right:-6px}.nUhMVa_irowMeta{color:var(--dsw-alias-label-secondary,#6b7280);margin-top:2px;font-size:12px;line-height:18px}.nUhMVa_irowPath{align-items:center;gap:6px;min-width:0;margin-top:6px;display:flex}.nUhMVa_irowPath .nUhMVa_spec{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.nUhMVa_irowPathIcon,.nUhMVa_irowStatusIcon{color:var(--dsw-alias-label-tertiary,#8b93a1);flex-shrink:0;display:inline-flex}.nUhMVa_irowPathCopy{flex-shrink:0;align-items:center;gap:4px;margin-left:auto;display:inline-flex}.nUhMVa_irowPath .nUhMVa_confirmCopy{width:20px;height:20px;color:var(--dsw-alias-label-tertiary,#8b93a1)}.nUhMVa_irowPath .nUhMVa_confirmCopy:hover{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_irowPath .nUhMVa_confirmCopied{color:var(--dsw-alias-label-secondary,#6b7280);order:1;font-size:11px}.nUhMVa_irowDesc{flex:100%;min-width:0}.nUhMVa_irowStatus{flex-wrap:wrap;align-items:center;gap:6px;min-width:0;margin-top:8px;font-size:12px;line-height:18px;display:flex}.nUhMVa_irowStatus+.nUhMVa_irowStatus{margin-top:4px}.nUhMVa_irowStatusPart{align-items:baseline;gap:6px;display:inline-flex}.nUhMVa_irowStatus .nUhMVa_notesLink{margin:0;display:inline}.nUhMVa_irowStatus .nUhMVa_metaInline{font-size:12px}.nUhMVa_irowStatusAction{margin-left:auto;display:inline-flex}.nUhMVa_irowStatusAction .nUhMVa_noteToggle{color:var(--dsw-alias-label-secondary,#6b7280);font-size:12px;line-height:18px}.nUhMVa_irowStatusAction .nUhMVa_noteToggle:hover{color:var(--dsw-alias-label-primary,#1f2328);text-decoration:none}.nUhMVa_descMore{cursor:pointer;font:inherit;color:var(--dsw-alias-label-secondary,#6b7280);background:0 0;border:none;align-items:center;gap:2px;margin-top:4px;padding:0;font-size:12px;line-height:18px;display:inline-flex}.nUhMVa_descMore:hover{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_noteAdd{cursor:pointer;font:inherit;color:var(--dsw-alias-label-secondary,#6b7280);white-space:nowrap;background:0 0;border:none;align-items:center;gap:6px;margin-top:4px;padding:0;font-size:12px;line-height:18px;display:inline-flex}.nUhMVa_noteAdd:hover,.nUhMVa_irowStatusFact{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_irowStatusSep{color:var(--dsw-alias-label-tertiary,#8b93a1)}.nUhMVa_nameLink{color:inherit;text-decoration:none}.nUhMVa_irowName{text-overflow:clip;flex-wrap:wrap;align-items:baseline;gap:6px;min-width:0;display:flex;overflow:visible}.nUhMVa_irowNameText{overflow-wrap:anywhere;white-space:normal;min-width:0}.nUhMVa_irowName>.nUhMVa_owner{flex:none}.nUhMVa_nameLink:hover{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:underline}.nUhMVa_opWrap{flex-shrink:0;margin-bottom:6px;display:inline-flex}.nUhMVa_opEntry{font:inherit;cursor:pointer;white-space:nowrap;height:28px;color:var(--dsw-alias-label-primary,#1f2328);background:var(--dsw-alias-bg-layer-1,#fff);border:.5px solid var(--dsw-alias-border-l3,#d9dde3);border-radius:8px;align-items:center;gap:5px;padding:0 7px 0 10px;font-size:12px;transition:background-color .12s,color .12s,border-color .12s;display:inline-flex;position:relative}.nUhMVa_opEntryQuiet{background:var(--dsw-alias-bg-module-platform,#f4f5f7);color:var(--dsw-alias-label-secondary,#5c6570)}.nUhMVa_opEntry:hover{color:var(--dsw-alias-label-primary,#1f2328);border-color:var(--dsw-alias-border-l2,#e5e7eb);background:var(--dsw-alias-bg-module-platform,#f4f5f7)}.nUhMVa_opChevron{color:var(--dsw-alias-label-tertiary,#8b93a1);flex-shrink:0;transition:transform .14s cubic-bezier(.16,1,.3,1);display:inline-flex}.nUhMVa_opChevronOpen{transform:rotate(180deg)}.nUhMVa_opEntryAlert{border-color:var(--dsw-alias-state-error-primary,#dc2626);color:var(--dsw-alias-state-error-primary,#dc2626)}.nUhMVa_opDot{background:var(--dsw-alias-state-error-primary,#dc2626);border-radius:99px;width:8px;height:8px;position:absolute;top:-3px;right:-3px}.nUhMVa_opPanel{z-index:40;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l3,#d9dde3);border-radius:12px;width:460px;max-width:100%;max-height:70vh;position:absolute;top:calc(100% + 6px);right:0;overflow-y:auto;box-shadow:0 20px 52px #00000047}.nUhMVa_opHead{border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);align-items:center;gap:8px;padding:9px 14px;display:flex}.nUhMVa_opPanelTitle{font-size:12.5px;font-weight:600}.nUhMVa_opCloseBtn.nUhMVa_opCloseBtn{min-width:0;color:var(--dsw-alias-label-secondary,#6b7280);padding:0 6px}.nUhMVa_opAggregate{border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);background:var(--dsw-alias-bg-layer-2,#f7f8fa);padding:9px 14px}.nUhMVa_opAggregateTop{font-variant-numeric:tabular-nums;font-size:12px;font-weight:600}.nUhMVa_opAggregateHint{color:var(--dsw-alias-label-tertiary,#8b93a1);margin-top:4px;font-size:10.5px}.nUhMVa_opRow{border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);align-items:flex-start;gap:9px;padding:9px 14px;display:flex}.nUhMVa_opRow:last-child{border-bottom:none}.nUhMVa_opRowAlert{background:#dc26260f}.nUhMVa_opIcon{flex-shrink:0;place-items:center;width:14px;margin-top:1px;display:grid}.nUhMVa_opQueuedIcon{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:12px}.nUhMVa_opMain{flex-direction:column;flex:1;gap:3px;min-width:0;display:flex}.nUhMVa_opTop{align-items:baseline;gap:6px;min-width:0;display:flex}.nUhMVa_opVerb{color:var(--dsw-alias-label-secondary,#6b7280);flex-shrink:0;font-size:12px}.nUhMVa_opName{text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;overflow:hidden}.nUhMVa_opStatus{color:var(--dsw-alias-label-tertiary,#8b93a1);overflow-wrap:anywhere;font-size:10.5px;line-height:16px}.nUhMVa_opStatusBad{color:var(--dsw-alias-state-error-primary,#dc2626)}.nUhMVa_opAgents{color:var(--dsw-alias-label-tertiary,#8b93a1);margin:2px 0 0;font-size:10.5px;line-height:16px}.nUhMVa_opAgentsSummary{cursor:pointer;color:var(--dsw-alias-label-secondary,#5c6570);font-size:10.5px;line-height:16px;list-style:none}.nUhMVa_opAgentsSummary::-webkit-details-marker{display:none}.nUhMVa_opAgentsSummary:before{content:\"▸\";width:10px;transition:transform .12s cubic-bezier(.16,1,.3,1);display:inline-block}.nUhMVa_opAgents[open]>.nUhMVa_opAgentsSummary:before{transform:rotate(90deg)}.nUhMVa_opAgentsList{flex-direction:column;gap:1px;margin:2px 0 0;padding:0 0 0 12px;list-style:none;display:flex}.nUhMVa_opAgentsId{font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);white-space:nowrap;text-overflow:ellipsis;font-size:10.5px;line-height:15px;overflow:hidden}.nUhMVa_opActions{flex-shrink:0;align-items:center;gap:6px;margin-top:1px;display:flex}.nUhMVa_opDecision{border-top:1px dashed var(--dsw-alias-border-l2,#e5e7eb);flex-direction:column;gap:8px;margin-top:8px;padding-top:8px;display:flex}.nUhMVa_opDecisionFoot{align-items:center;gap:8px;display:flex}.nUhMVa_conflictDetailsToggle{font:inherit;cursor:pointer;color:var(--dsw-alias-label-tertiary,#8b93a1);background:0 0;border:none;align-items:center;gap:4px;padding:2px 0;font-size:11px;display:inline-flex}.nUhMVa_conflictDetailsToggle:hover{color:var(--dsw-alias-label-secondary,#6b7280)}.nUhMVa_opEmpty{text-align:center;color:var(--dsw-alias-label-secondary,#6b7280);padding:30px 14px;font-size:12px}.nUhMVa_opEmptyHint{color:var(--dsw-alias-label-tertiary,#8b93a1);margin-top:4px;font-size:11px}.nUhMVa_cardBlockedMark{font:inherit;cursor:pointer;color:var(--dsw-alias-state-error-primary,#dc2626);border:1px solid var(--dsw-alias-state-error-primary,#dc2626);background:#dc262614;border-radius:7px;align-items:center;gap:5px;padding:4px 9px;font-size:11px;display:inline-flex}.nUhMVa_dangerBtn.nUhMVa_dangerBtn{color:var(--dsw-alias-state-error-primary,#dc2626);border-color:var(--dsw-alias-state-error-primary,#dc2626)}.nUhMVa_dangerBtn.nUhMVa_dangerBtn:hover:not(:disabled){background:var(--dsw-alias-state-error-primary,#dc2626);color:#fff}.nUhMVa_dangerArmed.nUhMVa_dangerArmed{background:var(--dsw-alias-state-error-primary,#dc2626);border-color:var(--dsw-alias-state-error-primary,#dc2626);color:var(--dsw-alias-label-primary-foreground,#fff)}.nUhMVa_retryBtn{margin-top:4px}.nUhMVa_irow{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-xl,20px);flex-direction:column;gap:10px;min-width:0;padding:12px 14px;display:flex}.nUhMVa_irowActions{flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:8px;min-width:0;display:flex}.nUhMVa_irowTrailing{flex-wrap:nowrap;flex-shrink:0;align-items:center;gap:8px;min-width:0;display:inline-flex}.nUhMVa_irowTrailing .nUhMVa_metaTag{flex-shrink:1;min-width:0}.nUhMVa_irowMissing{filter:grayscale();opacity:.5}.nUhMVa_irow>.nUhMVa_src,.nUhMVa_irow>.nUhMVa_owner,.nUhMVa_irow button{white-space:nowrap;flex-shrink:0}.nUhMVa_tabSearchRow{align-items:center;gap:8px;padding:0 4px 10px;display:flex}.nUhMVa_tabSearch{flex:1;min-width:0}.nUhMVa_caps{flex-wrap:wrap;align-items:center;gap:4px;min-width:0;padding:0 2px 6px;font-size:11px;line-height:1.5;display:flex}.nUhMVa_capsTitle{color:var(--dsw-alias-label-secondary,#8b949e);cursor:help}.nUhMVa_capChip{border:1px solid var(--dsw-alias-border-l2,#30363d);color:var(--dsw-alias-label-primary,#c9d1d9);white-space:nowrap;border-radius:999px;padding:0 6px}.nUhMVa_capMuted{border:1px dashed var(--dsw-alias-border-l2,#30363d);color:var(--dsw-alias-label-secondary,#8b949e);white-space:nowrap;border-radius:999px;padding:0 6px}.nUhMVa_capCaveat{color:var(--dsw-alias-label-tertiary,#8b93a1);align-items:baseline;gap:12px;margin:6px 0 0;font-size:11px;line-height:16px;display:flex}.nUhMVa_capCaveatNote{min-width:0}.nUhMVa_capCaveatAt{white-space:nowrap;flex:none;margin-left:auto}.nUhMVa_searchField{box-sizing:border-box;min-width:0;position:relative}.nUhMVa_searchInput.nUhMVa_searchInput{box-sizing:border-box;width:100%;min-width:0;padding-right:34px}.nUhMVa_searchClear{width:24px;height:24px;color:var(--dsw-alias-label-secondary,#59636e);font:inherit;cursor:pointer;background:0 0;border:0;border-radius:4px;justify-content:center;align-items:center;padding:0;font-size:20px;line-height:1;display:flex;position:absolute;top:50%;right:5px;transform:translateY(-50%)}.nUhMVa_searchClear:hover{background:var(--dsw-alias-bg-layer-2,#f3f4f6);color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_searchClear:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4f6ef7);outline-offset:1px}.nUhMVa_spec{color:var(--dsw-alias-label-secondary,#9ca3af);font-size:11px;font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);overflow-wrap:anywhere;min-width:0}.nUhMVa_specTag{white-space:nowrap;border-radius:4px;flex-shrink:0;align-items:center;height:16px;padding:0 5px;font-size:10px;font-weight:600;display:inline-flex}.nUhMVa_specTagGit{color:var(--dsw-alias-state-business-primary,#0b7285);background:#12a3c41f}.nUhMVa_specTagFile{color:var(--dsw-alias-state-warn-primary,#b07d1b);background:#f0b42924}.nUhMVa_backupCheckList .nUhMVa_grow{white-space:nowrap;text-overflow:ellipsis;flex:70%;min-width:0;overflow:hidden}.nUhMVa_backupCheckList .nUhMVa_spec{text-align:right;white-space:nowrap;text-overflow:ellipsis;flex:0 30%;max-width:30%;overflow:hidden}.nUhMVa_staleAction{word-break:normal;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;display:flex}.nUhMVa_pct{color:var(--dsw-alias-label-secondary,#6b7280);flex-shrink:0;font-size:11px;font-weight:600}.nUhMVa_pager{flex-wrap:nowrap;justify-content:space-between;align-items:center;gap:8px;margin:16px 0 4px;display:flex}.nUhMVa_loadMore{justify-content:center;margin:16px 0 4px;display:flex}.nUhMVa_pagerPages{flex-wrap:nowrap;flex:1;justify-content:center;align-items:center;gap:4px;min-width:0;display:flex}.nUhMVa_pagerMeta{flex-wrap:nowrap;flex-shrink:0;align-items:center;gap:6px;display:flex}.nUhMVa_pagerPages button,.nUhMVa_pagerMeta button{min-width:0;padding:0 8px}.nUhMVa_pageEllipsis{color:var(--dsw-alias-label-secondary,#9ca3af);padding:0 1px;font-size:12px}.nUhMVa_pageInfo{color:var(--dsw-alias-label-secondary,#6b7280);white-space:nowrap;font-size:12px}@container (width<=544px){.nUhMVa_pager{flex-wrap:wrap;justify-content:center;gap:8px}.nUhMVa_pagerPages{flex-basis:100%}}.nUhMVa_depBadge{border:1px solid var(--dsw-alias-state-warn-primary,#b45309);color:var(--dsw-alias-state-warn-primary,#b45309);white-space:nowrap;border-radius:4px;flex-shrink:0;margin-left:6px;padding:1px 6px;font-size:11px;font-weight:600;line-height:16px}.nUhMVa_deprecate{color:var(--dsw-alias-state-warn-primary,#b45309);background:var(--dsw-alias-bg-layer-2,#fdf3e3);border:1px solid var(--dsw-alias-border-l2,#f3e3c3);border-radius:8px;margin:0;padding:8px 10px;font-size:12px;line-height:18px}.nUhMVa_deprecate a{color:var(--dsw-alias-state-warn-primary,#b45309);text-decoration:underline}.nUhMVa_deprecate .nUhMVa_src{margin-left:8px}.nUhMVa_depLine{flex-wrap:wrap;align-items:center;gap:8px;display:flex}.nUhMVa_switch{border:1px solid var(--dsw-alias-border-l2,#d9dde3);background:var(--dsw-alias-bg-layer-2,#e5e7eb);cursor:pointer;border-radius:99px;flex-shrink:0;width:38px;height:22px;padding:0;transition:background .15s,border-color .15s;position:relative}.nUhMVa_switchOn{background:var(--dsw-alias-state-success-primary,#16a34a);border-color:var(--dsw-alias-state-success-primary,#16a34a)}.nUhMVa_switchMixed{background:var(--dsw-alias-state-warn-primary,#b45309);border-color:var(--dsw-alias-state-warn-primary,#b45309)}.nUhMVa_switchKnob{background:#fff;border-radius:99px;width:16px;height:16px;transition:left .15s;position:absolute;top:2px;left:2px;box-shadow:0 1px 2px #00000040}.nUhMVa_switchOn .nUhMVa_switchKnob,.nUhMVa_switchMixed .nUhMVa_switchKnob{left:18px}.nUhMVa_switch:disabled{opacity:.5;cursor:default}.nUhMVa_viewBar{border-radius:var(--dsw-radius-md,12px);background:var(--dsw-alias-bg-module-platform,#f4f5f7);border:none;align-items:center;gap:2px;width:fit-content;margin-bottom:12px;padding:3px;display:flex}.nUhMVa_viewBtn{font:inherit;color:var(--dsw-alias-label-secondary,#5c6570);border-radius:var(--dsw-radius-sm,8px);cursor:pointer;white-space:nowrap;background:0 0;border:none;height:26px;padding:0 10px;font-size:12px;line-height:18px;transition:background-color .12s,color .12s}.nUhMVa_viewBtn:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_viewOn{background:var(--dsw-alias-bg-layer-3,#fff);color:var(--dsw-alias-label-primary,#1f2328);box-shadow:0 0 0 .5px var(--dsw-alias-border-l3,#0000001f);font-weight:600}.nUhMVa_groupRow{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-xl,20px);margin-bottom:10px;padding:12px 14px}.nUhMVa_groupHead{flex-wrap:wrap;align-items:center;gap:10px;min-width:0;display:flex}.nUhMVa_groupCollapse{width:22px;height:22px;color:var(--dsw-alias-label-secondary,#6b7280);cursor:pointer;background:0 0;border:none;border-radius:6px;flex-shrink:0;justify-content:center;align-items:center;padding:0;display:inline-flex}.nUhMVa_groupCollapse:hover{background:var(--dsw-alias-bg-layer-2,#eef0f4);color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_groupTitle{flex-direction:column;flex:auto;gap:1px;min-width:0;display:flex}.nUhMVa_groupTitle .nUhMVa_groupHint{margin-top:0}.nUhMVa_groupName{text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600;line-height:20px;overflow:hidden}.nUhMVa_groupMeta{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:11px;line-height:16px}.nUhMVa_groupActions{flex-wrap:wrap;flex-shrink:0;align-items:center;gap:6px;margin-left:auto;display:flex}.nUhMVa_groupMembers{flex-direction:column;gap:6px;margin-top:10px;display:flex}.nUhMVa_groupMember{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-radius:8px;align-items:center;gap:8px;min-width:0;padding:6px 8px;font-size:12px;line-height:18px;display:flex}.nUhMVa_groupMember .nUhMVa_nm{flex:1;min-width:0;font-size:12px}.nUhMVa_memberName{flex:auto;align-items:center;gap:6px;min-width:0;display:flex}.nUhMVa_memberName .nUhMVa_nm{flex:0 auto;min-width:0}.nUhMVa_memberNameWithDesc{flex:0 auto;max-width:42%}.nUhMVa_memberKind{color:var(--dsw-alias-label-tertiary,#8b93a1);white-space:nowrap;flex:none;font-size:11px;line-height:16px}.nUhMVa_themeSlot{box-shadow:inset 0 -1px 0 var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px 8px 0 0;margin-bottom:4px}.nUhMVa_groupMember>.nUhMVa_switch,.nUhMVa_groupMember>button{flex-shrink:0}.nUhMVa_groupMemberAction{flex:none;margin-left:auto}.nUhMVa_groupMemberAction button{white-space:nowrap}.nUhMVa_groupAddPanel{border-top:1px dashed var(--dsw-alias-border-l2,#e5e7eb);flex-direction:column;gap:6px;margin-top:10px;padding-top:10px;display:flex}.nUhMVa_groupAddModalBody{flex-direction:column;gap:10px;min-width:0;display:flex}.nUhMVa_groupAddFilters{flex-wrap:wrap;gap:6px;display:flex}.nUhMVa_groupAddModalList{flex-direction:column;gap:6px;max-height:min(50vh,360px);padding-right:2px;display:flex;overflow-y:auto}.nUhMVa_groupAddModalHint{color:var(--dsw-alias-label-secondary,#6b7280);margin:0;font-size:12px;line-height:18px}.nUhMVa_groupAddPick{background:var(--dsw-alias-bg-layer-2,#f7f8fa);cursor:pointer;border-radius:8px;align-items:center;gap:8px;min-width:0;padding:8px 10px;display:flex}.nUhMVa_groupAddPick:hover{background:var(--dsw-alias-bg-layer-2,#eef0f4)}.nUhMVa_groupAddPick input{flex-shrink:0;margin:0}.nUhMVa_groupAddPick .nUhMVa_nm{text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;font-size:12px;overflow:hidden}.nUhMVa_groupAddFooterMeta{color:var(--dsw-alias-label-secondary,#6b7280);align-self:center;margin-right:auto;font-size:12px;line-height:18px}.nUhMVa_groupOrgHint{color:var(--dsw-alias-label-tertiary,#8b93a1);margin:4px 0 0;font-size:11px;line-height:16px}.nUhMVa_groupRenameField{flex-direction:column;gap:6px;min-width:min(100%,320px);display:flex}.nUhMVa_groupRenameField label{color:var(--dsw-alias-label-secondary,#6b7280);font-size:12px;line-height:18px}.nUhMVa_groupRenameField .nUhMVa_inlineInput{width:100%}.nUhMVa_groupCreate{align-items:center;gap:8px;margin-bottom:10px;display:flex}.nUhMVa_groupCreateInline{flex-shrink:0;align-items:center;gap:8px;display:flex}.nUhMVa_groupCreateInline .nUhMVa_inlineInput{flex:none;width:160px}.nUhMVa_inlineInput{flex:1;min-width:120px}.nUhMVa_ungroupedRow{flex-wrap:nowrap}.nUhMVa_ungroupedRow>.nUhMVa_nm{flex:0 auto;max-width:42%;font-size:12px;line-height:18px}.nUhMVa_ungroupedState{flex:0 auto;align-items:center;min-width:0;max-width:46%;margin:0;display:inline-flex}.nUhMVa_ungroupedState>span{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.nUhMVa_ungroupedDesc{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-tertiary,#8b93a1);flex:1 1 0;font-size:12px;line-height:18px;overflow:hidden}.nUhMVa_ungroupedDesc.nUhMVa_noteMine{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_groupHint{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:11px}.nUhMVa_sect{color:var(--dsw-alias-label-secondary,#6b7280);margin:14px 2px 8px;font-size:12px;font-weight:600}.nUhMVa_sectAction{color:var(--dsw-alias-label-secondary,#6b7280);align-items:center;gap:8px;margin:14px 2px 8px;font-size:12px;font-weight:600;display:flex}.nUhMVa_backupGrid{grid-template-columns:minmax(0,1fr);gap:12px;display:grid}.nUhMVa_backupCard{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-xl,20px);flex-direction:column;gap:10px;padding:16px;display:flex}.nUhMVa_backupCard h3{margin:0;font-size:14px}.nUhMVa_backupCard p{color:var(--dsw-alias-label-secondary,#6b7280);margin:0;font-size:12px;line-height:18px}.nUhMVa_backupActions{flex-wrap:wrap;gap:8px;display:flex;position:relative}.nUhMVa_hiddenFile{opacity:0;pointer-events:none;width:1px;height:1px;position:absolute}.nUhMVa_backupInput{box-sizing:border-box;width:100%}.nUhMVa_backupCheck{cursor:pointer;align-items:center;gap:6px;font-size:12px;display:flex}.nUhMVa_backupWarn{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-state-warn-primary,#b45309)!important}.nUhMVa_backupMessage{color:var(--dsw-alias-label-secondary,#6b7280);grid-column:1/-1;font-size:12px}.nUhMVa_backupCheckList{flex-direction:column;gap:6px;max-height:260px;margin:10px 0 4px;padding-right:4px;display:flex;overflow-y:auto}.nUhMVa_backupCheckList .nUhMVa_backupCheck{justify-content:space-between;gap:8px}.nUhMVa_diagPage{flex-direction:column;gap:12px;height:100%;min-height:0;display:flex;overflow-y:auto}.nUhMVa_panelHost .nUhMVa_diagPage{height:auto;overflow:visible}.nUhMVa_diagSummary{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-lg,16px);flex-wrap:wrap;align-items:center;gap:12px;padding:10px 14px;font-size:12px;display:flex}.nUhMVa_diagSummaryItem{color:var(--dsw-alias-label-secondary,#6b7280);white-space:nowrap;align-items:center;gap:6px;display:inline-flex}.nUhMVa_diagSummaryMeta{color:var(--dsw-alias-label-tertiary,#9ca3af);font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);text-overflow:ellipsis;white-space:nowrap;max-width:320px;font-size:11px;overflow:hidden}.nUhMVa_diagSection{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-lg,16px);flex-direction:column;gap:8px;padding:12px 14px;display:flex}.nUhMVa_diagSection h3{color:var(--dsw-alias-label-primary,#1f2328);margin:0;font-size:13px;font-weight:600}.nUhMVa_diagCount{color:var(--dsw-alias-label-tertiary,#9ca3af);font-size:11px;font-weight:400}.nUhMVa_diagEmpty{color:var(--dsw-alias-label-secondary,#9ca3af);padding:8px 0;font-size:12px}.nUhMVa_diagBundle{border-top:1px solid var(--dsw-alias-border-l2,#f0f1f3);flex-direction:column;gap:6px;padding-top:8px;display:flex}.nUhMVa_diagBundle:first-of-type{border-top:none;padding-top:0}.nUhMVa_diagRow{flex-wrap:wrap;align-items:center;gap:8px;min-width:0;font-size:12px;line-height:18px;display:flex}.nUhMVa_diagMeta{align-items:baseline;gap:8px;min-width:0;font-size:12px;display:flex}.nUhMVa_diagKey{color:var(--dsw-alias-label-tertiary,#9ca3af);flex-shrink:0;min-width:64px;font-size:11px}.nUhMVa_diagVal{color:var(--dsw-alias-label-primary,#1f2328);font-size:12px;font-weight:500;font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);overflow-wrap:anywhere;min-width:0}.nUhMVa_diagIndex{background:var(--dsw-alias-bg-layer-2,#f3f4f6);min-width:18px;height:18px;color:var(--dsw-alias-label-secondary,#6b7280);border-radius:9px;flex-shrink:0;justify-content:center;align-items:center;font-size:11px;font-weight:600;display:inline-flex}.nUhMVa_diagArrow{color:var(--dsw-alias-label-tertiary,#9ca3af);flex-shrink:0;font-size:12px}.nUhMVa_diagBadgeOfficial{background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary,#4f6ef7));height:18px;color:var(--dsw-alias-label-primary-foreground,#fff);border-radius:9px;flex-shrink:0;align-items:center;padding:0 8px;font-size:11px;font-weight:600;display:inline-flex}.nUhMVa_diagBadgeCommunity{background:var(--dsw-alias-bg-layer-2,#f3f4f6);height:18px;color:var(--dsw-alias-label-secondary,#6b7280);border-radius:9px;flex-shrink:0;align-items:center;padding:0 8px;font-size:11px;display:inline-flex}.nUhMVa_diagBadgeShadow{background:var(--dsw-alias-state-error-primary,#dc2626);height:18px;color:var(--dsw-alias-label-primary-foreground,#fff);border-radius:9px;flex-shrink:0;align-items:center;padding:0 8px;font-size:11px;font-weight:600;display:inline-flex}.nUhMVa_diagBadgeWarn{background:var(--dsw-alias-state-warn-primary,#b45309);height:18px;color:var(--dsw-alias-label-primary-foreground,#fff);white-space:nowrap;border-radius:9px;flex-shrink:0;align-items:center;padding:0 8px;font-size:11px;font-weight:600;display:inline-flex}.nUhMVa_diagBadgeInfo{background:var(--dsw-alias-bg-layer-2,#f3f4f6);height:18px;color:var(--dsw-alias-label-secondary,#6b7280);white-space:nowrap;border-radius:9px;flex-shrink:0;align-items:center;padding:0 8px;font-size:11px;display:inline-flex}.nUhMVa_diagList{flex-direction:column;gap:6px;display:flex}.nUhMVa_sectionOverview{color:var(--dsw-alias-label-tertiary,#8b93a1);text-overflow:ellipsis;white-space:nowrap;max-width:100%;padding:2px 0 6px;font-size:12px;line-height:18px;overflow:hidden}.nUhMVa_diagAlert{color:var(--dsw-alias-state-warn-primary,#b45309)}.nUhMVa_ovRow{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-radius:8px;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;padding:6px 10px;font-size:12px;line-height:18px;display:flex}.nUhMVa_ovArrow{color:var(--dsw-alias-label-tertiary,#9ca3af);flex-shrink:0;font-size:12px}.nUhMVa_ovByTag{background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary,#4f6ef7));height:18px;color:var(--dsw-alias-label-primary-foreground,#fff);text-overflow:ellipsis;white-space:nowrap;border-radius:9px;flex-shrink:0;align-items:center;max-width:260px;padding:0 8px;font-size:11px;font-weight:600;display:inline-flex;overflow:hidden}.nUhMVa_ovFrom{color:var(--dsw-alias-label-secondary,#6b7280);text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:12px;overflow:hidden}.nUhMVa_orphRow{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-radius:8px;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;padding:6px 10px;font-size:12px;line-height:18px;display:flex}.nUhMVa_orphBadge{background:var(--dsw-alias-state-warn-primary,#b45309);height:18px;color:var(--dsw-alias-label-primary-foreground,#fff);white-space:nowrap;border-radius:9px;flex-shrink:0;align-items:center;padding:0 8px;font-size:11px;font-weight:600;display:inline-flex}.nUhMVa_dragHandle{width:20px;height:20px;color:var(--dsw-alias-label-tertiary,#9ca3af);cursor:grab;-webkit-user-select:none;user-select:none;flex-shrink:0;justify-content:center;align-items:center;font-size:12px;line-height:20px;display:inline-flex}.nUhMVa_dragOver{outline:2px dashed var(--dsw-alias-brand-primary,#4f6ef7);outline-offset:2px;background:var(--dsw-alias-bg-layer-2,#f0f2f8);border-radius:8px}.nUhMVa_dragging{opacity:.45;background:var(--dsw-alias-bg-layer-2,#f3f4f6)}.nUhMVa_collapseHead{font:inherit;color:var(--dsw-alias-label-primary,#1f2328);cursor:pointer;text-align:left;background:0 0;border:none;align-items:center;gap:8px;width:100%;padding:0;font-size:13px;font-weight:600;display:flex}.nUhMVa_collapseIcon{color:var(--dsw-alias-label-secondary,#6b7280);flex-shrink:0;display:inline-flex}.nUhMVa_collapseTitle{flex:0 auto;min-width:0}.nUhMVa_collapseHead .nUhMVa_diagCount{flex-shrink:0}.nUhMVa_collapseBody{border-top:1px solid var(--dsw-alias-border-l2,#f0f1f3);overflow-wrap:anywhere;flex-direction:column;gap:10px;min-width:0;margin-top:8px;padding-top:10px;display:flex}.nUhMVa_orderPanel{flex-direction:column;gap:10px;min-width:0;display:flex}.nUhMVa_panelNote{color:var(--dsw-alias-label-secondary,#6b7280);margin:0;font-size:12px;line-height:18px}.nUhMVa_panelActions{flex-wrap:wrap;align-items:center;gap:8px;display:flex}.nUhMVa_presetList{flex-direction:column;gap:6px;min-width:0;display:flex}.nUhMVa_presetRow{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-radius:8px;flex-direction:column;align-items:stretch;gap:6px;min-width:0;max-width:100%;padding:8px 10px;font-size:12px;line-height:18px;display:flex}.nUhMVa_presetName{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:13px;font-weight:600;overflow:hidden}.nUhMVa_snapList{flex-direction:column;gap:6px;min-width:0;display:flex}.nUhMVa_snapRow{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-radius:8px;flex-direction:column;align-items:stretch;gap:8px;padding:10px 12px;font-size:12px;line-height:18px;display:flex}.nUhMVa_snapMeta{flex-wrap:wrap;align-items:center;gap:8px;min-width:0;display:flex}.nUhMVa_snapConfirmText{color:var(--dsw-alias-state-warn-primary,#b45309);margin:0;font-size:12px;line-height:18px}.nUhMVa_confirmRow{flex-wrap:wrap;align-items:center;gap:6px;display:inline-flex}.nUhMVa_fixFallback{flex-direction:column;gap:6px;margin:8px 0;display:flex}.nUhMVa_fixFallbackText,.nUhMVa_envEditor{box-sizing:border-box;width:100%;font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);color:var(--dsw-alias-label-primary,#1f2328);background:var(--dsw-alias-bg-layer-2,#f3f4f6);border:1px solid var(--dsw-alias-border-l2,#e5e7eb);resize:vertical;white-space:pre-wrap;word-break:break-all;border-radius:6px;padding:8px 10px;font-size:11px;line-height:16px}.nUhMVa_setCard{border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));background:var(--dsw-alias-bg-layer-3,#fff);border-radius:var(--dsw-radius-lg,16px);list-style:none;transition:border-color .16s,background .16s}.nUhMVa_setCard:hover{border-color:var(--dsw-alias-label-dimmed,#c8ccd4)}.nUhMVa_setCardOpen{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-color:var(--dsw-alias-label-dimmed,#c8ccd4)}.nUhMVa_setHeader{-webkit-appearance:none;appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:var(--dsw-radius-lg,16px);background:0 0;border:0;align-items:center;gap:12px;padding:14px 16px;display:flex}.nUhMVa_setHeader:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4f6ef7);outline-offset:-2px}.nUhMVa_setHeadText{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}.nUhMVa_setName{color:var(--dsw-alias-label-primary,#1f2328);font-size:15px;font-weight:600;line-height:1.4}.nUhMVa_setDesc{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:13px;line-height:1.5}.nUhMVa_setChevron{color:var(--dsw-alias-label-tertiary,#8b93a1);flex:none;transition:transform .16s;display:inline-flex}.nUhMVa_setChevronOpen{transform:rotate(180deg)}.nUhMVa_setBody{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);margin:0 16px;padding-bottom:8px}.nUhMVa_setRow{align-items:center;gap:12px;padding:12px 0;display:flex}.nUhMVa_setRow+.nUhMVa_setRow{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb)}.nUhMVa_setLabelBox{flex-direction:column;flex:1;gap:3px;min-width:0;display:flex}.nUhMVa_setLabel{font-size:13px;line-height:20px}.nUhMVa_setHint{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:12px;line-height:18px}.nUhMVa_setAdvanced{border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb)}.nUhMVa_setAdvancedHead{-webkit-appearance:none;appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;align-items:center;gap:12px;padding:12px 0;display:flex}.nUhMVa_setAdvancedHead:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4f6ef7);outline-offset:-2px}.nUhMVa_setAdvancedBody{padding-bottom:4px}.nUhMVa_setConfirm{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);flex-direction:column;gap:8px;padding:12px 0 4px;display:flex}.nUhMVa_setCheck{cursor:pointer;align-items:center;gap:8px;font-size:12px;line-height:18px;display:flex}.nUhMVa_setActions{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);justify-content:flex-end;align-items:center;gap:8px;padding:12px 0 4px;display:flex}.nUhMVa_setInlineActions{flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px;display:flex}.nUhMVa_setProxyEditor{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);flex-wrap:wrap;align-items:flex-end;gap:10px;padding:12px 0;display:flex}.nUhMVa_setProxyLabel{min-width:180px;color:var(--dsw-alias-label-secondary,#6b7280);flex-direction:column;flex:1;gap:5px;font-size:12px;line-height:18px;display:flex}.nUhMVa_setProxyInput{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2,#d1d5db);background:var(--dsw-alias-bg-layer-3,#fff);width:100%;min-width:0;color:var(--dsw-alias-label-primary,#1f2328);font:inherit;border-radius:7px;padding:6px 8px;font-size:12px;line-height:18px}.nUhMVa_setProxyInput:focus{border-color:var(--dsw-alias-brand-primary,#4f6ef7);outline:2px solid color-mix(in srgb,var(--dsw-alias-brand-primary,#4f6ef7) 18%,transparent)}.nUhMVa_setDanger{color:var(--dsw-alias-state-error-primary,#dc2626)}.nUhMVa_setSeg{border-radius:var(--dsw-radius-md,12px);background:var(--dsw-alias-bg-module-platform,#f4f5f7);border:none;flex-shrink:0;gap:2px;padding:3px;display:inline-flex}.nUhMVa_setSegBtn{font:inherit;border-radius:var(--dsw-radius-sm,8px);height:26px;color:var(--dsw-alias-label-secondary,#5c6570);cursor:pointer;background:0 0;border:none;padding:0 10px;font-size:12px;line-height:18px}.nUhMVa_setSegBtn:disabled{cursor:default;opacity:.5}.nUhMVa_setSegOn{background:var(--dsw-alias-bg-layer-3,#fff);color:var(--dsw-alias-label-primary,#1f2328);box-shadow:0 0 0 .5px var(--dsw-alias-border-l3,#0000001f);font-weight:600}.nUhMVa_setBetaTag{background:var(--dsw-alias-bg-module-platform,#eef0f4);color:var(--dsw-alias-label-secondary,#6b7280);border-radius:9px;margin-left:6px;padding:0 6px;font-size:11px;font-weight:600;line-height:17px}.nUhMVa_commentsLink{cursor:pointer;white-space:nowrap;color:var(--dsw-alias-label-tertiary,#8b93a1);background:0 0;border:0;padding:0;font-size:12px;line-height:18px}.nUhMVa_commentsLink:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_footActions{flex-shrink:0;align-items:center;gap:8px;display:inline-flex}.nUhMVa_favoriteBtn{cursor:pointer;color:var(--dsw-alias-label-secondary,#9ca3af);background:0 0;border:0;align-items:center;padding:0;display:inline-flex}.nUhMVa_favoriteMark{transform-box:fill-box;transform-origin:50% 0;display:block}.nUhMVa_favoriteBtn:hover,.nUhMVa_favoriteOn{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_cardMore{cursor:pointer;font:inherit;letter-spacing:1px;color:var(--dsw-alias-label-secondary,#9ca3af);background:0 0;border:0;padding:0 2px;font-size:14px;line-height:16px}.nUhMVa_cardMore:hover{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_blockedTabHint{color:var(--dsw-alias-label-secondary,#9ca3af);margin:0 0 12px;font-size:12px;line-height:18px}.nUhMVa_blockedMissing{flex-direction:column;gap:4px;margin-top:8px;display:flex}.nUhMVa_blockedBarRow{justify-content:space-between;align-items:center;gap:8px;min-width:0;display:flex}.nUhMVa_blockedBarName{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:13px;line-height:20px;overflow:hidden}.nUhMVa_blockedBarUndo{cursor:pointer;font:inherit;color:var(--dsw-alias-brand-primary,#4f6ef7);background:0 0;border:0;padding:0;font-size:12px;line-height:18px}.nUhMVa_commentsNote{color:var(--dsw-alias-label-secondary,#9ca3af);margin:0 0 8px;font-size:11px;line-height:16px}.nUhMVa_commentsGithubPrompt{border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary,#4f6ef7) 24%,transparent);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4f6ef7) 6%,transparent);border-radius:8px;margin:0 0 10px;padding:10px}.nUhMVa_commentsGithubHint{color:var(--dsw-alias-label-primary,#1f2328);margin:0 0 8px;font-size:12px;line-height:17px}.nUhMVa_commentsGithubAction{box-sizing:border-box;border:1px solid var(--dsw-alias-brand-primary,#4f6ef7);min-height:28px;color:var(--dsw-alias-brand-primary,#4f6ef7);border-radius:6px;justify-content:center;align-items:center;padding:5px 10px;font-size:12px;font-weight:600;line-height:16px;text-decoration:none;display:inline-flex}.nUhMVa_commentsGithubAction:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4f6ef7) 9%,transparent)}.nUhMVa_commentsStatus{color:var(--dsw-alias-label-secondary,#9ca3af);margin:0;font-size:12px}.nUhMVa_commentsStatus:empty{display:none}.nUhMVa_commentsError{color:var(--dsw-alias-label-primary,#1f2328);margin:0 0 8px;font-size:12px}.nUhMVa_commentsFail{flex-direction:column;align-items:flex-start;gap:8px;padding:12px 0;display:flex}.nUhMVa_commentsMount{width:100%;min-height:240px;max-height:56vh;overflow:auto}.nUhMVa_commentsMount iframe{width:100%}.nUhMVa_notesLink{font:inherit;color:var(--dsw-alias-label-secondary,#6b7280);cursor:pointer;text-align:left;background:0 0;border:none;margin:2px 0 0;padding:0;font-size:12px;line-height:18px;display:block}.nUhMVa_notesLink:hover{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_notesModalWide{width:min(640px,92vw);max-width:min(640px,92vw)}.nUhMVa_notesBody{overscroll-behavior:contain;flex-direction:column;flex:0 auto;gap:10px;min-width:0;max-height:min(60vh,520px);padding:0 2px 8px 0;display:flex;overflow-y:auto}.nUhMVa_notesRange{align-items:center;gap:8px;margin-bottom:4px;font-size:12px;line-height:18px;display:flex}.nUhMVa_notesArrow{color:var(--dsw-alias-label-tertiary,#8b93a1)}.nUhMVa_notesMeta{letter-spacing:.02em;text-transform:uppercase;color:var(--dsw-alias-label-secondary,#6b7280);flex-wrap:wrap;align-items:baseline;gap:6px;margin-top:4px;font-size:12px;line-height:18px;display:flex}.nUhMVa_notesBody>.nUhMVa_notesMeta:first-child{margin-top:0}.nUhMVa_notesPre{white-space:pre-wrap;word-break:break-word;background:var(--dsw-alias-bg-layer-2,#eef0f4);border-radius:8px;max-height:40vh;margin:0;padding:10px 12px;font-size:13px;line-height:20px;overflow:auto}.nUhMVa_notesRendered{flex-direction:column;gap:8px;min-width:0;display:flex}.nUhMVa_notesImg{border-radius:6px;max-width:100%;height:auto;margin:4px 0;display:block}.nUhMVa_notesH{margin-top:4px;font-size:13px;font-weight:650;line-height:20px}.nUhMVa_notesP{font-size:13px;line-height:20px}.nUhMVa_notesQuote{border-left:3px solid var(--dsw-alias-border-l3,#d9dde3);background:var(--dsw-alias-bg-layer-2,#f7f8fa);color:var(--dsw-alias-label-primary,#1f2328);border-radius:0 6px 6px 0;margin:0;padding:8px 10px;font-size:13px;line-height:20px}.nUhMVa_notesFence{background:var(--dsw-alias-bg-layer-2,#eef0f4);font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);white-space:pre;border-radius:8px;margin:0;padding:10px 12px;font-size:12px;line-height:18px;overflow-x:auto}.nUhMVa_notesFence code{font:inherit;background:0 0;padding:0}.nUhMVa_notesBullets{flex-direction:column;gap:4px;margin:0;padding-left:18px;font-size:13px;line-height:20px;display:flex}.nUhMVa_notesA{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:none}.nUhMVa_notesA:hover{text-decoration:underline}.nUhMVa_notesCode{font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);background:var(--dsw-alias-bg-layer-2,#eef0f4);border-radius:5px;padding:1px 5px;font-size:12px}.nUhMVa_notesList{flex-direction:column;margin:0;padding:0;list-style:none;display:flex}.nUhMVa_notesRow{border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);align-items:baseline;gap:12px;padding:6px 0;display:flex}.nUhMVa_notesRow:last-child{border-bottom:none}.nUhMVa_notesDate{color:var(--dsw-alias-label-tertiary,#8b93a1);font-variant-numeric:tabular-nums;flex-shrink:0;font-size:12px}.nUhMVa_notesMsg{word-break:break-word;word-break:break-word;-webkit-line-clamp:3;-webkit-box-orient:vertical;min-width:0;font-size:13px;line-height:20px;display:-webkit-box;overflow:hidden}.nUhMVa_notesSha{color:var(--dsw-alias-label-secondary,#6b7280);font-variant-numeric:tabular-nums;flex-shrink:0;margin-left:auto;font-size:12px;text-decoration:none}.nUhMVa_recoverySummary{color:var(--dsw-alias-state-error-primary,#dc2626);word-break:break-word;align-items:flex-start;gap:8px;margin-bottom:8px;font-size:12px;display:flex}.nUhMVa_recoveryHint{color:var(--dsw-alias-label-secondary,#6b7280);margin:8px 0;font-size:12px}.nUhMVa_recoveryList{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;flex-direction:column;max-height:320px;display:flex;overflow-x:hidden;overflow-y:auto}.nUhMVa_recoveryRow{border-top:1px solid var(--dsw-alias-border-l2,#eef0f4);align-items:flex-start;gap:8px;padding:6px 10px;font-size:12px;display:flex}.nUhMVa_recoveryRow:first-child{border-top:none}.nUhMVa_recoveryBlamed{box-shadow:inset 3px 0 0 var(--dsw-alias-state-error-primary,#dc2626);background:#dc262612}.nUhMVa_recoveryMuted{opacity:.6}.nUhMVa_recoveryName{word-break:break-word;flex-direction:column;gap:2px;min-width:0;display:flex}.nUhMVa_recoveryReason{color:var(--dsw-alias-state-error-primary,#dc2626);word-break:break-word;font-size:11px}.nUhMVa_recoveryNote{color:var(--dsw-alias-label-tertiary,#8b93a1);word-break:break-word;margin-top:8px;font-size:11px}.nUhMVa_recoveryBadge{background:var(--dsw-alias-bg-layer-2,#eef0f4);color:var(--dsw-alias-label-secondary,#6b7280);border-radius:5px;margin-left:6px;padding:0 5px;font-size:10px}.nUhMVa_recoveryLog{color:var(--dsw-alias-label-secondary,#6b7280);margin:4px 0 8px;font-size:11px}.nUhMVa_recoveryLog pre{white-space:pre-wrap;word-break:break-word;max-height:180px;margin:6px 0 0;overflow:auto}.nUhMVa_notesSha:hover{color:var(--dsw-alias-label-primary,#1f2328);text-decoration:underline}.nUhMVa_notesVer{color:inherit;font-weight:600;text-decoration:none}.nUhMVa_notesVer:hover{text-decoration:underline}.nUhMVa_notesSourceLink{color:var(--dsw-alias-brand-primary,#4f6ef7);white-space:nowrap;text-decoration:none}.nUhMVa_notesSourceLink:hover{text-decoration:underline}.nUhMVa_migrationSources{flex-direction:column;gap:8px;margin-top:4px;display:flex}.nUhMVa_migrationSource{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;flex-direction:column;gap:4px;padding:10px 12px;display:flex}.nUhMVa_migrationSource code{font-size:12px;font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);overflow-wrap:anywhere}.nUhMVa_migrationLabel{color:var(--dsw-alias-label-secondary,#9ca3af);font-size:11px}.nUhMVa_migrationArrow{text-align:center;color:var(--dsw-alias-label-secondary,#9ca3af)}.nUhMVa_migrationWarning{color:var(--dsw-alias-state-warn-primary,#b45309);align-items:flex-start;gap:6px;margin:12px 0 0;font-size:12px;line-height:18px;display:flex}.nUhMVa_migrationNote{color:var(--dsw-alias-label-secondary,#6b7280);margin:12px 0 0;font-size:12px;line-height:18px}.nUhMVa_sourceRepo{color:var(--dsw-alias-label-secondary,#5c6570);align-self:flex-end;align-items:center;gap:2px;font-size:13px;line-height:20px;text-decoration:none;display:inline-flex}.nUhMVa_sourceRepo:hover{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:underline}.nUhMVa_sourceRepo:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4f6ef7);outline-offset:2px;border-radius:4px}";
+		const css = ".nUhMVa_root{min-width:0;height:100%;color:var(--dsw-alias-label-primary,#1f2328);flex-direction:column;display:flex;position:relative;container-type:inline-size}.nUhMVa_head{flex-direction:column;gap:8px;padding:0 4px 4px;display:flex}.nUhMVa_headTop{flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px 16px;min-width:0;display:flex}.nUhMVa_headTop>.nUhMVa_titleRow>.nUhMVa_sub{max-width:100%}.nUhMVa_title{white-space:nowrap;color:var(--dsw-alias-label-primary,#1f2328);margin:0;font-size:15px;font-weight:600;line-height:22px}.nUhMVa_sub{min-width:0;color:var(--dsw-alias-label-tertiary,#8b93a1);flex:auto;margin:0;font-size:12px;line-height:18px}.nUhMVa_sidebarTip{color:var(--dsw-alias-label-secondary,#5c6570);flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0;font-size:12px;line-height:18px;display:flex}.nUhMVa_updateCheckNotice{color:var(--dsw-alias-label-secondary,#5c6570);flex-wrap:wrap;align-items:center;gap:0 6px;font-size:12px;line-height:18px;display:flex}.nUhMVa_submitLink{color:var(--dsw-alias-label-tertiary,#8b93a1);white-space:nowrap;font-size:12px;line-height:18px;text-decoration:none}.nUhMVa_submitLink:hover{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:underline}.nUhMVa_tabs{flex-wrap:wrap;align-items:center;gap:4px;padding:0 0 2px;display:flex;position:relative}.nUhMVa_tab{height:32px;font:inherit;color:var(--dsw-alias-label-secondary,#5c6570);border-radius:var(--dsw-radius-sm,#8px);cursor:pointer;white-space:nowrap;background:0 0;border:none;align-items:center;padding:0 10px;font-size:13px;line-height:20px;transition:background-color .12s,color .12s;display:inline-flex;position:relative}.nUhMVa_tab:hover:not(.nUhMVa_on){background:var(--dsw-alias-interactive-bg-hover,#2631480f);color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_tab.nUhMVa_on{color:var(--dsw-alias-label-primary,#1f2328);font-weight:600}.nUhMVa_tab.nUhMVa_on:after{content:\"\";background:var(--dsw-alias-label-primary,#1f2328);border-radius:1px;height:2px;position:absolute;bottom:3px;left:10px;right:10px}.nUhMVa_subTabs{flex-wrap:wrap;align-items:center;gap:4px;margin:0 0 2px;display:flex}.nUhMVa_banner{background:var(--dsw-alias-bg-layer-2,#fdf3e3);border:1px solid var(--dsw-alias-border-l2,#f3e3c3);border-radius:8px;align-items:center;gap:8px;margin:0;padding:8px 12px;font-size:12px;display:flex}.nUhMVa_bannerIcon{color:var(--dsw-alias-label-secondary,#6b7280);flex-shrink:0}.nUhMVa_bannerHint{color:var(--dsw-alias-label-tertiary,#8b93a1);cursor:help;display:inline-flex}.nUhMVa_body{overflow-anchor:none;flex:1;padding:8px 4px 64px;scroll-padding-bottom:64px;overflow-x:hidden;overflow-y:auto}.nUhMVa_stickyHead{z-index:5;background:var(--dshm-sticky-bg,var(--dsw-alias-bg-base,#fff));position:sticky;top:-1px}.nUhMVa_stickyHead:before{content:\"\";background:inherit;pointer-events:none;height:14px;position:absolute;bottom:100%;left:0;right:0}.nUhMVa_cats{margin:0 -4px 2px;padding:0 4px 4px}.nUhMVa_catsRow{align-items:flex-start;gap:6px;display:flex;position:relative}.nUhMVa_star{color:var(--dsw-alias-label-tertiary,#8b93a1);white-space:nowrap;flex:none;font-size:11px;line-height:18px}.nUhMVa_top{z-index:20;background:var(--dsw-alias-bg-layer-1,#fff);box-shadow:var(--dsw-shadow-lv1,0 4px 12px #1f232814);border-radius:99px;display:inline-flex;position:absolute;bottom:18px;right:18px}.nUhMVa_topBtn{border-radius:99px;width:38px;height:38px;padding:0}.nUhMVa_tag{border:.5px solid var(--dsw-alias-border-l3,#d9dde3);color:var(--dsw-alias-label-secondary,#5c6570);white-space:nowrap;border-radius:999px;flex-shrink:0;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.nUhMVa_hostRequirement{border:.5px solid var(--dsw-alias-border-l3,#d9dde3);color:var(--dsw-alias-label-secondary,#5c6570);text-overflow:ellipsis;white-space:nowrap;border-radius:999px;min-width:0;max-width:18em;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px;overflow:hidden}.nUhMVa_hostRequirementBad{border-color:var(--dsw-alias-state-error-primary,#dc2626);color:var(--dsw-alias-state-error-primary,#dc2626);background:#dc262614}.nUhMVa_hostFilterNote{color:var(--dsw-alias-label-tertiary,#8b93a1);margin-top:6px;font-size:12px;line-height:18px}.nUhMVa_okState{color:var(--dsw-alias-state-success-primary,#16a34a);white-space:nowrap;font-size:12px;font-weight:600}.nUhMVa_catsWrap{flex-wrap:wrap;flex:1;align-items:center;gap:6px;min-width:0;display:flex}.nUhMVa_catsCollapsed{max-height:62px;overflow:hidden}.nUhMVa_catsToggle.nUhMVa_catsToggle{height:26px;min-height:26px;color:var(--dsw-alias-label-secondary,#5c6570);flex:none;padding:0 6px}.nUhMVa_shots{-webkit-overflow-scrolling:touch;scrollbar-width:thin;gap:8px;margin:6px 0 8px;padding:2px 0 6px;display:flex;overflow-x:auto}.nUhMVa_shot{object-fit:cover;border-radius:var(--dsw-radius-lg,16px);border:.5px solid var(--dsw-alias-border-l3,#d9dde3);background:var(--dsw-alias-bg-layer-2,#f3f4f6);cursor:pointer;flex:none;width:220px;height:150px}.nUhMVa_cardShots{-webkit-overflow-scrolling:touch;scrollbar-width:thin;gap:6px;margin:0 0 6px;padding:0 0 2px;display:flex;overflow-x:auto}.nUhMVa_cardShot{object-fit:contain;border-radius:var(--dsw-radius-lg,16px);border:.5px solid var(--dsw-alias-border-l3,#d9dde3);background:var(--dsw-alias-bg-layer-2,#f3f4f6);cursor:pointer;flex:none;width:132px;height:88px;display:block}.nUhMVa_lightbox{z-index:10000;cursor:zoom-out;background:#000000d9;justify-content:center;align-items:center;display:flex;position:fixed;top:0;bottom:0;left:0;right:0}.nUhMVa_lightboxImg{object-fit:contain;cursor:default;border-radius:4px;max-width:90vw;max-height:85vh}.nUhMVa_lightboxClose{color:#fff;cursor:pointer;background:#ffffff1f;border:none;border-radius:99px;place-items:center;width:36px;height:36px;font-size:22px;line-height:1;display:grid;position:absolute;top:16px;right:16px}.nUhMVa_lightboxClose:hover{background:#ffffff38}.nUhMVa_lightboxNav{color:#fff;cursor:pointer;background:#ffffff1f;border:none;border-radius:99px;place-items:center;width:44px;height:44px;display:grid;position:absolute;top:50%;transform:translateY(-50%)}.nUhMVa_lightboxNav:hover{background:#ffffff38}.nUhMVa_lightboxPrev{left:16px}.nUhMVa_lightboxNext{right:16px}.nUhMVa_lightboxDots{gap:8px;display:flex;position:absolute;bottom:20px;left:50%;transform:translate(-50%)}.nUhMVa_lightboxDot{cursor:pointer;background:#fff6;border-radius:99px;width:7px;height:7px}.nUhMVa_lightboxDotOn{background:#fff}.nUhMVa_cmd{background:var(--dsw-alias-bg-layer-2,#f3f4f6);font-size:11px;line-height:18px;font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);word-break:break-all;border-radius:6px;margin:8px 0 0;padding:8px 10px}.nUhMVa_warnLine{color:var(--dsw-alias-state-warn-primary,#b45309);flex-wrap:wrap;align-items:center;gap:4px;margin:0;font-size:12px;font-weight:600;line-height:18px;display:flex}.nUhMVa_modalNote{color:var(--dsw-alias-label-tertiary,#8b93a1);align-items:center;gap:4px;margin:12px 0 0;font-size:12px;line-height:18px;display:flex}.nUhMVa_confirmBody{flex-direction:column;gap:12px;display:flex}.nUhMVa_confirmModal{width:min(560px,92vw);max-width:min(560px,92vw);max-height:100%}.nUhMVa_confirmContent{flex:auto;min-height:0;overflow:hidden}.nUhMVa_confirmContent>:first-child{flex-shrink:0}.nUhMVa_confirmContent>:last-child{overscroll-behavior:contain;flex:auto;min-height:0;margin-top:0;overflow-y:auto}.nUhMVa_confirmModal>:last-child{flex-shrink:0}.nUhMVa_confirmBody .nUhMVa_byline{flex-wrap:nowrap;margin-top:0}.nUhMVa_confirmBody .nUhMVa_owner{min-width:0}.nUhMVa_confirmBody .nUhMVa_shots{margin:0;padding:0}.nUhMVa_confirmBody .nUhMVa_modalNote{margin:0}.nUhMVa_confirmTags{flex-wrap:wrap;gap:6px;display:flex}.nUhMVa_confirmDesc{color:var(--dsw-alias-label-primary,#1f2328);white-space:pre-wrap;margin:0;font-size:13px;line-height:20px}.nUhMVa_confirmFold{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);flex-direction:column;gap:8px;padding-top:12px;display:flex}.nUhMVa_confirmPanel{--fold-bg:#f7f8fa;--fold-border:#e7e8ea;--fold-ink:#1c1d1f;--fold-on-ink:#fff;background:var(--fold-bg);border:1px solid var(--fold-border);border-radius:8px}body[data-ds-dark-theme] .nUhMVa_confirmPanel{--fold-bg:var(--dsw-alias-bg-layer-3,#353638);--fold-border:var(--dsw-alias-border-l2,#ffffff1f);--fold-ink:var(--dsw-alias-label-primary,#f9fafb);--fold-on-ink:var(--dsw-alias-bg-layer-2,#2c2c2e)}.nUhMVa_confirmPanelRow{box-sizing:border-box;width:100%;min-height:40px;color:inherit;font:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:8px;align-items:center;gap:8px;padding:0 12px;display:flex}.nUhMVa_confirmPanelRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4176e6);outline-offset:-2px}.nUhMVa_confirmPanelIcon{color:var(--fold-ink);flex:none;display:inline-flex}.nUhMVa_confirmTerminalIcon{color:var(--fold-ink);flex:none;display:block}.nUhMVa_confirmTerminalPrompt{stroke:var(--fold-on-ink);fill:none}.nUhMVa_confirmTerminalDot{fill:var(--fold-on-ink)}.nUhMVa_confirmPanelTitle{min-width:0;color:var(--fold-ink);flex:1 0 auto;font-size:13px;line-height:20px}.nUhMVa_confirmPanelRowStatic{cursor:default}.nUhMVa_confirmPanel[data-state=unchecked]{background:color-mix(in srgb, var(--fold-bg) 35%, transparent);border-style:dashed}.nUhMVa_confirmPanelMeta{min-width:0;color:var(--dsw-alias-label-secondary,#6b7280);text-align:right;flex:0 auto;font-size:12px;line-height:20px}.nUhMVa_confirmPanelChevron{color:var(--dsw-alias-label-tertiary,#8b93a1);flex:none}.nUhMVa_confirmPanelBody{flex-direction:column;gap:10px;padding:0 12px 10px 16px;display:flex}.nUhMVa_confirmCmd{align-items:center;gap:8px;display:flex}.nUhMVa_confirmPanel .nUhMVa_cmd{background:0 0;border-radius:0;flex:1;min-width:0;margin:0;padding:0;line-height:24px}.nUhMVa_confirmCopied{color:var(--dsw-alias-state-success-primary,#22c55e);white-space:nowrap;flex:none;font-size:12px;line-height:24px}.nUhMVa_confirmCopy{width:24px;height:24px;color:var(--fold-ink,#1c1d1f);cursor:pointer;background:0 0;border:0;border-radius:6px;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.nUhMVa_confirmCopy:hover{background:color-mix(in srgb, var(--fold-ink,#1c1d1f) 8%, transparent)}.nUhMVa_confirmCopy:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4176e6);outline-offset:1px}.nUhMVa_confirmPanel .nUhMVa_caps{gap:6px;padding:0}.nUhMVa_confirmPanel .nUhMVa_caps .nUhMVa_capChip{background:var(--fold-on-ink,#fff);border:1px solid var(--fold-border,#e7e8ea);color:var(--fold-ink,#1c1d1f);border-radius:999px;padding:2px 8px;font-size:12px;line-height:18px}.nUhMVa_confirmPanel .nUhMVa_caps .nUhMVa_capChip.nUhMVa_capChipUncommon{background:var(--fold-ink,#1c1d1f);border-color:var(--fold-ink,#1c1d1f);color:var(--fold-on-ink,#fff);font-weight:600}.nUhMVa_capGroups{grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:8px 12px;display:grid}.nUhMVa_capGroupLabel{color:var(--dsw-alias-label-secondary,#6b7280);white-space:nowrap;font-size:12px;line-height:22px}.nUhMVa_confirmPanel .nUhMVa_caps .nUhMVa_capMuted{border-color:var(--fold-border,#e7e8ea);color:var(--dsw-alias-label-secondary,#6b7280);padding:2px 8px;font-size:12px;line-height:18px}.nUhMVa_capAhead{flex-direction:column;gap:6px;display:flex}.nUhMVa_capAheadLabel{color:var(--dsw-alias-label-secondary,#6b7280);margin:0;font-size:12px;line-height:18px}.nUhMVa_capAheadRow{color:var(--dsw-alias-label-primary,#1f2328);align-items:flex-start;gap:8px;margin:0;font-size:13px;line-height:20px;display:flex}.nUhMVa_capAheadIcon{color:var(--dsw-alias-label-primary,#1f2328);flex:none;margin-top:2px}.nUhMVa_confirmPanel .nUhMVa_caps .nUhMVa_capAddress{color:var(--fold-ink,#1c1d1f);flex-basis:100%;margin:0 0 2px;font-size:13px;line-height:20px}.nUhMVa_capNote,.nUhMVa_confirmPanel .nUhMVa_capCaveat{color:var(--dsw-alias-label-secondary,#6b7280);margin:0;font-size:12px;line-height:18px}.nUhMVa_installCaution{background:color-mix(in srgb, var(--dsw-alias-state-warn-primary,#b45309) 12%, transparent);border-radius:8px;padding:12px 13px}.nUhMVa_installCautionLabel{color:var(--dsw-alias-label-secondary,#6b7280);margin:0 0 8px;font-size:12px;line-height:18px}.nUhMVa_installCautionHead{color:var(--dsw-alias-label-primary,#1f2328);align-items:center;gap:6px;margin:0;font-size:13px;font-weight:600;line-height:20px;display:flex}.nUhMVa_installCautionMark{flex:none;display:block}.nUhMVa_installCautionBody{color:var(--dsw-alias-label-primary,#1f2328);margin:6px 0 0;font-size:13px;line-height:20px}.nUhMVa_installCautionFoot{color:var(--dsw-alias-label-primary,#1f2328);align-items:baseline;gap:12px;margin:0;font-size:13px;line-height:20px;display:flex}.nUhMVa_installCautionLink{white-space:nowrap;color:var(--dsw-alias-link,#3b82f6);flex:none;margin-left:auto;font-size:13px;font-weight:600;line-height:20px;text-decoration:none}.nUhMVa_installCautionLink:hover{text-decoration:underline}.nUhMVa_confirmFineprint{color:var(--dsw-alias-label-secondary,#6b7280);margin:0;font-size:12px;line-height:18px}.nUhMVa_grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:10px;display:grid}.nUhMVa_recentBlock{margin:2px 0 4px;padding:0 0 8px}.nUhMVa_recentRow{-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--dsw-alias-border-l3,#d9dde3) transparent;align-items:stretch;gap:8px;margin-bottom:0;padding-bottom:4px;display:flex;overflow-x:auto}.nUhMVa_recentRow::-webkit-scrollbar{height:6px}.nUhMVa_recentRow::-webkit-scrollbar-thumb{background:var(--dsw-alias-border-l3,#d9dde3);border-radius:99px}.nUhMVa_recentRow::-webkit-scrollbar-track{background:0 0}.nUhMVa_recentRow>*{box-sizing:border-box;flex:none;width:min(320px,30.7692% - 7.38462px);min-width:220px}.nUhMVa_recentRow.nUhMVa_recentCollapsed{visibility:hidden;max-height:0;margin-bottom:0;padding-bottom:0;overflow:hidden}.nUhMVa_recentTile{box-sizing:border-box;background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-lg,16px);flex-direction:column;justify-content:space-between;gap:4px;height:80px;padding:8px 12px;transition:background-image .16s cubic-bezier(.16,1,.3,1);display:flex;overflow:hidden}.nUhMVa_recentTile .nUhMVa_installBtn.nUhMVa_installBtn{height:24px;min-height:24px;padding:0 8px}.nUhMVa_recentAv.nUhMVa_recentAv{flex-shrink:0;width:24px;height:24px;font-size:11px}.nUhMVa_recentTitle{align-items:center;gap:8px;min-width:0;display:flex}.nUhMVa_recentTitle>:last-child{flex-shrink:0}.nUhMVa_recentName{flex:1;min-width:0}.nUhMVa_recentTitle .nUhMVa_nm{font-size:14px;line-height:20px}.nUhMVa_recentBottom{align-items:flex-end;gap:8px;min-width:0;display:flex}.nUhMVa_recentBottom>:last-child{flex-shrink:0;margin-left:auto}.nUhMVa_recentBottom>:not(:last-child){flex:1;min-width:0}.nUhMVa_recentDesc{color:var(--dsw-alias-label-tertiary,#8b93a1);-webkit-line-clamp:2;-webkit-box-orient:vertical;margin:0;font-size:12px;line-height:16px;display:-webkit-box;overflow:hidden}.nUhMVa_recentBottom .nUhMVa_cardMore{padding:0}.nUhMVa_recentHead{justify-content:space-between;align-items:center;gap:8px;margin:10px 0 8px;padding:0 4px;display:flex}.nUhMVa_recentHead .nUhMVa_favoritesSectionHead{margin:0;padding:0;font-weight:600}.nUhMVa_recentToggle{font:inherit;color:inherit;cursor:pointer;background:0 0;border:0;align-items:center;gap:4px;margin:0;padding:0;display:inline-flex}.nUhMVa_recentToggle:hover{color:var(--dsw-alias-label-secondary,#6b7280)}.nUhMVa_recentHide.nUhMVa_recentHide{height:26px;min-height:26px;color:var(--dsw-alias-label-secondary,#6b7280);padding:0 6px}.nUhMVa_recentShow{font:inherit;color:var(--dsw-alias-label-secondary,#8b93a1);cursor:pointer;background:0 0;border:0;align-items:center;gap:4px;margin:0 0 8px;padding:0 4px;font-size:12px;line-height:18px;display:inline-flex}.nUhMVa_recentShow:hover{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_masonry{align-items:flex-start;gap:10px;display:flex}.nUhMVa_masonryCol{flex-direction:column;flex:1;gap:10px;min-width:0;display:flex}.nUhMVa_masonryInstalled,.nUhMVa_masonryInstalled .nUhMVa_masonryCol{gap:14px}.nUhMVa_masonry>.nUhMVa_masonryCol>*{align-self:stretch;min-width:0}@media (max-width:680px){.nUhMVa_masonry{flex-direction:column}.nUhMVa_masonryCol{width:100%}.nUhMVa_grid{grid-template-columns:minmax(0,1fr)}}.nUhMVa_swatches{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;gap:0;height:34px;display:flex;overflow:hidden}.nUhMVa_themesGrid{margin-bottom:12px}.nUhMVa_swatches i{flex:1}.nUhMVa_themeToolbar{grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:0 4px 12px;display:grid}.nUhMVa_themeSearch{box-sizing:border-box;width:100%;min-width:0}.nUhMVa_themeToolbarActions{justify-content:flex-end;align-items:center;gap:8px;display:flex}.nUhMVa_themeFullscreenBtn.nUhMVa_themeFullscreenBtn{width:28px;min-width:28px;padding:0}.nUhMVa_themeResultBar{min-height:24px;color:var(--dsw-alias-label-tertiary,#8b93a1);align-items:center;padding:0 4px 8px;font-size:12px;line-height:18px;display:flex}.nUhMVa_favoritesSectionHead{color:var(--dsw-alias-label-primary,#1f2328);margin:16px 0 8px;padding:0 4px;font-size:14px;font-weight:500;line-height:22px}.nUhMVa_favoritesSectionHead:first-of-type{margin-top:0}.nUhMVa_brokenPluginNotice{flex-direction:column;gap:8px;margin:0 0 8px;display:flex}.nUhMVa_brokenPluginItem{border:1px solid var(--dsw-alias-state-warn-tertiary,#b4530933);background:var(--dsw-alias-state-warn-tertiary,#b453090f);color:var(--dsw-alias-state-warn-primary,#b45309);border-radius:8px;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:10px;padding:8px 10px;font-size:12px;line-height:18px;display:flex}.nUhMVa_brokenPluginText{flex-direction:column;gap:2px;min-width:0;display:flex}.nUhMVa_favoritesStaleBar{border:1px solid var(--dsw-alias-state-warn-tertiary,#b4530933);background:var(--dsw-alias-state-warn-tertiary,#b453090f);color:var(--dsw-alias-state-warn-primary,#b45309);border-radius:8px;flex-flow:column wrap;justify-content:space-between;align-items:stretch;gap:8px;margin:0 0 8px;padding:8px 10px;font-size:12px;line-height:18px;display:flex}.nUhMVa_favoritesStaleRow{justify-content:space-between;align-items:center;gap:8px;min-width:0;display:flex}.nUhMVa_favoritesStaleName{overflow-wrap:anywhere;min-width:0}.nUhMVa_favoritesStaleOnly{flex-direction:column;align-items:flex-start;gap:10px;display:flex}.nUhMVa_themeGallery{grid-template-columns:repeat(4,minmax(0,1fr));align-items:stretch;gap:10px;display:grid}.nUhMVa_themeCard{border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-lg,16px);background:var(--dsw-alias-bg-layer-1,#fff);flex-direction:column;min-width:0;transition:border-color .16s cubic-bezier(.16,1,.3,1),box-shadow .16s cubic-bezier(.16,1,.3,1),transform .16s cubic-bezier(.16,1,.3,1);display:flex;overflow:hidden}.nUhMVa_themeCard:hover{border-color:var(--dsw-alias-label-dimmed,#c8ccd4);box-shadow:var(--dsw-shadow-lv1,0 4px 12px #1f232814);transform:translateY(-1px)}.nUhMVa_themeCover{aspect-ratio:16/10;border:0;border-bottom:.5px solid var(--dsw-alias-border-l3,#d9dde3);background:var(--dsw-alias-bg-layer-2,#f3f4f6);width:100%;color:var(--dsw-alias-label-secondary,#6b7280);cursor:zoom-in;border-radius:0;padding:0;display:block;position:relative;overflow:hidden}.nUhMVa_themeCover img{object-fit:contain;background:var(--dsw-alias-bg-layer-2,#f3f4f6);width:100%;height:100%;transition:transform .18s cubic-bezier(.16,1,.3,1);display:block}.nUhMVa_themeCover:hover img{transform:scale(1.012)}.nUhMVa_themeCover:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4f6ef7);outline-offset:-3px}.nUhMVa_themeCoverEmpty{cursor:default;color:var(--dsw-alias-label-tertiary,#8b93a1);background:var(--dsw-alias-bg-module-platform,#f4f5f7);border-radius:var(--dsw-radius-lg,16px) 0 0 0;flex-direction:column;justify-content:center;align-items:center;gap:8px;font-size:12px;line-height:18px;display:flex}.nUhMVa_themePreviewAction,.nUhMVa_themePreviewCount{color:#fff;background:#14181fc7;border:1px solid #ffffff57;border-radius:4px;align-items:center;height:24px;padding:0 8px;font-size:11px;line-height:16px;display:inline-flex;position:absolute;bottom:8px}.nUhMVa_themePreviewAction{gap:4px;right:8px}.nUhMVa_themePreviewCount{left:8px}.nUhMVa_themeCardBody{flex-direction:column;flex:1;gap:8px;padding:14px;display:flex}.nUhMVa_themeCardHead{align-items:flex-start;gap:8px;min-width:0;display:flex}.nUhMVa_themeIdentity{flex:1;min-width:0}.nUhMVa_themeStatus,.nUhMVa_themeStatusMuted{white-space:nowrap;border-radius:4px;flex:none;align-items:center;min-height:22px;padding:0 8px;font-size:11px;font-weight:600;display:inline-flex}.nUhMVa_themeStatus{background:var(--dsw-alias-state-success-tertiary,#16a34a1a);color:var(--dsw-alias-state-success-primary,#15803d)}.nUhMVa_themeStatusMuted{background:var(--dsw-alias-bg-layer-2,#f3f4f6);color:var(--dsw-alias-label-secondary,#6b7280)}.nUhMVa_themeDescription{min-height:36px;color:var(--dsw-alias-label-tertiary,#8b93a1);-webkit-line-clamp:3;-webkit-box-orient:vertical;margin:0;font-size:12px;line-height:18px;display:-webkit-box;overflow:hidden}.nUhMVa_themeCardFooter{justify-content:space-between;align-items:center;gap:8px;margin-top:auto;padding-top:4px;display:flex}.nUhMVa_themeLifecycle{min-width:0;color:var(--dsw-alias-label-tertiary,#8b93a1);text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:18px;overflow:hidden}.nUhMVa_themeActions{flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;margin-left:auto;display:flex}@container (width<=900px){.nUhMVa_themeGallery{grid-template-columns:repeat(3,minmax(0,1fr))}}@container (width<=680px){.nUhMVa_themeGallery{grid-template-columns:repeat(2,minmax(0,1fr))}}@container (width<=460px){.nUhMVa_themeGallery{grid-template-columns:minmax(0,1fr)}}.nUhMVa_exportLogBtn{white-space:nowrap;flex-shrink:0}@container (width<=560px){.nUhMVa_headTop{flex-direction:column;align-items:stretch}.nUhMVa_headTop>.nUhMVa_titleRow{margin-left:0}}@container (width<=420px){.nUhMVa_exportLogBtn{align-self:center}.nUhMVa_themeToolbar{grid-template-columns:minmax(0,1fr)}.nUhMVa_themeCardHead{flex-wrap:wrap}.nUhMVa_themeStatus,.nUhMVa_themeStatusMuted{order:3}}@container (width<=280px){.nUhMVa_themeCardFooter{flex-direction:column;align-items:flex-start}.nUhMVa_themeActions{justify-content:flex-start;width:100%;margin-left:0}}@media (max-width:560px){[role=dialog]:has([data-dsh-market-root])>nav{display:none}[role=dialog]:has([data-dsh-market-root])>div{flex:100%;width:100%;min-width:0}}.nUhMVa_panelHost{box-sizing:border-box;height:100%;min-height:0;padding:calc(28px + var(--dsh-frame-top-clearance,0px)) 0 0;flex-direction:column;display:flex}.nUhMVa_panelHost>.nUhMVa_root{flex:1;width:100%;min-width:0;min-height:0;container-type:normal}.nUhMVa_panelHost .nUhMVa_head,.nUhMVa_panelHost .nUhMVa_body{padding-left:max(max(16px,min(4vw,48px)),50% - 480px);padding-right:max(max(16px,min(4vw,48px)),50% - 480px);container-type:inline-size}[data-dsh-market-plugins-tab=true]{--dshm-host-sticky-top:0px;--dshm-plugins-head-height:0px}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]){--dshm-empty-view-height:100vh;height:auto}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_body{min-height:calc(100vh - var(--dshm-host-sticky-top,0px) - var(--dshm-plugins-head-height,0px));flex-direction:column;flex:none;display:flex;overflow:visible}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_body>.nUhMVa_empty{box-sizing:border-box;width:100%;max-width:none;max-height:var(--dshm-empty-view-height,100vh);flex-direction:column;flex:auto;justify-content:center;align-items:center;margin:0;padding:32px;display:flex}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_top{position:fixed}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_stickyHead{display:contents}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_head{z-index:6;top:var(--dshm-host-sticky-top,0px);background:var(--dshm-sticky-bg,var(--dsw-alias-bg-base,#fff));margin:0 -4px;padding:4px 4px 6px;position:sticky}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_cats{z-index:5;top:calc(var(--dshm-host-sticky-top,0px) + var(--dshm-plugins-head-height,0px));background:var(--dshm-sticky-bg,var(--dsw-alias-bg-base,#fff));position:sticky}[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_head[data-dshm-stuck=true],[data-dsh-market-plugins-tab=true]:not([data-dsh-market-fullscreen=true]) .nUhMVa_cats[data-dshm-stuck=true]{background:var(--dshm-stuck-bg,var(--dshm-sticky-bg,var(--dsw-alias-bg-base,#fff)))}[role=dialog]:has([data-dsh-market-fullscreen=true]){border-radius:0;width:100vw;max-width:none;height:100vh;max-height:none;position:fixed;top:0;bottom:0;left:0;right:0}[data-dsh-market-plugins-tab=true][data-dsh-market-fullscreen=true]{z-index:60;background:var(--dsw-alias-bg-layer-1,#fff);position:fixed;top:0;bottom:0;left:0;right:0;height:100vh!important}@media (prefers-reduced-motion:reduce){.nUhMVa_themeCard,.nUhMVa_themeCover img{transition:none}.nUhMVa_themeCard:hover{transform:none}}.nUhMVa_card{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-xl,20px);flex-direction:column;align-self:start;gap:10px;min-width:0;padding:12px 14px;transition:background-image .16s cubic-bezier(.16,1,.3,1);display:flex}@media (hover:hover){.nUhMVa_card:hover,.nUhMVa_recentTile:hover{background-image:linear-gradient(var(--dsw-alias-interactive-bg-hover,#2631480f),var(--dsw-alias-interactive-bg-hover,#2631480f))}.nUhMVa_installBtn:hover:not(:disabled){background:var(--dsw-alias-button-primary-fill,#0f1115);color:var(--dsw-alias-label-primary-foreground,#fff);border-color:#0000}}.nUhMVa_row1{align-items:flex-start;gap:10px;min-width:0;display:flex}.nUhMVa_cardAction{flex-shrink:0;align-items:center;display:inline-flex}.nUhMVa_installBtn.nUhMVa_installBtn{min-width:64px}.nUhMVa_av{width:16px;height:16px;color:var(--dsw-alias-label-primary,#1f2328);object-fit:cover;background:var(--dsw-alias-bg-layer-2,#f3f4f6);border-radius:50%;flex-shrink:0;place-items:center;font-size:9px;font-weight:700;display:grid}.nUhMVa_nm{text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500;line-height:20px;overflow:hidden}.nUhMVa_nmLink{color:inherit;text-decoration:none;display:block}.nUhMVa_nmLink:hover{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:underline}.nUhMVa_repoMark{color:var(--dsw-alias-label-secondary,#6b7280);vertical-align:-1px;flex-shrink:0;margin-left:5px;display:inline-block}.nUhMVa_nmLink:hover .nUhMVa_repoMark{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_byline{flex-wrap:wrap;align-items:center;gap:6px;min-width:0;margin-top:2px;display:flex}.nUhMVa_meta{color:var(--dsw-alias-label-secondary,#9ca3af);margin-top:2px;font-size:11px}.nUhMVa_metaInline{color:var(--dsw-alias-label-secondary,#9ca3af);font-size:11px}.nUhMVa_owner{color:var(--dsw-alias-label-secondary,#5c6570);text-overflow:ellipsis;white-space:nowrap;flex:0 auto;min-width:44px;font-size:11px;line-height:18px;overflow:hidden}.nUhMVa_desc{color:var(--dsw-alias-label-tertiary,#8b93a1);margin:0;font-size:12px;line-height:18px}.nUhMVa_descClamp{-webkit-line-clamp:5;-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden}.nUhMVa_descClamp3{-webkit-line-clamp:3;-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden}.nUhMVa_descToggle{width:20px;height:16px;color:var(--dsw-alias-label-tertiary,#8b93a1);cursor:pointer;background:0 0;border:none;justify-content:center;align-items:center;margin-top:2px;padding:0;display:flex}.nUhMVa_descToggle:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_foot{flex-wrap:nowrap;align-items:flex-end;gap:8px;display:flex}.nUhMVa_foot .nUhMVa_metaInline,.nUhMVa_foot .nUhMVa_src{white-space:nowrap}.nUhMVa_footTags{flex-wrap:wrap;flex:1 1 0;align-items:center;gap:8px;min-width:0;display:flex}.nUhMVa_grow{flex:1}.nUhMVa_titleRow{flex-wrap:wrap;align-items:center;gap:8px 10px;display:flex}.nUhMVa_titleActions{flex-wrap:wrap;flex:0 auto;justify-content:flex-end;align-items:center;gap:4px 10px;min-width:0;margin-left:auto;display:flex}.nUhMVa_titleActions:empty{display:none}.nUhMVa_titleActions>*{white-space:nowrap;flex-shrink:0}.nUhMVa_version{color:var(--dsw-alias-label-tertiary,#8b93a1);font-variant-numeric:tabular-nums;flex-shrink:0;font-size:12px;line-height:20px}.nUhMVa_marketVersionGroup{align-items:center;gap:6px;display:inline-flex}.nUhMVa_marketVersionWait{color:var(--dsw-alias-label-secondary,#5c6570);font-size:12px;line-height:20px}.nUhMVa_repoLink{color:var(--dsw-alias-label-tertiary,#8b93a1);flex-shrink:0;font-size:12px;line-height:20px;text-decoration:none}.nUhMVa_repoLink:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_noteRow{flex-wrap:wrap;align-items:baseline;gap:6px;min-width:0;display:flex}.nUhMVa_desc.nUhMVa_noteRow,.nUhMVa_desc.nUhMVa_noteRow+.nUhMVa_noteRow,.nUhMVa_noteEdit+.nUhMVa_noteRow{margin-top:6px}.nUhMVa_noteMine{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_noteToggle{font:inherit;color:var(--dsw-alias-label-tertiary,#8b93a1);cursor:pointer;white-space:nowrap;background:0 0;border:none;flex-shrink:0;padding:0;font-size:11px;line-height:16px}.nUhMVa_noteToggle:hover{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:underline}.nUhMVa_noteEdit{flex-direction:column;gap:6px;min-width:0;margin-top:6px;display:flex}.nUhMVa_noteInput{box-sizing:border-box;width:100%;min-width:0;max-width:100%;display:flex}.nUhMVa_noteInput input{box-sizing:border-box;flex:auto;width:100%;min-width:0}.nUhMVa_noteEditBar{justify-content:flex-end;align-items:center;gap:6px;display:flex}.nUhMVa_noteCount{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary,#8b93a1);margin-right:auto;font-size:11px;line-height:16px}.nUhMVa_descTight{min-height:0}.nUhMVa_src{color:var(--dsw-alias-label-secondary,#9ca3af);font-size:11px;text-decoration:none}.nUhMVa_src:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_dot{vertical-align:2px;margin-left:5px}.nUhMVa_act{flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;font-size:11px;display:flex}.nUhMVa_actLive{color:var(--dsw-alias-state-success-primary,#16a34a);align-items:center;gap:4px;font-weight:600;display:inline-flex}.nUhMVa_actWarn{color:var(--dsw-alias-state-warn-primary,#b45309);align-items:center;gap:4px;font-weight:600;display:inline-flex}.nUhMVa_actBroken{color:var(--dsw-alias-state-error-primary,#dc2626);align-items:center;gap:4px;font-weight:600;display:inline-flex}.nUhMVa_actWhy{color:var(--dsw-alias-label-secondary,#6b7280);margin-top:2px}.nUhMVa_loading{color:var(--dsw-alias-label-secondary,#9ca3af);flex-direction:column;align-items:center;gap:12px;padding:48px;font-size:13px;display:flex}.nUhMVa_spin{color:var(--dsw-alias-brand-primary,#4f6ef7);flex-shrink:0;animation:.8s linear infinite nUhMVa_sp;display:inline-flex}.nUhMVa_logoMark{color:var(--dsw-alias-brand-primary,#4f6ef7);flex-shrink:0;display:inline-flex}.nUhMVa_logoCell,.nUhMVa_logoPlug,.nUhMVa_logoPlugAmbient{--dshm-cycle:2.8s}.nUhMVa_logoMark .nUhMVa_logoCell,.nUhMVa_logoMark .nUhMVa_logoPlug{--dshm-cycle:2s}.nUhMVa_logoCell{--dshm-wave:0;animation:nUhMVa_dshmMarkWave var(--dshm-cycle) cubic-bezier(.4,0,.2,1) infinite;animation-delay:calc(var(--dshm-wave) * .11s)}.nUhMVa_logoPlug,.nUhMVa_logoPlugAmbient{transform-box:fill-box;transform-origin:50%;animation:nUhMVa_dshmMarkPlug var(--dshm-cycle) cubic-bezier(.4,0,.2,1) infinite}@keyframes nUhMVa_dshmMarkWave{0%,to{opacity:1}6%{opacity:.5}16%{opacity:1}}@keyframes nUhMVa_dshmMarkPlug{0%,8%{transform:rotate(9deg)}22%{transform:translate(-1.35px,1.34px)rotate(0)}30%,62%{transform:translate(-1.28px,1.27px)rotate(0)}76%,to{transform:rotate(9deg)}}@media (prefers-reduced-motion:reduce){.nUhMVa_logoCell,.nUhMVa_logoPlugAmbient{animation:none}.nUhMVa_logoPlug,.nUhMVa_spin{animation:1.5s ease-in-out infinite nUhMVa_dshmPlugFade}}@keyframes nUhMVa_dshmPlugFade{0%,to{opacity:1}50%{opacity:.35}}@keyframes nUhMVa_sp{to{transform:rotate(360deg)}}.nUhMVa_progress{background:var(--dsw-alias-bg-layer-2,#f3f4f6);border:1px solid var(--dsw-alias-border-l2,#e5e7eb);color:var(--dsw-alias-label-secondary,#6b7280);border-radius:8px;flex-wrap:wrap;align-items:center;gap:9px;margin:0;padding:8px 12px;font-size:12px;display:flex}.nUhMVa_bar{background:var(--dsw-alias-border-l1,#e5e7eb);border-radius:99px;width:100%;height:4px;overflow:hidden}.nUhMVa_barFill{background:var(--dsw-alias-brand-primary,#4f6ef7);border-radius:99px;height:100%;transition:width .6s}.nUhMVa_barWave{width:30%;animation:1.2s ease-in-out infinite nUhMVa_dshmSlide}@keyframes nUhMVa_dshmSlide{0%{margin-left:-30%}to{margin-left:100%}}.nUhMVa_irow .nUhMVa_progress{margin-top:8px}.nUhMVa_progress code{font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);text-overflow:ellipsis;white-space:nowrap;font-size:11px;overflow:hidden}.nUhMVa_empty{color:var(--dsw-alias-label-secondary,#5c6570);text-align:center;max-width:520px;margin:0 auto;padding:56px 32px 40px;font-size:13px;line-height:20px}.nUhMVa_err{color:var(--dsw-alias-state-error-primary,#dc2626);white-space:pre-wrap;word-break:break-all;margin:8px 0;font-size:12px}.nUhMVa_cardBlocked{border-color:var(--dsw-alias-state-error-primary,#dc2626)}.nUhMVa_conflictHead{align-items:flex-start;gap:8px;display:flex}.nUhMVa_conflictIcon{color:var(--dsw-alias-state-error-primary,#dc2626);flex-shrink:0;margin-top:1px}.nUhMVa_conflictTitle{color:var(--dsw-alias-state-error-primary,#dc2626);font-size:13px;font-weight:600;line-height:18px}.nUhMVa_conflictBody{margin:0;font-size:12px;line-height:19px}.nUhMVa_roster{background:var(--dsw-alias-border-l2,#e5e7eb);border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;flex-direction:column;gap:1px;display:flex;overflow:hidden}.nUhMVa_rosterRow{background:var(--dsw-alias-bg-layer-1,#fff);align-items:center;gap:8px;padding:7px 10px;display:flex}.nUhMVa_rosterMain{flex-direction:column;min-width:0;display:flex}.nUhMVa_rosterName{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:12px;font-weight:600;overflow:hidden}.nUhMVa_rosterAuthor{color:var(--dsw-alias-label-secondary,#9ca3af);text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;overflow:hidden}.nUhMVa_rosterTag{border-radius:4px;flex-shrink:0;margin-left:auto;padding:1px 6px;font-size:10.5px;font-weight:600}.nUhMVa_rosterTagKeep{color:var(--dsw-alias-state-success-primary,#16a34a);background:#16a34a1f}.nUhMVa_rosterTagDrop{color:var(--dsw-alias-state-error-primary,#dc2626);background:#dc26261f}.nUhMVa_rosterRowOut .nUhMVa_rosterName{text-decoration:line-through}.nUhMVa_rosterRowOut{opacity:.62}.nUhMVa_rosterSplit{background:var(--dsw-alias-border-l2,#e5e7eb);height:1px}.nUhMVa_reassure{color:var(--dsw-alias-label-secondary,#6b7280);align-items:center;gap:5px;margin:0;font-size:11.5px;line-height:17px;display:flex}.nUhMVa_reassureOk{color:var(--dsw-alias-state-success-primary,#16a34a);flex-shrink:0}.nUhMVa_conflictWhy{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:11px;line-height:17px;font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);overflow-wrap:anywhere;margin-top:2px}.nUhMVa_conflictWhyText{margin-top:5px;font-family:-apple-system,BlinkMacSystemFont,PingFang SC,sans-serif}.nUhMVa_choices{flex-direction:column;gap:7px;display:flex}.nUhMVa_choice{text-align:left;font:inherit;cursor:pointer;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l3,#d9dde3);border-radius:9px;align-items:flex-start;gap:9px;padding:9px 11px;display:flex}.nUhMVa_choice:has(input:disabled){cursor:default;opacity:.6}.nUhMVa_choiceOn{border-color:var(--dsw-alias-brand-primary,#4f6ef7);background:var(--dsw-alias-bg-layer-2,#f5f7ff)}.nUhMVa_choiceRadio{width:13px;height:13px;accent-color:var(--dsw-alias-brand-primary,#4f6ef7);flex-shrink:0;margin:2px 0 0}.nUhMVa_choiceMain{flex-direction:column;gap:3px;min-width:0;display:flex}.nUhMVa_choiceTitle{font-size:12px;font-weight:600;line-height:17px}.nUhMVa_choiceNote{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:11px;line-height:16px}.nUhMVa_choiceSafe{color:var(--dsw-alias-state-success-primary,#16a34a)}.nUhMVa_stateTag{white-space:nowrap;background:var(--dsw-alias-bg-layer-2,#f3f4f6);min-height:20px;color:var(--dsw-alias-label-secondary,#6b7280);border-radius:5px;flex-shrink:0;align-items:center;gap:5px;padding:1px 7px;font-size:11px;line-height:16px;display:inline-flex}.nUhMVa_stateTag[data-on=true]{color:var(--dsw-alias-state-success-primary,#16a34a);background:color-mix(in srgb, var(--dsw-alias-state-success-primary,#16a34a) 10%, transparent)}.nUhMVa_stateDot{background:var(--dsw-alias-label-tertiary,#8b93a1);border-radius:999px;flex:none;width:6px;height:6px}.nUhMVa_stateDot[data-on=true]{background:var(--dsw-alias-state-success-primary,#16a34a)}.nUhMVa_metaTag{text-overflow:ellipsis;white-space:nowrap;background:var(--dsw-alias-bg-layer-2,#f3f4f6);min-width:0;max-width:100%;min-height:20px;color:var(--dsw-alias-label-tertiary,#8b93a1);border-radius:5px;flex-shrink:1;padding:1px 7px;font-size:11px;line-height:18px;display:inline-block;overflow:hidden}.nUhMVa_metaTagOk{color:var(--dsw-alias-state-success-primary,#16a34a);background:color-mix(in srgb, var(--dsw-alias-state-success-primary,#16a34a) 10%, transparent)}.nUhMVa_irow{transition:background-image .16s cubic-bezier(.16,1,.3,1)}.nUhMVa_irow:hover{background-image:linear-gradient(var(--dsw-alias-interactive-bg-hover,#2631480f),var(--dsw-alias-interactive-bg-hover,#2631480f))}.nUhMVa_irowHead{align-items:flex-start;gap:8px;min-width:0;display:flex}.nUhMVa_irowHead .nUhMVa_irowName{flex:1 1 0;min-width:0}.nUhMVa_irowMenu{flex-shrink:0;margin-top:-4px;margin-left:auto;margin-right:-6px}.nUhMVa_irowMeta{min-width:0;color:var(--dsw-alias-label-secondary,#6b7280);flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-top:2px;font-size:12px;line-height:18px;display:flex}.nUhMVa_irowMetaText{min-width:0}.nUhMVa_irowMeta .nUhMVa_notesLink{flex-shrink:0;margin:0;display:inline}.nUhMVa_irowPath{align-items:center;gap:6px;min-width:0;margin-top:6px;display:flex}.nUhMVa_irowPath .nUhMVa_spec{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.nUhMVa_irowPathIcon,.nUhMVa_irowStatusIcon{color:var(--dsw-alias-label-tertiary,#8b93a1);flex-shrink:0;display:inline-flex}.nUhMVa_irowPathCopy{flex-shrink:0;align-items:center;gap:4px;margin-left:auto;display:inline-flex}.nUhMVa_irowPath .nUhMVa_confirmCopy{width:20px;height:20px;color:var(--dsw-alias-label-tertiary,#8b93a1)}.nUhMVa_irowPath .nUhMVa_confirmCopy:hover{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_irowPath .nUhMVa_confirmCopied{color:var(--dsw-alias-label-secondary,#6b7280);order:1;font-size:11px}.nUhMVa_irowDesc{flex:100%;min-width:0}.nUhMVa_irowStatus{flex-wrap:wrap;align-items:center;gap:6px;min-width:0;margin-top:8px;font-size:12px;line-height:18px;display:flex}.nUhMVa_irowStatus+.nUhMVa_irowStatus{margin-top:4px}.nUhMVa_irowStatusPart{align-items:baseline;gap:6px;display:inline-flex}.nUhMVa_irowStatus .nUhMVa_notesLink{margin:0;display:inline}.nUhMVa_irowStatus .nUhMVa_metaInline{font-size:12px}.nUhMVa_irowStatusAction{margin-left:auto;display:inline-flex}.nUhMVa_irowStatusAction .nUhMVa_noteToggle{color:var(--dsw-alias-label-secondary,#6b7280);font-size:12px;line-height:18px}.nUhMVa_irowStatusAction .nUhMVa_noteToggle:hover{color:var(--dsw-alias-label-primary,#1f2328);text-decoration:none}.nUhMVa_descMore{cursor:pointer;font:inherit;color:var(--dsw-alias-label-secondary,#6b7280);background:0 0;border:none;align-items:center;gap:2px;margin-top:4px;padding:0;font-size:12px;line-height:18px;display:inline-flex}.nUhMVa_descMore:hover{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_noteAdd{cursor:pointer;font:inherit;color:var(--dsw-alias-label-secondary,#6b7280);white-space:nowrap;background:0 0;border:none;align-items:center;gap:6px;margin-top:4px;padding:0;font-size:12px;line-height:18px;display:inline-flex}.nUhMVa_noteAdd:hover,.nUhMVa_irowStatusFact{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_irowStatusSep{color:var(--dsw-alias-label-tertiary,#8b93a1)}.nUhMVa_nameLink{color:inherit;text-decoration:none}.nUhMVa_irowName{text-overflow:clip;flex-wrap:wrap;align-items:baseline;gap:6px;min-width:0;display:flex;overflow:visible}.nUhMVa_irowNameText{overflow-wrap:anywhere;white-space:normal;min-width:0}.nUhMVa_irowName>.nUhMVa_owner{flex:none}.nUhMVa_nameLink:hover{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:underline}.nUhMVa_opWrap{flex-shrink:0;margin-bottom:6px;display:inline-flex}.nUhMVa_opEntry{font:inherit;cursor:pointer;white-space:nowrap;height:28px;color:var(--dsw-alias-label-primary,#1f2328);background:var(--dsw-alias-bg-layer-1,#fff);border:.5px solid var(--dsw-alias-border-l3,#d9dde3);border-radius:8px;align-items:center;gap:5px;padding:0 7px 0 10px;font-size:12px;transition:background-color .12s,color .12s,border-color .12s;display:inline-flex;position:relative}.nUhMVa_opEntryQuiet{background:var(--dsw-alias-bg-module-platform,#f4f5f7);color:var(--dsw-alias-label-secondary,#5c6570)}.nUhMVa_opEntry:hover{color:var(--dsw-alias-label-primary,#1f2328);border-color:var(--dsw-alias-border-l2,#e5e7eb);background:var(--dsw-alias-bg-module-platform,#f4f5f7)}.nUhMVa_opChevron{color:var(--dsw-alias-label-tertiary,#8b93a1);flex-shrink:0;transition:transform .14s cubic-bezier(.16,1,.3,1);display:inline-flex}.nUhMVa_opChevronOpen{transform:rotate(180deg)}.nUhMVa_opEntryAlert{border-color:var(--dsw-alias-state-error-primary,#dc2626);color:var(--dsw-alias-state-error-primary,#dc2626)}.nUhMVa_opDot{background:var(--dsw-alias-state-error-primary,#dc2626);border-radius:99px;width:8px;height:8px;position:absolute;top:-3px;right:-3px}.nUhMVa_opPanel{z-index:40;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l3,#d9dde3);border-radius:12px;width:460px;max-width:100%;max-height:70vh;position:absolute;top:calc(100% + 6px);right:0;overflow-y:auto;box-shadow:0 20px 52px #00000047}.nUhMVa_opHead{border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);align-items:center;gap:8px;padding:9px 14px;display:flex}.nUhMVa_opPanelTitle{font-size:12.5px;font-weight:600}.nUhMVa_opRepairTitle{color:var(--dsw-alias-label-secondary,#667085);padding:9px 14px 3px;font-size:12px;font-weight:600}.nUhMVa_opCloseBtn.nUhMVa_opCloseBtn{min-width:0;color:var(--dsw-alias-label-secondary,#6b7280);padding:0 6px}.nUhMVa_opAggregate{border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);background:var(--dsw-alias-bg-layer-2,#f7f8fa);padding:9px 14px}.nUhMVa_opAggregateTop{font-variant-numeric:tabular-nums;font-size:12px;font-weight:600}.nUhMVa_opAggregateHint{color:var(--dsw-alias-label-tertiary,#8b93a1);margin-top:4px;font-size:10.5px}.nUhMVa_opRow{border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);align-items:flex-start;gap:9px;padding:9px 14px;display:flex}.nUhMVa_opRow:last-child{border-bottom:none}.nUhMVa_opRowAlert{background:#dc26260f}.nUhMVa_opIcon{flex-shrink:0;place-items:center;width:14px;margin-top:1px;display:grid}.nUhMVa_opQueuedIcon{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:12px}.nUhMVa_opMain{flex-direction:column;flex:1;gap:3px;min-width:0;display:flex}.nUhMVa_opTop{align-items:baseline;gap:6px;min-width:0;display:flex}.nUhMVa_opVerb{color:var(--dsw-alias-label-secondary,#6b7280);flex-shrink:0;font-size:12px}.nUhMVa_opName{text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;overflow:hidden}.nUhMVa_opStatus{color:var(--dsw-alias-label-tertiary,#8b93a1);overflow-wrap:anywhere;font-size:10.5px;line-height:16px}.nUhMVa_opStatusBad{color:var(--dsw-alias-state-error-primary,#dc2626)}.nUhMVa_opAgents{color:var(--dsw-alias-label-tertiary,#8b93a1);margin:2px 0 0;font-size:10.5px;line-height:16px}.nUhMVa_opAgentsSummary{cursor:pointer;color:var(--dsw-alias-label-secondary,#5c6570);font-size:10.5px;line-height:16px;list-style:none}.nUhMVa_opAgentsSummary::-webkit-details-marker{display:none}.nUhMVa_opAgentsSummary:before{content:\"▸\";width:10px;transition:transform .12s cubic-bezier(.16,1,.3,1);display:inline-block}.nUhMVa_opAgents[open]>.nUhMVa_opAgentsSummary:before{transform:rotate(90deg)}.nUhMVa_opAgentsList{flex-direction:column;gap:1px;margin:2px 0 0;padding:0 0 0 12px;list-style:none;display:flex}.nUhMVa_opAgentsId{font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);white-space:nowrap;text-overflow:ellipsis;font-size:10.5px;line-height:15px;overflow:hidden}.nUhMVa_opActions{flex-shrink:0;align-items:center;gap:6px;margin-top:1px;display:flex}.nUhMVa_opDecision{border-top:1px dashed var(--dsw-alias-border-l2,#e5e7eb);flex-direction:column;gap:8px;margin-top:8px;padding-top:8px;display:flex}.nUhMVa_opDecisionFoot{align-items:center;gap:8px;display:flex}.nUhMVa_conflictDetailsToggle{font:inherit;cursor:pointer;color:var(--dsw-alias-label-tertiary,#8b93a1);background:0 0;border:none;align-items:center;gap:4px;padding:2px 0;font-size:11px;display:inline-flex}.nUhMVa_conflictDetailsToggle:hover{color:var(--dsw-alias-label-secondary,#6b7280)}.nUhMVa_opEmpty{text-align:center;color:var(--dsw-alias-label-secondary,#6b7280);padding:30px 14px;font-size:12px}.nUhMVa_opEmptyHint{color:var(--dsw-alias-label-tertiary,#8b93a1);margin-top:4px;font-size:11px}.nUhMVa_cardBlockedMark{font:inherit;cursor:pointer;color:var(--dsw-alias-state-error-primary,#dc2626);border:1px solid var(--dsw-alias-state-error-primary,#dc2626);background:#dc262614;border-radius:7px;align-items:center;gap:5px;padding:4px 9px;font-size:11px;display:inline-flex}.nUhMVa_dangerBtn.nUhMVa_dangerBtn{color:var(--dsw-alias-state-error-primary,#dc2626);border-color:var(--dsw-alias-state-error-primary,#dc2626)}.nUhMVa_dangerBtn.nUhMVa_dangerBtn:hover:not(:disabled){background:var(--dsw-alias-state-error-primary,#dc2626);color:#fff}.nUhMVa_dangerArmed.nUhMVa_dangerArmed{background:var(--dsw-alias-state-error-primary,#dc2626);border-color:var(--dsw-alias-state-error-primary,#dc2626);color:var(--dsw-alias-label-primary-foreground,#fff)}.nUhMVa_retryBtn{margin-top:4px}.nUhMVa_irow{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-xl,20px);flex-direction:column;gap:12px;min-width:0;padding:16px 18px;display:flex}.nUhMVa_irowDescBand{flex-direction:column;gap:10px;min-width:0;margin-top:10px;display:flex}.nUhMVa_irowDescBand .nUhMVa_noteEdit{margin-top:0}.nUhMVa_irowBody{min-width:0;color:var(--dsw-alias-label-secondary,#5c6570);flex-direction:column;gap:10px;margin:0;font-size:13px;line-height:20px;display:flex}.nUhMVa_irowBody .nUhMVa_irowDesc{flex:none;width:100%}.nUhMVa_irowBody .nUhMVa_desc{color:var(--dsw-alias-label-secondary,#5c6570);font-size:13px;line-height:20px}.nUhMVa_irowBody .nUhMVa_noteMine{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_irowBody .nUhMVa_descMore{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:12px;line-height:18px}.nUhMVa_irowFootRow{flex-wrap:wrap;align-items:center;gap:6px 10px;min-width:0;display:flex}.nUhMVa_irowFootRow .nUhMVa_hostRequirement{flex:0 auto;min-width:0}.nUhMVa_irowNoteActions{flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px 10px;min-width:0;margin-left:auto;display:flex}.nUhMVa_irowNoteActionsSpaced{margin-top:0}.nUhMVa_irowNoteActions .nUhMVa_noteAdd,.nUhMVa_irowNoteActions .nUhMVa_noteToggle{color:var(--dsw-alias-label-tertiary,#8b93a1);margin-top:0;font-size:12px;line-height:18px}.nUhMVa_irowNoteActions .nUhMVa_noteAdd:hover,.nUhMVa_irowNoteActions .nUhMVa_noteToggle:hover{color:var(--dsw-alias-label-primary,#1f2328);text-decoration:none}.nUhMVa_irowStatusBand{background:var(--dsw-alias-bg-module-platform,#f4f5f7);border-radius:10px;flex-direction:column;gap:6px;min-width:0;margin-top:2px;padding:10px 12px;display:flex}.nUhMVa_irowStatusBand .nUhMVa_irowStatus{margin-top:0}.nUhMVa_irowStatusBand .nUhMVa_irowStatus+.nUhMVa_irowStatus{margin-top:4px}.nUhMVa_irowStatusMuted{color:var(--dsw-alias-label-secondary,#6b7280);font-size:12px;line-height:18px}.nUhMVa_irowIncompat{flex-direction:column;gap:4px;min-width:0;display:flex}.nUhMVa_irowIncompatTitle{color:var(--dsw-alias-label-primary,#1f2328);font-size:12px;font-weight:600;line-height:18px}.nUhMVa_irowIncompatBody{color:var(--dsw-alias-label-secondary,#6b7280);font-size:12px;line-height:18px}.nUhMVa_irowActions{border-top:.5px solid var(--dsw-alias-border-l2,#e5e7eb);flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:8px;min-width:0;margin-top:-6px;padding-top:12px;display:flex}.nUhMVa_irowTrailing{flex-flow:column;flex-shrink:0;align-items:flex-end;gap:4px;min-width:0;margin-left:auto;display:inline-flex}.nUhMVa_irowTrailingRow{flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px 8px;min-width:0;display:inline-flex}.nUhMVa_irowTrailingHint{color:var(--dsw-alias-label-tertiary,#8b93a1);white-space:nowrap;flex-shrink:0;align-items:center;gap:4px;font-size:11px;line-height:16px;display:inline-flex}.nUhMVa_irowTrailingHint svg{flex-shrink:0}.nUhMVa_irowTrailing .nUhMVa_metaTag{flex-shrink:1;min-width:0}.nUhMVa_irowUpdateBtn.nUhMVa_irowUpdateBtn{color:var(--dsw-alias-label-primary,#1f2328);border-color:var(--dsw-alias-border-l3,#b8bec8);background:var(--dsw-alias-bg-layer-1,#fff)}.nUhMVa_irowUpdateBtn.nUhMVa_irowUpdateBtn:hover:not(:disabled){border-color:var(--dsw-alias-label-secondary,#6b7280);background:var(--dsw-alias-bg-module-platform,#f4f5f7)}.nUhMVa_irowMissing{filter:grayscale();opacity:.5}.nUhMVa_irow>.nUhMVa_src,.nUhMVa_irow>.nUhMVa_owner,.nUhMVa_irow button{white-space:nowrap;flex-shrink:0}.nUhMVa_tabSearchRow{align-items:center;gap:8px;padding:0 4px 10px;display:flex}.nUhMVa_tabSearch{flex:1;min-width:0}.nUhMVa_groupBulkActions{flex-wrap:wrap;align-items:center;gap:8px;padding:0 4px 10px;display:flex}.nUhMVa_caps{flex-wrap:wrap;align-items:center;gap:4px;min-width:0;padding:0 2px 6px;font-size:11px;line-height:1.5;display:flex}.nUhMVa_capsTitle{color:var(--dsw-alias-label-secondary,#8b949e);cursor:help}.nUhMVa_capChip{border:1px solid var(--dsw-alias-border-l2,#30363d);color:var(--dsw-alias-label-primary,#c9d1d9);white-space:nowrap;border-radius:999px;padding:0 6px}.nUhMVa_capMuted{border:1px dashed var(--dsw-alias-border-l2,#30363d);color:var(--dsw-alias-label-secondary,#8b949e);white-space:nowrap;border-radius:999px;padding:0 6px}.nUhMVa_capCaveat{color:var(--dsw-alias-label-tertiary,#8b93a1);align-items:baseline;gap:12px;margin:6px 0 0;font-size:11px;line-height:16px;display:flex}.nUhMVa_capCaveatNote{min-width:0}.nUhMVa_capCaveatAt{white-space:nowrap;flex:none;margin-left:auto}.nUhMVa_searchField{box-sizing:border-box;min-width:0;position:relative}.nUhMVa_searchInput.nUhMVa_searchInput{box-sizing:border-box;width:100%;min-width:0;padding-right:34px}.nUhMVa_searchClear{width:24px;height:24px;color:var(--dsw-alias-label-secondary,#59636e);font:inherit;cursor:pointer;background:0 0;border:0;border-radius:4px;justify-content:center;align-items:center;padding:0;font-size:20px;line-height:1;display:flex;position:absolute;top:50%;right:5px;transform:translateY(-50%)}.nUhMVa_searchClear:hover{background:var(--dsw-alias-bg-layer-2,#f3f4f6);color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_searchClear:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4f6ef7);outline-offset:1px}.nUhMVa_spec{color:var(--dsw-alias-label-secondary,#9ca3af);font-size:11px;font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);overflow-wrap:anywhere;min-width:0}.nUhMVa_specTag{white-space:nowrap;border-radius:4px;flex-shrink:0;align-items:center;height:16px;padding:0 5px;font-size:10px;font-weight:600;display:inline-flex}.nUhMVa_specTagGit{color:var(--dsw-alias-state-business-primary,#0b7285);background:#12a3c41f}.nUhMVa_specTagFile{color:var(--dsw-alias-state-warn-primary,#b07d1b);background:#f0b42924}.nUhMVa_backupCheckList .nUhMVa_grow{white-space:nowrap;text-overflow:ellipsis;flex:70%;min-width:0;overflow:hidden}.nUhMVa_backupCheckList .nUhMVa_spec{text-align:right;white-space:nowrap;text-overflow:ellipsis;flex:0 30%;max-width:30%;overflow:hidden}.nUhMVa_staleAction{word-break:normal;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;display:flex}.nUhMVa_pct{color:var(--dsw-alias-label-secondary,#6b7280);flex-shrink:0;font-size:11px;font-weight:600}.nUhMVa_pager{flex-wrap:nowrap;justify-content:space-between;align-items:center;gap:8px;margin:16px 0 4px;display:flex}.nUhMVa_loadMore{justify-content:center;margin:16px 0 4px;display:flex}.nUhMVa_pagerPages{flex-wrap:nowrap;flex:1;justify-content:center;align-items:center;gap:4px;min-width:0;display:flex}.nUhMVa_pagerMeta{flex-wrap:nowrap;flex-shrink:0;align-items:center;gap:6px;display:flex}.nUhMVa_pagerPages button,.nUhMVa_pagerMeta button{min-width:0;padding:0 8px}.nUhMVa_pageEllipsis{color:var(--dsw-alias-label-secondary,#9ca3af);padding:0 1px;font-size:12px}.nUhMVa_pageInfo{color:var(--dsw-alias-label-secondary,#6b7280);white-space:nowrap;font-size:12px}@container (width<=544px){.nUhMVa_pager{flex-wrap:wrap;justify-content:center;gap:8px}.nUhMVa_pagerPages{flex-basis:100%}}.nUhMVa_depBadge{border:1px solid var(--dsw-alias-state-warn-primary,#b45309);color:var(--dsw-alias-state-warn-primary,#b45309);white-space:nowrap;border-radius:4px;flex-shrink:0;margin-left:6px;padding:1px 6px;font-size:11px;font-weight:600;line-height:16px}.nUhMVa_deprecate{color:var(--dsw-alias-state-warn-primary,#b45309);background:var(--dsw-alias-bg-layer-2,#fdf3e3);border:1px solid var(--dsw-alias-border-l2,#f3e3c3);border-radius:8px;margin:0;padding:8px 10px;font-size:12px;line-height:18px}.nUhMVa_deprecate a{color:var(--dsw-alias-state-warn-primary,#b45309);text-decoration:underline}.nUhMVa_deprecate .nUhMVa_src{margin-left:8px}.nUhMVa_depLine{flex-wrap:wrap;align-items:center;gap:8px;display:flex}.nUhMVa_switch{border:1px solid var(--dsw-alias-border-l2,#d9dde3);background:var(--dsw-alias-bg-layer-2,#e5e7eb);cursor:pointer;border-radius:99px;flex-shrink:0;width:38px;height:22px;padding:0;transition:background .15s,border-color .15s;position:relative}.nUhMVa_switchOn{background:var(--dsw-alias-state-success-primary,#16a34a);border-color:var(--dsw-alias-state-success-primary,#16a34a)}.nUhMVa_switchMixed{background:var(--dsw-alias-state-warn-primary,#b45309);border-color:var(--dsw-alias-state-warn-primary,#b45309)}.nUhMVa_switchKnob{background:#fff;border-radius:99px;width:16px;height:16px;transition:left .15s;position:absolute;top:2px;left:2px;box-shadow:0 1px 2px #00000040}.nUhMVa_switchOn .nUhMVa_switchKnob,.nUhMVa_switchMixed .nUhMVa_switchKnob{left:18px}.nUhMVa_switch:disabled{opacity:.5;cursor:default}.nUhMVa_viewBar{border-radius:var(--dsw-radius-md,12px);background:var(--dsw-alias-bg-module-platform,#f4f5f7);border:none;align-items:center;gap:2px;width:fit-content;margin-bottom:12px;padding:3px;display:flex}.nUhMVa_viewBtn{font:inherit;color:var(--dsw-alias-label-secondary,#5c6570);border-radius:var(--dsw-radius-sm,8px);cursor:pointer;white-space:nowrap;background:0 0;border:none;height:26px;padding:0 10px;font-size:12px;line-height:18px;transition:background-color .12s,color .12s}.nUhMVa_viewBtn:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_viewOn{background:var(--dsw-alias-bg-layer-3,#fff);color:var(--dsw-alias-label-primary,#1f2328);box-shadow:0 0 0 .5px var(--dsw-alias-border-l3,#0000001f);font-weight:600}.nUhMVa_groupRow{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-xl,20px);margin-bottom:10px;padding:12px 14px}.nUhMVa_groupHead{flex-wrap:wrap;align-items:center;gap:10px;min-width:0;display:flex}.nUhMVa_groupCollapse{width:22px;height:22px;color:var(--dsw-alias-label-secondary,#6b7280);cursor:pointer;background:0 0;border:none;border-radius:6px;flex-shrink:0;justify-content:center;align-items:center;padding:0;display:inline-flex}.nUhMVa_groupCollapse:hover{background:var(--dsw-alias-bg-layer-2,#eef0f4);color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_groupTitle{flex-direction:column;flex:auto;gap:1px;min-width:0;display:flex}.nUhMVa_groupTitle .nUhMVa_groupHint{margin-top:0}.nUhMVa_groupName{text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600;line-height:20px;overflow:hidden}.nUhMVa_groupMeta{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:11px;line-height:16px}.nUhMVa_groupActions{flex-wrap:wrap;flex-shrink:0;align-items:center;gap:6px;margin-left:auto;display:flex}.nUhMVa_groupMembers{flex-direction:column;gap:6px;margin-top:10px;display:flex}.nUhMVa_groupMember{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-radius:8px;align-items:center;gap:8px;min-width:0;padding:6px 8px;font-size:12px;line-height:18px;display:flex}.nUhMVa_groupMember .nUhMVa_nm{flex:1;min-width:0;font-size:12px}.nUhMVa_memberName{flex:auto;align-items:center;gap:6px;min-width:0;display:flex}.nUhMVa_memberName .nUhMVa_nm{flex:0 auto;min-width:0}.nUhMVa_memberNameWithDesc{flex:0 auto;max-width:42%}.nUhMVa_memberKind{color:var(--dsw-alias-label-tertiary,#8b93a1);white-space:nowrap;flex:none;font-size:11px;line-height:16px}.nUhMVa_themeSlot{box-shadow:inset 0 -1px 0 var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px 8px 0 0;margin-bottom:4px}.nUhMVa_groupMember>.nUhMVa_switch,.nUhMVa_groupMember>button{flex-shrink:0}.nUhMVa_groupMemberAction{flex:none;margin-left:auto}.nUhMVa_groupMemberAction button{white-space:nowrap}.nUhMVa_groupAddPanel{border-top:1px dashed var(--dsw-alias-border-l2,#e5e7eb);flex-direction:column;gap:6px;margin-top:10px;padding-top:10px;display:flex}.nUhMVa_groupAddModalBody{flex-direction:column;gap:10px;min-width:0;display:flex}.nUhMVa_groupAddFilters{flex-wrap:wrap;gap:6px;display:flex}.nUhMVa_groupAddModalList{flex-direction:column;gap:6px;max-height:min(50vh,360px);padding-right:2px;display:flex;overflow-y:auto}.nUhMVa_groupAddModalHint{color:var(--dsw-alias-label-secondary,#6b7280);margin:0;font-size:12px;line-height:18px}.nUhMVa_groupAddPick{background:var(--dsw-alias-bg-layer-2,#f7f8fa);cursor:pointer;border-radius:8px;align-items:center;gap:8px;min-width:0;padding:8px 10px;display:flex}.nUhMVa_groupAddPick:hover{background:var(--dsw-alias-bg-layer-2,#eef0f4)}.nUhMVa_groupAddPick input{flex-shrink:0;margin:0}.nUhMVa_groupAddPick .nUhMVa_nm{text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;font-size:12px;overflow:hidden}.nUhMVa_groupAddFooterMeta{color:var(--dsw-alias-label-secondary,#6b7280);align-self:center;margin-right:auto;font-size:12px;line-height:18px}.nUhMVa_groupOrgHint{color:var(--dsw-alias-label-tertiary,#8b93a1);margin:4px 0 0;font-size:11px;line-height:16px}.nUhMVa_groupRenameField{flex-direction:column;gap:6px;min-width:min(100%,320px);display:flex}.nUhMVa_groupRenameField label{color:var(--dsw-alias-label-secondary,#6b7280);font-size:12px;line-height:18px}.nUhMVa_groupRenameField .nUhMVa_inlineInput{width:100%}.nUhMVa_groupCreate{align-items:center;gap:8px;margin-bottom:10px;display:flex}.nUhMVa_groupCreateInline{flex-shrink:0;align-items:center;gap:8px;display:flex}.nUhMVa_groupCreateInline .nUhMVa_inlineInput{flex:none;width:160px}.nUhMVa_inlineInput{flex:1;min-width:120px}.nUhMVa_ungroupedRow{flex-wrap:nowrap}.nUhMVa_ungroupedRow>.nUhMVa_nm{flex:0 auto;max-width:42%;font-size:12px;line-height:18px}.nUhMVa_ungroupedState{flex:0 auto;align-items:center;min-width:0;max-width:46%;margin:0;display:inline-flex}.nUhMVa_ungroupedState>span{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.nUhMVa_ungroupedDesc{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-tertiary,#8b93a1);flex:1 1 0;font-size:12px;line-height:18px;overflow:hidden}.nUhMVa_ungroupedDesc.nUhMVa_noteMine{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_groupHint{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:11px}.nUhMVa_sect{color:var(--dsw-alias-label-secondary,#6b7280);margin:14px 2px 8px;font-size:12px;font-weight:600}.nUhMVa_sectAction{color:var(--dsw-alias-label-secondary,#6b7280);align-items:center;gap:8px;margin:14px 2px 8px;font-size:12px;font-weight:600;display:flex}.nUhMVa_backupGrid{grid-template-columns:minmax(0,1fr);gap:12px;display:grid}.nUhMVa_backupCard{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-xl,20px);flex-direction:column;gap:10px;padding:16px;display:flex}.nUhMVa_backupCard h3{margin:0;font-size:14px}.nUhMVa_backupCard p{color:var(--dsw-alias-label-secondary,#6b7280);margin:0;font-size:12px;line-height:18px}.nUhMVa_backupActions{flex-wrap:wrap;gap:8px;display:flex;position:relative}.nUhMVa_hiddenFile{opacity:0;pointer-events:none;width:1px;height:1px;position:absolute}.nUhMVa_backupInput{box-sizing:border-box;width:100%}.nUhMVa_backupCheck{cursor:pointer;align-items:center;gap:6px;font-size:12px;display:flex}.nUhMVa_backupWarn{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-state-warn-primary,#b45309)!important}.nUhMVa_backupMessage{color:var(--dsw-alias-label-secondary,#6b7280);grid-column:1/-1;font-size:12px}.nUhMVa_backupCheckList{flex-direction:column;gap:6px;max-height:260px;margin:10px 0 4px;padding-right:4px;display:flex;overflow-y:auto}.nUhMVa_backupCheckList .nUhMVa_backupCheck{justify-content:space-between;gap:8px}.nUhMVa_diagPage{flex-direction:column;gap:12px;height:100%;min-height:0;display:flex;overflow-y:auto}.nUhMVa_panelHost .nUhMVa_diagPage{height:auto;overflow:visible}.nUhMVa_diagSummary{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-lg,16px);flex-wrap:wrap;align-items:center;gap:12px;padding:10px 14px;font-size:12px;display:flex}.nUhMVa_diagSummaryItem{color:var(--dsw-alias-label-secondary,#6b7280);white-space:nowrap;align-items:center;gap:6px;display:inline-flex}.nUhMVa_diagSummaryMeta{color:var(--dsw-alias-label-tertiary,#9ca3af);font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);text-overflow:ellipsis;white-space:nowrap;max-width:320px;font-size:11px;overflow:hidden}.nUhMVa_diagSection{background:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1,#fff));border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));border-radius:var(--dsw-radius-lg,16px);flex-direction:column;gap:8px;padding:12px 14px;display:flex}.nUhMVa_diagSection h3{color:var(--dsw-alias-label-primary,#1f2328);margin:0;font-size:13px;font-weight:600}.nUhMVa_diagCount{color:var(--dsw-alias-label-tertiary,#9ca3af);font-size:11px;font-weight:400}.nUhMVa_diagEmpty{color:var(--dsw-alias-label-secondary,#9ca3af);padding:8px 0;font-size:12px}.nUhMVa_diagBundle{border-top:1px solid var(--dsw-alias-border-l2,#f0f1f3);flex-direction:column;gap:6px;padding-top:8px;display:flex}.nUhMVa_diagBundle:first-of-type{border-top:none;padding-top:0}.nUhMVa_diagRow{flex-wrap:wrap;align-items:center;gap:8px;min-width:0;font-size:12px;line-height:18px;display:flex}.nUhMVa_diagMeta{align-items:baseline;gap:8px;min-width:0;font-size:12px;display:flex}.nUhMVa_diagKey{color:var(--dsw-alias-label-tertiary,#9ca3af);flex-shrink:0;min-width:64px;font-size:11px}.nUhMVa_diagVal{color:var(--dsw-alias-label-primary,#1f2328);font-size:12px;font-weight:500;font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);overflow-wrap:anywhere;min-width:0}.nUhMVa_diagIndex{background:var(--dsw-alias-bg-layer-2,#f3f4f6);min-width:18px;height:18px;color:var(--dsw-alias-label-secondary,#6b7280);border-radius:9px;flex-shrink:0;justify-content:center;align-items:center;font-size:11px;font-weight:600;display:inline-flex}.nUhMVa_diagArrow{color:var(--dsw-alias-label-tertiary,#9ca3af);flex-shrink:0;font-size:12px}.nUhMVa_diagBadgeOfficial{background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary,#4f6ef7));height:18px;color:var(--dsw-alias-label-primary-foreground,#fff);border-radius:9px;flex-shrink:0;align-items:center;padding:0 8px;font-size:11px;font-weight:600;display:inline-flex}.nUhMVa_diagBadgeCommunity{background:var(--dsw-alias-bg-layer-2,#f3f4f6);height:18px;color:var(--dsw-alias-label-secondary,#6b7280);border-radius:9px;flex-shrink:0;align-items:center;padding:0 8px;font-size:11px;display:inline-flex}.nUhMVa_diagBadgeShadow{background:var(--dsw-alias-state-error-primary,#dc2626);height:18px;color:var(--dsw-alias-label-primary-foreground,#fff);border-radius:9px;flex-shrink:0;align-items:center;padding:0 8px;font-size:11px;font-weight:600;display:inline-flex}.nUhMVa_diagBadgeWarn{background:var(--dsw-alias-state-warn-primary,#b45309);height:18px;color:var(--dsw-alias-label-primary-foreground,#fff);white-space:nowrap;border-radius:9px;flex-shrink:0;align-items:center;padding:0 8px;font-size:11px;font-weight:600;display:inline-flex}.nUhMVa_diagBadgeInfo{background:var(--dsw-alias-bg-layer-2,#f3f4f6);height:18px;color:var(--dsw-alias-label-secondary,#6b7280);white-space:nowrap;border-radius:9px;flex-shrink:0;align-items:center;padding:0 8px;font-size:11px;display:inline-flex}.nUhMVa_diagList{flex-direction:column;gap:6px;display:flex}.nUhMVa_sectionOverview{color:var(--dsw-alias-label-tertiary,#8b93a1);text-overflow:ellipsis;white-space:nowrap;max-width:100%;padding:2px 0 6px;font-size:12px;line-height:18px;overflow:hidden}.nUhMVa_diagAlert{color:var(--dsw-alias-state-warn-primary,#b45309)}.nUhMVa_ovRow{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-radius:8px;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;padding:6px 10px;font-size:12px;line-height:18px;display:flex}.nUhMVa_ovArrow{color:var(--dsw-alias-label-tertiary,#9ca3af);flex-shrink:0;font-size:12px}.nUhMVa_ovByTag{background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary,#4f6ef7));height:18px;color:var(--dsw-alias-label-primary-foreground,#fff);text-overflow:ellipsis;white-space:nowrap;border-radius:9px;flex-shrink:0;align-items:center;max-width:260px;padding:0 8px;font-size:11px;font-weight:600;display:inline-flex;overflow:hidden}.nUhMVa_ovFrom{color:var(--dsw-alias-label-secondary,#6b7280);text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:12px;overflow:hidden}.nUhMVa_orphRow{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-radius:8px;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;padding:6px 10px;font-size:12px;line-height:18px;display:flex}.nUhMVa_orphBadge{background:var(--dsw-alias-state-warn-primary,#b45309);height:18px;color:var(--dsw-alias-label-primary-foreground,#fff);white-space:nowrap;border-radius:9px;flex-shrink:0;align-items:center;padding:0 8px;font-size:11px;font-weight:600;display:inline-flex}.nUhMVa_dragHandle{width:20px;height:20px;color:var(--dsw-alias-label-tertiary,#9ca3af);cursor:grab;-webkit-user-select:none;user-select:none;flex-shrink:0;justify-content:center;align-items:center;font-size:12px;line-height:20px;display:inline-flex}.nUhMVa_dragOver{outline:2px dashed var(--dsw-alias-brand-primary,#4f6ef7);outline-offset:2px;background:var(--dsw-alias-bg-layer-2,#f0f2f8);border-radius:8px}.nUhMVa_dragging{opacity:.45;background:var(--dsw-alias-bg-layer-2,#f3f4f6)}.nUhMVa_collapseHead{font:inherit;color:var(--dsw-alias-label-primary,#1f2328);cursor:pointer;text-align:left;background:0 0;border:none;align-items:center;gap:8px;width:100%;padding:0;font-size:13px;font-weight:600;display:flex}.nUhMVa_collapseIcon{color:var(--dsw-alias-label-secondary,#6b7280);flex-shrink:0;display:inline-flex}.nUhMVa_collapseTitle{flex:0 auto;min-width:0}.nUhMVa_collapseHead .nUhMVa_diagCount{flex-shrink:0}.nUhMVa_collapseBody{border-top:1px solid var(--dsw-alias-border-l2,#f0f1f3);overflow-wrap:anywhere;flex-direction:column;gap:10px;min-width:0;margin-top:8px;padding-top:10px;display:flex}.nUhMVa_orderPanel{flex-direction:column;gap:10px;min-width:0;display:flex}.nUhMVa_panelNote{color:var(--dsw-alias-label-secondary,#6b7280);margin:0;font-size:12px;line-height:18px}.nUhMVa_panelActions{flex-wrap:wrap;align-items:center;gap:8px;display:flex}.nUhMVa_presetList{flex-direction:column;gap:6px;min-width:0;display:flex}.nUhMVa_presetRow{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-radius:8px;flex-direction:column;align-items:stretch;gap:6px;min-width:0;max-width:100%;padding:8px 10px;font-size:12px;line-height:18px;display:flex}.nUhMVa_presetName{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:13px;font-weight:600;overflow:hidden}.nUhMVa_snapList{flex-direction:column;gap:6px;min-width:0;display:flex}.nUhMVa_snapRow{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-radius:8px;flex-direction:column;align-items:stretch;gap:8px;padding:10px 12px;font-size:12px;line-height:18px;display:flex}.nUhMVa_snapMeta{flex-wrap:wrap;align-items:center;gap:8px;min-width:0;display:flex}.nUhMVa_snapConfirmText{color:var(--dsw-alias-state-warn-primary,#b45309);margin:0;font-size:12px;line-height:18px}.nUhMVa_confirmRow{flex-wrap:wrap;align-items:center;gap:6px;display:inline-flex}.nUhMVa_fixFallback{flex-direction:column;gap:6px;margin:8px 0;display:flex}.nUhMVa_fixFallbackText,.nUhMVa_envEditor{box-sizing:border-box;width:100%;font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);color:var(--dsw-alias-label-primary,#1f2328);background:var(--dsw-alias-bg-layer-2,#f3f4f6);border:1px solid var(--dsw-alias-border-l2,#e5e7eb);resize:vertical;white-space:pre-wrap;word-break:break-all;border-radius:6px;padding:8px 10px;font-size:11px;line-height:16px}.nUhMVa_setCard{border:.5px solid var(--dsw-alias-settings-card-stroke,var(--dsw-alias-border-l4,#00000029));background:var(--dsw-alias-bg-layer-3,#fff);border-radius:var(--dsw-radius-lg,16px);list-style:none;transition:border-color .16s,background .16s}.nUhMVa_setCard:hover{border-color:var(--dsw-alias-label-dimmed,#c8ccd4)}.nUhMVa_setCardOpen{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-color:var(--dsw-alias-label-dimmed,#c8ccd4)}.nUhMVa_setHeader{-webkit-appearance:none;appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:var(--dsw-radius-lg,16px);background:0 0;border:0;align-items:center;gap:12px;padding:14px 16px;display:flex}.nUhMVa_setHeader:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4f6ef7);outline-offset:-2px}.nUhMVa_setHeadText{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}.nUhMVa_setName{color:var(--dsw-alias-label-primary,#1f2328);font-size:15px;font-weight:600;line-height:1.4}.nUhMVa_setDesc{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:13px;line-height:1.5}.nUhMVa_setChevron{color:var(--dsw-alias-label-tertiary,#8b93a1);flex:none;transition:transform .16s;display:inline-flex}.nUhMVa_setChevronOpen{transform:rotate(180deg)}.nUhMVa_setBody{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);margin:0 16px;padding-bottom:8px}.nUhMVa_setRow{align-items:center;gap:12px;padding:12px 0;display:flex}.nUhMVa_setRow+.nUhMVa_setRow{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb)}.nUhMVa_setLabelBox{flex-direction:column;flex:1;gap:3px;min-width:0;display:flex}.nUhMVa_setLabel{font-size:13px;line-height:20px}.nUhMVa_setHint{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:12px;line-height:18px}.nUhMVa_setAdvanced{border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb)}.nUhMVa_setAdvancedHead{-webkit-appearance:none;appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;align-items:center;gap:12px;padding:12px 0;display:flex}.nUhMVa_setAdvancedHead:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4f6ef7);outline-offset:-2px}.nUhMVa_setAdvancedBody{padding-bottom:4px}.nUhMVa_setConfirm{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);flex-direction:column;gap:8px;padding:12px 0 4px;display:flex}.nUhMVa_setCheck{cursor:pointer;align-items:center;gap:8px;font-size:12px;line-height:18px;display:flex}.nUhMVa_setActions{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);justify-content:flex-end;align-items:center;gap:8px;padding:12px 0 4px;display:flex}.nUhMVa_setInlineActions{flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px;display:flex}.nUhMVa_setProxyEditor{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);flex-wrap:wrap;align-items:flex-end;gap:10px;padding:12px 0;display:flex}.nUhMVa_setProxyLabel{min-width:180px;color:var(--dsw-alias-label-secondary,#6b7280);flex-direction:column;flex:1;gap:5px;font-size:12px;line-height:18px;display:flex}.nUhMVa_setProxyInput{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2,#d1d5db);background:var(--dsw-alias-bg-layer-3,#fff);width:100%;min-width:0;color:var(--dsw-alias-label-primary,#1f2328);font:inherit;border-radius:7px;padding:6px 8px;font-size:12px;line-height:18px}.nUhMVa_setProxyInput:focus{border-color:var(--dsw-alias-brand-primary,#4f6ef7);outline:2px solid color-mix(in srgb,var(--dsw-alias-brand-primary,#4f6ef7) 18%,transparent)}.nUhMVa_setDanger{color:var(--dsw-alias-state-error-primary,#dc2626)}.nUhMVa_setSeg{border-radius:var(--dsw-radius-md,12px);background:var(--dsw-alias-bg-module-platform,#f4f5f7);border:none;flex-shrink:0;gap:2px;padding:3px;display:inline-flex}.nUhMVa_setSegBtn{font:inherit;border-radius:var(--dsw-radius-sm,8px);height:26px;color:var(--dsw-alias-label-secondary,#5c6570);cursor:pointer;background:0 0;border:none;padding:0 10px;font-size:12px;line-height:18px}.nUhMVa_setSegBtn:disabled{cursor:default;opacity:.5}.nUhMVa_setSegOn{background:var(--dsw-alias-bg-layer-3,#fff);color:var(--dsw-alias-label-primary,#1f2328);box-shadow:0 0 0 .5px var(--dsw-alias-border-l3,#0000001f);font-weight:600}.nUhMVa_setBetaTag{background:var(--dsw-alias-bg-module-platform,#eef0f4);color:var(--dsw-alias-label-secondary,#6b7280);border-radius:9px;margin-left:6px;padding:0 6px;font-size:11px;font-weight:600;line-height:17px}.nUhMVa_commentsLink{cursor:pointer;white-space:nowrap;color:var(--dsw-alias-label-tertiary,#8b93a1);background:0 0;border:0;padding:0;font-size:12px;line-height:18px}.nUhMVa_commentsLink:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_footActions{flex-shrink:0;align-items:center;gap:8px;display:inline-flex}.nUhMVa_favoriteBtn{cursor:pointer;color:var(--dsw-alias-label-secondary,#9ca3af);background:0 0;border:0;align-items:center;padding:0;display:inline-flex}.nUhMVa_favoriteMark{transform-box:fill-box;transform-origin:50% 0;display:block}.nUhMVa_favoriteBtn:hover,.nUhMVa_favoriteOn{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_cardMore{cursor:pointer;font:inherit;letter-spacing:1px;color:var(--dsw-alias-label-secondary,#9ca3af);background:0 0;border:0;padding:0 2px;font-size:14px;line-height:16px}.nUhMVa_cardMore:hover{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_blockedTabHint{color:var(--dsw-alias-label-secondary,#9ca3af);margin:0 0 12px;font-size:12px;line-height:18px}.nUhMVa_blockedMissing{flex-direction:column;gap:4px;margin-top:8px;display:flex}.nUhMVa_blockedBarRow{justify-content:space-between;align-items:center;gap:8px;min-width:0;display:flex}.nUhMVa_blockedBarName{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:13px;line-height:20px;overflow:hidden}.nUhMVa_blockedBarUndo{cursor:pointer;font:inherit;color:var(--dsw-alias-brand-primary,#4f6ef7);background:0 0;border:0;padding:0;font-size:12px;line-height:18px}.nUhMVa_commentsNote{color:var(--dsw-alias-label-secondary,#9ca3af);margin:0 0 8px;font-size:11px;line-height:16px}.nUhMVa_commentsGithubPrompt{border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary,#4f6ef7) 24%,transparent);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4f6ef7) 6%,transparent);border-radius:8px;margin:0 0 10px;padding:10px}.nUhMVa_commentsGithubHint{color:var(--dsw-alias-label-primary,#1f2328);margin:0 0 8px;font-size:12px;line-height:17px}.nUhMVa_commentsGithubAction{box-sizing:border-box;border:1px solid var(--dsw-alias-brand-primary,#4f6ef7);min-height:28px;color:var(--dsw-alias-brand-primary,#4f6ef7);border-radius:6px;justify-content:center;align-items:center;padding:5px 10px;font-size:12px;font-weight:600;line-height:16px;text-decoration:none;display:inline-flex}.nUhMVa_commentsGithubAction:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4f6ef7) 9%,transparent)}.nUhMVa_commentsStatus{color:var(--dsw-alias-label-secondary,#9ca3af);margin:0;font-size:12px}.nUhMVa_commentsStatus:empty{display:none}.nUhMVa_commentsError{color:var(--dsw-alias-label-primary,#1f2328);margin:0 0 8px;font-size:12px}.nUhMVa_commentsFail{flex-direction:column;align-items:flex-start;gap:8px;padding:12px 0;display:flex}.nUhMVa_commentsMount{width:100%;min-height:240px;max-height:56vh;overflow:auto}.nUhMVa_commentsMount iframe{width:100%}.nUhMVa_notesLink{font:inherit;color:var(--dsw-alias-label-secondary,#6b7280);cursor:pointer;text-align:left;background:0 0;border:none;margin:2px 0 0;padding:0;font-size:12px;line-height:18px;display:block}.nUhMVa_notesLink:hover{color:var(--dsw-alias-label-primary,#1f2328)}.nUhMVa_notesModalWide{width:min(640px,92vw);max-width:min(640px,92vw)}.nUhMVa_notesBody{overscroll-behavior:contain;flex-direction:column;flex:0 auto;gap:10px;min-width:0;max-height:min(60vh,520px);padding:0 2px 8px 0;display:flex;overflow-y:auto}.nUhMVa_notesRange{align-items:center;gap:8px;margin-bottom:4px;font-size:12px;line-height:18px;display:flex}.nUhMVa_notesArrow{color:var(--dsw-alias-label-tertiary,#8b93a1)}.nUhMVa_notesMeta{letter-spacing:.02em;text-transform:uppercase;color:var(--dsw-alias-label-secondary,#6b7280);flex-wrap:wrap;align-items:baseline;gap:6px;margin-top:4px;font-size:12px;line-height:18px;display:flex}.nUhMVa_notesBody>.nUhMVa_notesMeta:first-child{margin-top:0}.nUhMVa_notesHistory,.nUhMVa_notesHeld{flex-direction:column;gap:8px;min-width:0;display:flex}.nUhMVa_notesHistory>.nUhMVa_notesMeta:first-child,.nUhMVa_notesHeld>.nUhMVa_notesMeta:first-child{margin-top:0}.nUhMVa_notesHeld:not(:first-child){border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);padding-top:10px}.nUhMVa_notesEntry{border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);padding-bottom:8px}.nUhMVa_notesEntry:last-child{border-bottom:none}.nUhMVa_notesSummary{cursor:pointer;overflow-wrap:anywhere;font-size:13px;line-height:20px}.nUhMVa_notesSummary+.nUhMVa_notesRendered{margin-top:8px}.nUhMVa_notesPre{white-space:pre-wrap;word-break:break-word;background:var(--dsw-alias-bg-layer-2,#eef0f4);border-radius:8px;max-height:40vh;margin:0;padding:10px 12px;font-size:13px;line-height:20px;overflow:auto}.nUhMVa_notesRendered{flex-direction:column;gap:8px;min-width:0;display:flex}.nUhMVa_notesImg{border-radius:6px;max-width:100%;height:auto;margin:4px 0;display:block}.nUhMVa_notesH{margin-top:4px;font-size:13px;font-weight:650;line-height:20px}.nUhMVa_notesP{font-size:13px;line-height:20px}.nUhMVa_notesQuote{border-left:3px solid var(--dsw-alias-border-l3,#d9dde3);background:var(--dsw-alias-bg-layer-2,#f7f8fa);color:var(--dsw-alias-label-primary,#1f2328);border-radius:0 6px 6px 0;margin:0;padding:8px 10px;font-size:13px;line-height:20px}.nUhMVa_notesFence{background:var(--dsw-alias-bg-layer-2,#eef0f4);font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);white-space:pre;border-radius:8px;margin:0;padding:10px 12px;font-size:12px;line-height:18px;overflow-x:auto}.nUhMVa_notesFence code{font:inherit;background:0 0;padding:0}.nUhMVa_notesBullets{flex-direction:column;gap:4px;margin:0;padding-left:18px;font-size:13px;line-height:20px;display:flex}.nUhMVa_notesA{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:none}.nUhMVa_notesA:hover{text-decoration:underline}.nUhMVa_notesCode{font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);background:var(--dsw-alias-bg-layer-2,#eef0f4);border-radius:5px;padding:1px 5px;font-size:12px}.nUhMVa_notesList{flex-direction:column;margin:0;padding:0;list-style:none;display:flex}.nUhMVa_notesRow{border-bottom:1px solid var(--dsw-alias-border-l2,#e5e7eb);align-items:baseline;gap:12px;padding:6px 0;display:flex}.nUhMVa_notesRow:last-child{border-bottom:none}.nUhMVa_notesDate{color:var(--dsw-alias-label-tertiary,#8b93a1);font-variant-numeric:tabular-nums;flex-shrink:0;font-size:12px}.nUhMVa_notesMsg{word-break:break-word;word-break:break-word;-webkit-line-clamp:3;-webkit-box-orient:vertical;min-width:0;font-size:13px;line-height:20px;display:-webkit-box;overflow:hidden}.nUhMVa_notesSha{color:var(--dsw-alias-label-secondary,#6b7280);font-variant-numeric:tabular-nums;flex-shrink:0;margin-left:auto;font-size:12px;text-decoration:none}.nUhMVa_recoverySummary{color:var(--dsw-alias-state-error-primary,#dc2626);word-break:break-word;align-items:flex-start;gap:8px;margin-bottom:8px;font-size:12px;display:flex}.nUhMVa_recoveryHint{color:var(--dsw-alias-label-secondary,#6b7280);margin:8px 0;font-size:12px}.nUhMVa_recoveryList{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;flex-direction:column;max-height:320px;display:flex;overflow-x:hidden;overflow-y:auto}.nUhMVa_recoveryRow{border-top:1px solid var(--dsw-alias-border-l2,#eef0f4);align-items:flex-start;gap:8px;padding:6px 10px;font-size:12px;display:flex}.nUhMVa_recoveryRow:first-child{border-top:none}.nUhMVa_recoveryBlamed{box-shadow:inset 3px 0 0 var(--dsw-alias-state-error-primary,#dc2626);background:#dc262612}.nUhMVa_recoveryMuted{opacity:.6}.nUhMVa_recoveryName{word-break:break-word;flex-direction:column;gap:2px;min-width:0;display:flex}.nUhMVa_recoveryReason{color:var(--dsw-alias-state-error-primary,#dc2626);word-break:break-word;font-size:11px}.nUhMVa_recoveryNote{color:var(--dsw-alias-label-tertiary,#8b93a1);word-break:break-word;margin-top:8px;font-size:11px}.nUhMVa_recoveryBadge{background:var(--dsw-alias-bg-layer-2,#eef0f4);color:var(--dsw-alias-label-secondary,#6b7280);border-radius:5px;margin-left:6px;padding:0 5px;font-size:10px}.nUhMVa_recoveryLog{color:var(--dsw-alias-label-secondary,#6b7280);margin:4px 0 8px;font-size:11px}.nUhMVa_recoveryLog pre{white-space:pre-wrap;word-break:break-word;max-height:180px;margin:6px 0 0;overflow:auto}.nUhMVa_notesSha:hover{color:var(--dsw-alias-label-primary,#1f2328);text-decoration:underline}.nUhMVa_notesVer{color:inherit;font-weight:600;text-decoration:none}.nUhMVa_notesVer:hover{text-decoration:underline}.nUhMVa_notesSourceLink{color:var(--dsw-alias-brand-primary,#4f6ef7);white-space:nowrap;text-decoration:none}.nUhMVa_notesSourceLink:hover{text-decoration:underline}.nUhMVa_migrationSources{flex-direction:column;gap:8px;margin-top:4px;display:flex}.nUhMVa_migrationSource{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;flex-direction:column;gap:4px;padding:10px 12px;display:flex}.nUhMVa_migrationSource code{font-size:12px;font-family:var(--ds-font-family-code,ui-monospace,Menlo,Consolas,monospace);overflow-wrap:anywhere}.nUhMVa_migrationLabel{color:var(--dsw-alias-label-secondary,#9ca3af);font-size:11px}.nUhMVa_migrationArrow{text-align:center;color:var(--dsw-alias-label-secondary,#9ca3af)}.nUhMVa_migrationWarning{color:var(--dsw-alias-state-warn-primary,#b45309);align-items:flex-start;gap:6px;margin:12px 0 0;font-size:12px;line-height:18px;display:flex}.nUhMVa_migrationNote{color:var(--dsw-alias-label-secondary,#6b7280);margin:12px 0 0;font-size:12px;line-height:18px}.nUhMVa_sourceRepo{color:var(--dsw-alias-label-secondary,#5c6570);align-self:flex-end;align-items:center;gap:2px;font-size:13px;line-height:20px;text-decoration:none;display:inline-flex}.nUhMVa_sourceRepo:hover{color:var(--dsw-alias-brand-primary,#4f6ef7);text-decoration:underline}.nUhMVa_sourceRepo:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4f6ef7);outline-offset:2px;border-radius:4px}.nUhMVa_updateChecks{margin:12px 0;font-size:13px}.nUhMVa_updateChecks summary{cursor:pointer}.nUhMVa_updateChecksSummary{opacity:.7;margin-left:8px}.nUhMVa_updateChecksControls{flex-wrap:wrap;align-items:center;gap:12px;margin-top:12px;display:flex}.nUhMVa_updateChecksToggle{align-items:center;gap:8px;display:inline-flex}.nUhMVa_updateChecksHint{opacity:.7;margin:8px 0}.nUhMVa_updateChecksList{margin:12px 0;padding:0;list-style:none}.nUhMVa_updateChecksList li{flex-wrap:wrap;align-items:center;gap:12px;padding:8px 0;display:flex}.nUhMVa_updateChecksPackage{overflow-wrap:anywhere;flex-direction:column;flex:1;min-width:0;display:flex}.nUhMVa_updateChecksPackage>span{opacity:.7;font-size:12px}.nUhMVa_updateChecksInterval{align-items:center;gap:8px;display:inline-flex}.nUhMVa_updateChecksInterval select{color:inherit;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l2,#e5e7eb);font:inherit;border-radius:6px;padding:4px 8px}.nUhMVa_noticeFrame{flex-direction:column;min-width:0;height:100%;min-height:0;display:flex}.nUhMVa_noticeFrameOff{display:contents}.nUhMVa_noticeBody{flex-direction:column;flex:1;min-width:0;min-height:0;display:flex}.nUhMVa_moveNotice{box-sizing:border-box;border-radius:var(--dsw-radius-md,12px);background:var(--dsw-alias-bg-module-platform,#f4f5f7);color:var(--dsw-alias-label-secondary,#5c6570);flex-wrap:wrap;flex:none;align-items:center;gap:8px 12px;margin:0 0 8px;padding:8px 12px;font-size:12px;line-height:18px;display:flex}.nUhMVa_moveNoticeText{flex:220px;min-width:0}.nUhMVa_sponsorMark{white-space:nowrap;color:var(--dsw-alias-label-tertiary,#8b93a1);flex-wrap:nowrap;flex:none;align-items:center;gap:6px;font-size:12px;line-height:20px;display:inline-flex}.nUhMVa_sponsorItem{color:inherit;align-items:center;gap:4px;text-decoration:none;display:inline-flex}.nUhMVa_sponsorItem:hover{color:var(--dsw-alias-brand-primary,#4f6ef7)}.nUhMVa_sponsorLogo{object-fit:contain;background:#fff;border-radius:3px;width:auto;max-width:56px;height:14px;display:block}.nUhMVa_sponsorSlot{flex-wrap:wrap;justify-content:flex-end;align-self:center;align-items:center;min-width:0;height:20px;padding-right:4px;display:flex;overflow:hidden}.nUhMVa_sponsorWrapFloor{flex:none;width:0;height:20px}";
 		const tagId = "dshmarket/Market.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -4223,7 +4574,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			"favoriteOn": "nUhMVa_favoriteOn",
 			"favoritesSectionHead": "nUhMVa_favoritesSectionHead",
 			"favoritesStaleBar": "nUhMVa_favoritesStaleBar",
+			"favoritesStaleName": "nUhMVa_favoritesStaleName",
 			"favoritesStaleOnly": "nUhMVa_favoritesStaleOnly",
+			"favoritesStaleRow": "nUhMVa_favoritesStaleRow",
 			"fixFallback": "nUhMVa_fixFallback",
 			"fixFallbackText": "nUhMVa_fixFallbackText",
 			"foot": "nUhMVa_foot",
@@ -4238,6 +4591,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			"groupAddModalList": "nUhMVa_groupAddModalList",
 			"groupAddPanel": "nUhMVa_groupAddPanel",
 			"groupAddPick": "nUhMVa_groupAddPick",
+			"groupBulkActions": "nUhMVa_groupBulkActions",
 			"groupCollapse": "nUhMVa_groupCollapse",
 			"groupCreate": "nUhMVa_groupCreate",
 			"groupCreateInline": "nUhMVa_groupCreateInline",
@@ -4270,23 +4624,37 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			"installCautionMark": "nUhMVa_installCautionMark",
 			"irow": "nUhMVa_irow",
 			"irowActions": "nUhMVa_irowActions",
+			"irowBody": "nUhMVa_irowBody",
 			"irowDesc": "nUhMVa_irowDesc",
+			"irowDescBand": "nUhMVa_irowDescBand",
+			"irowFootRow": "nUhMVa_irowFootRow",
 			"irowHead": "nUhMVa_irowHead",
+			"irowIncompat": "nUhMVa_irowIncompat",
+			"irowIncompatBody": "nUhMVa_irowIncompatBody",
+			"irowIncompatTitle": "nUhMVa_irowIncompatTitle",
 			"irowMenu": "nUhMVa_irowMenu",
 			"irowMeta": "nUhMVa_irowMeta",
+			"irowMetaText": "nUhMVa_irowMetaText",
 			"irowMissing": "nUhMVa_irowMissing",
 			"irowName": "nUhMVa_irowName",
 			"irowNameText": "nUhMVa_irowNameText",
+			"irowNoteActions": "nUhMVa_irowNoteActions",
+			"irowNoteActionsSpaced": "nUhMVa_irowNoteActionsSpaced",
 			"irowPath": "nUhMVa_irowPath",
 			"irowPathCopy": "nUhMVa_irowPathCopy",
 			"irowPathIcon": "nUhMVa_irowPathIcon",
 			"irowStatus": "nUhMVa_irowStatus",
 			"irowStatusAction": "nUhMVa_irowStatusAction",
+			"irowStatusBand": "nUhMVa_irowStatusBand",
 			"irowStatusFact": "nUhMVa_irowStatusFact",
 			"irowStatusIcon": "nUhMVa_irowStatusIcon",
+			"irowStatusMuted": "nUhMVa_irowStatusMuted",
 			"irowStatusPart": "nUhMVa_irowStatusPart",
 			"irowStatusSep": "nUhMVa_irowStatusSep",
 			"irowTrailing": "nUhMVa_irowTrailing",
+			"irowTrailingHint": "nUhMVa_irowTrailingHint",
+			"irowTrailingRow": "nUhMVa_irowTrailingRow",
+			"irowUpdateBtn": "nUhMVa_irowUpdateBtn",
 			"lightbox": "nUhMVa_lightbox",
 			"lightboxClose": "nUhMVa_lightboxClose",
 			"lightboxDot": "nUhMVa_lightboxDot",
@@ -4302,8 +4670,11 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			"logoMark": "nUhMVa_logoMark",
 			"logoPlug": "nUhMVa_logoPlug",
 			"logoPlugAmbient": "nUhMVa_logoPlugAmbient",
+			"marketVersionGroup": "nUhMVa_marketVersionGroup",
+			"marketVersionWait": "nUhMVa_marketVersionWait",
 			"masonry": "nUhMVa_masonry",
 			"masonryCol": "nUhMVa_masonryCol",
+			"masonryInstalled": "nUhMVa_masonryInstalled",
 			"memberKind": "nUhMVa_memberKind",
 			"memberName": "nUhMVa_memberName",
 			"memberNameWithDesc": "nUhMVa_memberNameWithDesc",
@@ -4318,6 +4689,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			"migrationSources": "nUhMVa_migrationSources",
 			"migrationWarning": "nUhMVa_migrationWarning",
 			"modalNote": "nUhMVa_modalNote",
+			"moveNotice": "nUhMVa_moveNotice",
+			"moveNoticeText": "nUhMVa_moveNoticeText",
 			"nameLink": "nUhMVa_nameLink",
 			"nm": "nUhMVa_nm",
 			"nmLink": "nUhMVa_nmLink",
@@ -4334,8 +4707,11 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			"notesBullets": "nUhMVa_notesBullets",
 			"notesCode": "nUhMVa_notesCode",
 			"notesDate": "nUhMVa_notesDate",
+			"notesEntry": "nUhMVa_notesEntry",
 			"notesFence": "nUhMVa_notesFence",
 			"notesH": "nUhMVa_notesH",
+			"notesHeld": "nUhMVa_notesHeld",
+			"notesHistory": "nUhMVa_notesHistory",
 			"notesImg": "nUhMVa_notesImg",
 			"notesLink": "nUhMVa_notesLink",
 			"notesList": "nUhMVa_notesList",
@@ -4350,8 +4726,12 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			"notesRow": "nUhMVa_notesRow",
 			"notesSha": "nUhMVa_notesSha",
 			"notesSourceLink": "nUhMVa_notesSourceLink",
+			"notesSummary": "nUhMVa_notesSummary",
 			"notesVer": "nUhMVa_notesVer",
 			"noteToggle": "nUhMVa_noteToggle",
+			"noticeBody": "nUhMVa_noticeBody",
+			"noticeFrame": "nUhMVa_noticeFrame",
+			"noticeFrameOff": "nUhMVa_noticeFrameOff",
 			"okState": "nUhMVa_okState",
 			"on": "nUhMVa_on",
 			"opActions": "nUhMVa_opActions",
@@ -4380,6 +4760,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			"opPanel": "nUhMVa_opPanel",
 			"opPanelTitle": "nUhMVa_opPanelTitle",
 			"opQueuedIcon": "nUhMVa_opQueuedIcon",
+			"opRepairTitle": "nUhMVa_opRepairTitle",
 			"opRow": "nUhMVa_opRow",
 			"opRowAlert": "nUhMVa_opRowAlert",
 			"opStatus": "nUhMVa_opStatus",
@@ -4497,6 +4878,11 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			"specTagFile": "nUhMVa_specTagFile",
 			"specTagGit": "nUhMVa_specTagGit",
 			"spin": "nUhMVa_spin",
+			"sponsorItem": "nUhMVa_sponsorItem",
+			"sponsorLogo": "nUhMVa_sponsorLogo",
+			"sponsorMark": "nUhMVa_sponsorMark",
+			"sponsorSlot": "nUhMVa_sponsorSlot",
+			"sponsorWrapFloor": "nUhMVa_sponsorWrapFloor",
 			"src": "nUhMVa_src",
 			"staleAction": "nUhMVa_staleAction",
 			"star": "nUhMVa_star",
@@ -4546,12 +4932,322 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			"ungroupedDesc": "nUhMVa_ungroupedDesc",
 			"ungroupedRow": "nUhMVa_ungroupedRow",
 			"ungroupedState": "nUhMVa_ungroupedState",
+			"updateCheckNotice": "nUhMVa_updateCheckNotice",
+			"updateChecks": "nUhMVa_updateChecks",
+			"updateChecksControls": "nUhMVa_updateChecksControls",
+			"updateChecksHint": "nUhMVa_updateChecksHint",
+			"updateChecksInterval": "nUhMVa_updateChecksInterval",
+			"updateChecksList": "nUhMVa_updateChecksList",
+			"updateChecksPackage": "nUhMVa_updateChecksPackage",
+			"updateChecksSummary": "nUhMVa_updateChecksSummary",
+			"updateChecksToggle": "nUhMVa_updateChecksToggle",
 			"version": "nUhMVa_version",
 			"viewBar": "nUhMVa_viewBar",
 			"viewBtn": "nUhMVa_viewBtn",
 			"viewOn": "nUhMVa_viewOn",
 			"warnLine": "nUhMVa_warnLine"
 		};
+		//#endregion
+		//#region src/client/SettingsNotice.tsx
+		/**
+		* The "this has moved" line at the top of the market in Settings.
+		*
+		* On a host that has the Plugins page tab, the tab is where the market lives
+		* now and the Settings entry is on its way out. The market stays fully usable
+		* below the line; the line is a statement with one way to the new place, not a
+		* warning. Everywhere else (older hosts, the sidebar, the Plugins tab itself)
+		* nothing is added.
+		*
+		* The frame keeps the market at the same place in the tree whether or not the
+		* line is showing, so the line appearing when the host's slot or the saved
+		* answer arrives late never remounts (and so never resets) the market.
+		*/
+		/** The id the market registers its Plugins page tab under. */
+		const MARKET_TAB_ID = "dsh-market";
+		const CLOSE_LABEL = /^(关闭|关闭对话框|Close|Close dialog|閉じる)$/i;
+		function wait(ms) {
+			return new Promise((resolve) => {
+				setTimeout(resolve, ms);
+			});
+		}
+		/** Poll until `probe` answers truthy; null on timeout. */
+		async function until(probe, timeoutMs) {
+			const deadline = Date.now() + timeoutMs;
+			for (;;) {
+				const found = probe();
+				if (found) return found;
+				if (Date.now() >= deadline) return null;
+				await wait(40);
+			}
+		}
+		/** The market's tab in the Plugins page's tab row, once it is in the page. */
+		function findMarketTab(doc) {
+			const tabs = doc.querySelectorAll(`[role="tab"][id$="-${MARKET_TAB_ID}"]`);
+			for (const tab of Array.from(tabs)) if (tab.closest("[role=\"dialog\"]") === null) return tab;
+			return null;
+		}
+		/** Close the dialog that holds `from`. Resolves true once it is gone. */
+		async function closeDialogOf(from, doc) {
+			const dialog = from.closest("[role=\"dialog\"]");
+			if (dialog === null) return true;
+			const closeButton = Array.from(dialog.querySelectorAll("button")).find((button) => CLOSE_LABEL.test((button.getAttribute("aria-label") ?? button.textContent ?? "").trim()));
+			if (closeButton !== void 0) closeButton.click();
+			else {
+				const init = {
+					key: "Escape",
+					code: "Escape",
+					keyCode: 27,
+					bubbles: true,
+					cancelable: true
+				};
+				const focused = doc.activeElement;
+				(focused !== null && dialog.contains(focused) ? focused : dialog).dispatchEvent(new KeyboardEvent("keydown", init));
+			}
+			return await until(() => !from.isConnected || !dialog.isConnected, 1500) !== null;
+		}
+		/**
+		* Take the user to the Plugins page, select the market tab there when it can
+		* be found, and close the Settings dialog `from` sits in.
+		*
+		* Landing on the Plugins page without the market tab selected is still a
+		* success: the user is where the market lives, one click from it.
+		* @returns false when the user was NOT taken anywhere (no navigation, the
+		*   host threw, or the dialog would not close), so the caller can say so.
+		*/
+		async function openMarketTab(navigation, from, doc = document) {
+			if (navigation?.openList === void 0) return false;
+			try {
+				navigation.openList();
+				const tab = await until(() => findMarketTab(doc), 3e3);
+				if (tab !== null) {
+					tab.click();
+					await until(() => tab.getAttribute("aria-selected") === "true", 1e3);
+				}
+				return await closeDialogOf(from, doc);
+			} catch {
+				return false;
+			}
+		}
+		function Notice({ t, hostNavigation }) {
+			const rootRef = (0, react.useRef)(null);
+			const mounted = (0, react.useRef)(true);
+			const [, bump] = (0, react.useState)(0);
+			const [busy, setBusy] = (0, react.useState)(false);
+			const [failed, setFailed] = (0, react.useState)(false);
+			(0, react.useEffect)(() => {
+				mounted.current = true;
+				return () => {
+					mounted.current = false;
+				};
+			}, []);
+			(0, react.useEffect)(() => hostNavigation?.subscribe(() => {
+				bump((n) => n + 1);
+			}), [hostNavigation]);
+			const canGo = typeof hostNavigation?.get()?.openList === "function";
+			const go = (0, react.useCallback)(() => {
+				if (rootRef.current === null) return;
+				setBusy(true);
+				setFailed(false);
+				openMarketTab(hostNavigation?.get(), rootRef.current).then((ok) => {
+					if (!mounted.current) return;
+					setBusy(false);
+					setFailed(!ok);
+				});
+			}, [hostNavigation]);
+			return (0, react.createElement)("div", {
+				className: Market_module_css_default.moveNotice,
+				ref: rootRef,
+				"data-dsh-market-notice": ""
+			}, (0, react.createElement)("span", { className: Market_module_css_default.moveNoticeText }, failed ? t("noticeFailed") : canGo ? t("noticeText") : t("noticeTextManual")), canGo ? (0, react.createElement)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+				variant: "outline",
+				size: "sm",
+				disabled: busy,
+				onClick: go
+			}, t("noticeGo")) : null);
+		}
+		/**
+		* Wraps the Settings surface's market. The line shows while the host has the
+		* Plugins tab and the user keeps it on — the only case where "it moved" is
+		* true and there is somewhere to go.
+		*/
+		function SettingsNoticeFrame({ t, entries, hostNavigation, children }) {
+			const [, bump] = (0, react.useState)(0);
+			(0, react.useEffect)(() => entries?.subscribe(() => {
+				bump((n) => n + 1);
+			}), [entries]);
+			const show = entries !== void 0 && entries.pluginsTabSupported() && entries.pluginsTab();
+			return (0, react.createElement)("div", { className: show ? Market_module_css_default.noticeFrame : Market_module_css_default.noticeFrameOff }, show ? (0, react.createElement)(Notice, {
+				t,
+				hostNavigation
+			}) : null, (0, react.createElement)("div", { className: show ? Market_module_css_default.noticeBody : Market_module_css_default.noticeFrameOff }, children));
+		}
+		//#endregion
+		//#region src/client/ErrorBoundary.tsx
+		/**
+		* The market's last line of defence: a crash renders a way out, not a blank.
+		*
+		* Every part of the market UI is inside one React tree. When that tree
+		* throws during render or commit, React unmounts it — and what the user gets
+		* is an empty settings panel, with the "export log" button gone along with
+		* everything else. That is not hypothetical: it is #293, where browser page
+		* translation replaced text nodes under React and the resulting
+		* NotFoundError blanked the panel for months, and every request for a log
+		* came back empty because there was no longer a button to press.
+		*
+		* #513 fixed that particular trigger. This exists because the next one will
+		* be different, and the property worth having is not "translation is
+		* handled" but "a crash is survivable and reportable".
+		*
+		* Deliberately not a retry loop. If the same render throws again the
+		* boundary catches it again and the user is back here, which is honest —
+		* an automatic remount would flicker between a broken UI and this panel
+		* with no way to read either.
+		*/
+		/**
+		* The last crash this boundary caught, for the exported log.
+		*
+		* Module-level rather than component state because the log export runs
+		* outside this tree — and a crash the user has already dismissed is still
+		* the most useful line in their report.
+		*/
+		let lastCrash = null;
+		/** The crash to report in the exported log, or null when there was none. */
+		function lastMarketCrash() {
+			return lastCrash;
+		}
+		var MarketErrorBoundary = class extends react.Component {
+			state = { error: null };
+			static getDerivedStateFromError(error) {
+				return { error };
+			}
+			componentDidCatch(error, info) {
+				lastCrash = {
+					message: error.message,
+					stack: info.componentStack ?? error.stack ?? null,
+					at: (/* @__PURE__ */ new Date()).toISOString()
+				};
+				console.error("[dsh-market] the market UI crashed and was replaced by its recovery panel", error, info.componentStack);
+			}
+			render() {
+				const { error } = this.state;
+				if (error === null) return this.props.children;
+				const { text, actions } = this.props;
+				return (0, react.createElement)("div", {
+					"data-dsh-market-root": "",
+					"data-dsh-market-crashed": "",
+					translate: "no",
+					className: "notranslate",
+					style: {
+						padding: "24px",
+						display: "flex",
+						flexDirection: "column",
+						gap: "12px",
+						alignItems: "flex-start"
+					}
+				}, [
+					(0, react.createElement)("div", {
+						key: "title",
+						style: {
+							fontSize: "14px",
+							fontWeight: 600
+						}
+					}, text.title),
+					(0, react.createElement)("div", {
+						key: "hint",
+						style: {
+							fontSize: "12px",
+							lineHeight: "19px",
+							opacity: .8,
+							whiteSpace: "pre-wrap"
+						}
+					}, text.hint),
+					(0, react.createElement)("div", {
+						key: "actions",
+						style: {
+							display: "flex",
+							gap: "8px",
+							flexWrap: "wrap"
+						}
+					}, [(0, react.createElement)("button", {
+						key: "reload",
+						type: "button",
+						onClick: () => {
+							this.setState({ error: null });
+						}
+					}, text.reload), actions]),
+					(0, react.createElement)("details", {
+						key: "details",
+						style: {
+							fontSize: "11px",
+							opacity: .7
+						}
+					}, [(0, react.createElement)("summary", {
+						key: "summary",
+						style: { cursor: "pointer" }
+					}, text.details), (0, react.createElement)("pre", {
+						key: "body",
+						style: {
+							whiteSpace: "pre-wrap",
+							wordBreak: "break-word",
+							margin: "8px 0 0"
+						}
+					}, error.message)])
+				]);
+			}
+		};
+		//#endregion
+		//#region src/client/sponsors.generated.ts
+		const SPONSORS = [{
+			"id": "qiniu",
+			"name": {
+				"zh": "七牛云",
+				"en": "Qiniu Cloud",
+				"ja": "七牛云 (Qiniu Cloud)"
+			},
+			"scope": {
+				"zh": "企业级 MaaS 平台",
+				"en": "Enterprise MaaS platform",
+				"ja": "エンタープライズ MaaS プラットフォーム"
+			},
+			"url": "https://www.qiniu.com/ai/free-models/conatus-2026?utm_source=dsh-market&utm_medium=oss&utm_campaign=comatus_202611&utm_content=market",
+			"until": null,
+			"logo": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAQKADAAQAAAABAAAAQAAAAABGUUKwAAANg0lEQVR4Ae1bCXBV1Rn+38vLvhMCWdgSwiqYBGQREIY40ILTUqiDZaYyQGGstSO1tljt2FIoo2Vaact0w3ZUaBHLUItQhUIR2QQiEGQJYEjCkoWQhQSyL6/fd967Lzcv7yW5N3nKTPzhvXfvueeefzn/+bdzYomet9te19AivRGCAqxiq61vkbq6ZhFLLxOBXcSOj81CxrVPL5MBebf2Mp7bsfulANqJpJc1mNOARniNehjO+wVIC2kyAcYF0NQizz0xTJbPSzaN1ASd3l8B4yu+kSw/WJgiAtqMgnEBNNulAYhe/3G6fHc+hFDb5BknfYyvAbifBg2bfpQOmoAPtBkF4wJA8LB5z3XJuXlPNj6bKk99c6gI4wgdbnrViFB/kRY0+kIQxAWcxE0aPgMtW/ZeFwFtRsH4G3Ced6saZM3my2Lzs8iffpguq1eMFiuZ1ang9p9NlC0vjpcgG1DohGOUwHb9gYO4iJO4/UADaSFNooKadm902GBcABwu0E+27rsuHxwvVjh/vmSUbF8zSQb1C1FLwg6j1IC1+e3ZgyRjfD/Yih4wmBQiVJ44iIs4ye/7oOFt0EKazIA5AQBxM2bh+787K0VldQrvgukJcvSPM5RBsoHYi9eqVPus8bGOpWCGOr7DJQSBUrtp7IiDuAhFpXWKBtJiNpS3qZHMfEG1c2/ckyWvnJJ3102WEMzAgNhg2bRqnDz5lUFSea9RjTojta+IP2aHRFppHboA6KqWE9Q9NCJAvjYjUVY+niKTH+jjerkGQlnyq1OSBxrMzj4HswTPec9e251kCO8unDVQ3noJ6z2gvRrWNeD56pNy4NRtqa6BUGipXUG4JhC00YNxtrGmQ8MC5MGkcHlscpwsAPOjBoe7GOcFs9clr34i7+y9IRLUHmebzt5ugCoY73ZfAIqiZpmfkSh/WzVeosNh/d2gBYzlFdbIudxKOZ9XJXnFNXK7ol44iwRqT2x0oCTFhciYIREydmiEJCeEebRpd+42ynfWn5Z/Hbhpnnki7VEBcEBowgSo6F8QH6QPi2JLj8OZz+7IU78+I5nny7vHPClzCsDPf9ii1U0MIjRtNEs2bELhrVrZhpmx4F9qSqQE+puzse4k3IP137A9R5Zj5nMLqru15vVj+4PmnlkC+lFp7LBGx46Ikp2/nCxJCaH6p4auK6Du735UIL/dcVXOXbnjCHS6akg7w+TUAPNewBsCEgjjcu5SBdZ8lUsAJVjzzTCA8X2DvL2p2tkvC6r+H/j3944VSz6iPBpG08auQ2yoCHXy3Pxj0Hzjdq3r/QswfvQGKQPDJDk+VOL6BEposAN9NVS8uLxecouqJbewWkrKEVswu8MsoWbVdffpwtb1C98JADRcv1XjomTc8CjxD7TK8axSOX621MGcK0YGk/iv4gTONtwk/f/SOYMlIz1WNu3Olz3QCOkhm+IiChe+EwCYuFbSqgGRYf4y7YEY2V4EoXQUtsKGRIXaZMfayZIxDlEk4M3/ItSlbfEB9IyZ9kQYbMFN3RJgl1nMCzrjA6r/08UjXcwzzL0O76LsgCc83WzzqQCKK+qk1hnskM5HUmMkEJrgVQgImCKiAmVRxgAXW/dqmuR2Zb0jenS19tyF7wSApVyGFLXiLtJUJ6QkhslohrW6tFl7pn4b7TIOQVQicgoN1BjMK3xEqY+GBfmwAXcxeyUVrQJg/SAjDclRs5fSFdofTcdzHdxiyAwv4TEu1vUze+lDAYBPBESFZa2GkETOmdTfsQTo5tw/FJDT8GkMFZTifW8ao3Xqxq/vvACJwoxe07lCNk1HevzSstGyP/OW2HVRHas8c6fEy8RRrSkv+6v3feQBOL5vBYBlcOBMqTzNCrITGH+vWz5afZj9oovKgvnrCT7E+12uI3gaoJM23y0BIkZ94P1jRXIiu8IjGRrT2q97p0MImKgpqqDi/rCH7n0rAMwqc/7F6zLlxEWksAbg6LkyWYpqUz3thBftMDCc1649nw16QgUjFhxkw/qPkcH9Q8SKte8pHiKfLVjveYgWD31aKvWMIbBkfAIggBUh39oAjXIwUYuZ3Psx4nkvHlDrqn5pHBn3+4p5HbLPRwBEyOn1UDPU0fKFXPpIv74QXkwh7fUCML8EaMVopCjCrqo2HT/fo99TFg83KJurte5tvXc1CNLGNKgH5gQAukNhQZfOS5JSJDzbPizo3FXhnbBgfwlGUaSyukka6ptkCErf86fGS+aVCjmSVQZBUCqtwDuWy/39rJAbJecZWIQtQ9KlTru1HcLzC7pWcwLAXl8I6v/cmT17tVK2cWfWUzRDYvjh7CIs/uvzaTITFZ7pKw/L5QtlMhLlsdeeGSuv/TNHjqD+h51UR396AXxsEMieV6fI6CHhHW4yE/WCl0+ooKvL2ugUgnEBQI3Xf2+spKVEqf3BQfDrO9dP0cm09ZIzk3m5Qta+kS1BITZ5aES09MOM/mFlqlTXNkpcjCPtnQctSEmYJhYrBAVm/rHvhryDDU+7n01OoRrM2eXq8QYUQDkqyGZCZhMCEOF+38TRjqSFO0FfRxLjDfw4m6gGx0UHoRAapAIdBkRWUK0pTVJCiAzGrhB6KgGoqBFrvwnvrXj1lPcCih4pl483O6Lv53ZtXABgaOGaTBmCmd+Dmb+CsvUTuCf1igE9AnB4l7k8JnYomAwN9pOdRwpl5YYsdLbIzAn95I0Xxsvru/LllTezVa2QWlNRjRoCDGsYqsZxiaEdzj7RES/3IG86d6r1JHR2bVwAGPEaSteM8amWPGl6CSXv9tw7UXOaMZvpWDKED06WqPcpgCKUwgl3qhvRhmIpDKsCCIy1grmoHWx7eYJaao0Ip6lNzCbbq4RFjp0vk2nPHjK8DEwJgAVKf5avAeRPqZ7jVrW1+7JbJQvGchm2trbux44uvAEPTajlgc5cDqro6RxTvQ9muUnyP2SD/WOCsGEaqc4inM+pFIu+HzoT9YX8DiZBDej5y5wAPI/VtpVVHH4YIyCu338SaS19Ou87EpY2Ct45mHVbDh4tko0/GacE8OKmC/LWv3PbltUZixCoPZ+LDXCg6/gbjM+eFCczUf/bjJp+dv5dB9NkXDsuA8J5jIZAY+cKqlQLOjoPPMXCBnzr0QFyC7tFu7g5Am+irD2Eyb2G53BwgpXnDdg/VON1RbgKh+Or2xrA9FWdEtMjrmvEjk5feWHRcMlEMSQbn2UgdM7E/rAb6A+w470EZ/WXR16GxsMLQO25Gqj6z//5vNQhyJo/LV76RgbK+revSHkB9gkZK6gBRCrR76swpJPgkY4hrjjM6pHB3SPTAiChZIZ+fcm8ISCpVQJ2zDIPOig6yS9m+CHsFj8+I0G1uX+NQEDEjwYF2FBZBXW3YrksxkErQiO0ZdFjSVBzHR4UXa/hsAUFwL2EwziFYhRMC4DHaqpQ9k7G9jddmTco574A1ue6v1+WTbvyXAbcDoam4wDV7xFNbsEy+Q2eW2gfAPVYQlTrALzH8QncLeoIEhhUQYOMgjkBABEjL/r/qWNjHJ7ADTM1JA/u8ihUk3uBnNUCfYUYAgiLDFAHLs9erZKzVyrRjy7OCYj/aRvWbrkkfcIDvGYCxMO1v+NQoSkBdK8kBsTK0lPwjqWtke80enjgbvXZj/0BdH8BUOkm2ANlCB3Nbb9p5TuKg1VvDMi17+Ye2w7kdgc6ulUS4y5Pi8UqflDTRhyx8Qcjehnw2A1PcZJXMugHZnlP389CZwuSoxaLXeruQYhUXRJPt0lXxiM7VAa2c4rpEbBtpoDX7MdnNMB83g0wtQRI2y+eHCGNiAJtkPy+0yUyHPt+cx+OQ6yP7ey917Ch2SAxcFNpSRGyE+5rTHKkDITVDwQDOTjnc+CTEjiPFpk5JValxzwcwW2zPZklMgkGkzvLudgVnoWdooMojz+CA1hWCGn7R4XCswbcek9G/kDhU8Ac99RlHKOhIA2AKQFQ6PFIbpoxEzkgPLFvsJqIEOWi7FINA8k8n4ekEhHF7Uaq2x/eIhr7/vwjpeHw7bmFoUprxmCzlFVingALR+yflhyBM4IRUosc4uExMTJqQJhk4rgN5KpOlghcI7fXwgNtEg0bkotcZDbun9n4qQG2W7tyMg2DFsLyWMuMtFgVy9eA6dI79VJcVq+092R2uWzFibFj2A9gXt8EYVEIDUhaAmDgIhDQcN3zjCCBhyHTcLLsIoKmjxE3TEXGWVPXpJKcgUi8eNhqF6rKqdCEBri/cwh9aYg5BlPmUQOx69yprWjPqnEjiGXHv7eb+WAMiLeJP2Y5r7haqlDlSUO8XoiM7AY2NG2Y1QokOUE4JpuKg4/5qPVTIyrRRkZ5AIqqO3JQODSmSR2g4lHbHHgOqjYTJVabqA2nkUfEQ3jFCHwSkFLXI85gVSkKqTgDKl5TuHl6L9Oe17Yt4KN7J0VpiGiXKHXMqLJ2mlHSliF/2QezpIwW+9J48R7CUMBrAvvymmuY47Af1xrshBqf7/Jem+U213iXa8TI+sdw3fICHhMPEu0ObHK1O5+77vFMT7TWrv1yLC3BIcME7df92rGSVBcjX6ZsgBEE93vfLwVwv8+Qr+mzKZsCg9DrADyTdxs3KvR2pTcJgu78/+8vKZ1vFswbAAAAAElFTkSuQmCC"
+		}, {
+			"id": "fenno",
+			"name": {
+				"zh": "Fenno.ai",
+				"en": "Fenno.ai",
+				"ja": "Fenno.ai"
+			},
+			"scope": {
+				"zh": "编程模型 API 中转",
+				"en": "API relay for coding models",
+				"ja": "コーディング向けモデルの API 中継"
+			},
+			"url": "https://api.fenno.ai/?utm_source=dsh-market&utm_medium=oss&utm_campaign=fenno_202611&utm_content=market",
+			"until": null,
+			"logo": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAAoCAYAAAABk/85AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAYKADAAQAAAABAAAAKAAAAADBsEzGAAAL50lEQVRoBe1aeWwc1R3+5tzL6/uI7dwhhAQTQjgSaFS1Sk9BW/WQEGqFql5S+bNq/ylFrVpRqSr/tBL80QJSC0VtaUSqRBUgLgUCDTGQi2ASE2KcOPG9nt2Z2bn7vdms7RgnWh9KUrIvWs/Om/fmvfd9v3sjRVGUR7VdNgQkEhBdttWrC0OuYnB5EagScHnxr2rAZcZ/kQmoepM587m4JkiaWj9f9OD54VRH9dusCCwOAZOSX/pytM/AywdyyBeDWRetdk4hsDgECMk/R8ILBwzs2mdBSdVjtgg3iqpaMQU/FssHEH0pwn/2G9j9uoXlyxohy+F5BFheiDHTRRhOqsv0fVy139X5n7wMZMnw7+o28cweD13XZaElJCpEBElVMFTw0XvWR84N0FoD3LxUm/+Sn8CZCyBgyuM++04Bf3/RwZJmHbU1MvwggpxQsf9DGyeGAiQTabTUylhSS1IWx+h9YqhYABwlDXj5sIlHd7lI6BpamxOIQko/zbzHCkdE4Ntak0jpQEMqRGtWLbuKTwyACz3IgjSgu9fGw/+wECoJNNQR5Uhi6Ck0gASEIbRIRjP73ZSDZfURdEUBPQOmdGeh2///nz9vDTh2xsXvnzSQy0vQNImmRYLLuD+g9AcEOSAZER1uQOdbk9LQmNUrlP6ybymDO/1efBfepXQthV7l7xcaL/rLY8RVtPK1dHf+34s9mz7yYuMu9mz6O+YZBY3kffzxXwX0nwkhM/phyAP6WBQ9BTlTwnAuwig/lg+EfO54EcadsELJn6kf4r58IPGdZMdvKo8r9Yljleq65X7RI1p5bvkq+sSY6feir9xmzi/3l6/leaVxIqiLw+1yd/zeyZvypAte52yCfK741+dNHP9Igu/ZCBM1CAMJuZyEgf4irLxDUlQkErT7TSE2bFBw/boMxuwInRlhfqgZJKUE4sf3dWbYxH8PTCCSFT7kOI79zK316O1z0D/oQFLkGOiGbIQ7NjXidSZ8RgHoWpvEqs4M9hwcR77gYWtXLXyaw+73C9CTwKc31nJcgP29FpprIty6roH7lBileXjzmIFhClUmI2Hzygyuac58fGPnekxq+ZEhFy41flWdjA5qt8C8SPZ7iUfEd66QGYyI7VfQKidAkErSXz1qYu8RSnbgw3GKCDI1cIoKJnI2CgIJRkCapiDwMyQoiT0jNkZyBrbdkUGz7aMzLcLQC0tZzwkTP/3dSahykv7Egara2PHwRvzz2Rx2vmLG5i6kWdu4xsLm627BI0+N4ugpCdtu8PHQz67Fozt5f9zB4w/oMIoqHnzMgKxF+Pl3wzgg+O3fJnDTapcE1OPdAQsP7RzG6XFqp0Rt1lXszBr43rY6fO76lhnwlQDoHrDx5BHuKy1jy9IA37mmESqPY9P0vsY8x1cCfC0po1YI0IWPOfnuygmgJBYcH//eS7uipOA6BiUsQECj73k+bNuGZeah0iH77Av8PNLpBPQaDT0fSigqPkY2RNjY6qOrMUmAubtZNihU2vUCNDWZuOfrzUhTw1pbEnBIrOvb2HZzEutXagx5m6DQ9Pl06+BZ33jXx+5Xz1LaVSZ7xdgshPRD4rnEAU8+N4x7v9rKg8uxn7L9CI89N4RjA8C6Ng/bN6dxqN/FO6cVPLF3EF3Lahg2pyaBEl8cSvmeE3maWgmZQMV7I0UMd7poTzH64zqOw0RT5Ted9niWs533snM3lRPAN+4/7qLvjIKUSLSCYJKAwPeRnxiDYeTRQvW+/cYUbrmhAW0tIfzIo5oDozZg0md4aRVSEzdMVZ1tjyJTdl0fw4aCHc+NYfUyCd//Rgo+D+e6IfYfstF92MAXtqRw95dl2D77HQGrjMefGYbO0DfwCASFwOce7WIROgk41h/i6Zdy3DNJ8T2MG0wQ+y1EboRvbmnAnbd1YPOgiUNPnMQpg+ccMmcQIOHYqIWDpzysaY3QVg8czvk4NJJH+zLaOCE4rhsXIMM0M84KW8UEiMjjzaMewkjjcUJQ0GJQPJqDopXH0EA/blqr4Bc/Xo+tm5ZQpc83ggHnKOcqHyIULUUys5BAKQsInEftyhMki75F5BUiovLp6Zd3yFi2RMe1q5LcC8eS/KRkY9N1abxxyIFO86fKjMP4TKAiyFy3ioGAC7z9Lplidk6GoDH+U0KaUa51Nl+M4RqlP/AdzqO2JinJM9tLPfQ3lgsz0FDwWO3l3O5BA5/tbIqFKaAl8CT/3NozZ89+XzEBFqOY06eBBEFUqditLWl8cMJF4HqMeAxsWFrAnx/cjo6WOkJNtZ8sutFp8p/MLTJHIybCsZY3Iw45eRN3ih6XpK6hA3/64dtRn9Gh6Qr8UJg7CoCfgCYl8WG/g9FxqhXf53oOvn3XCgwND+LEWdJLOyyaIMghQR10lttuasKv/zIARUrTZIZoqNVx61odJ96YwFMv53CkrwcnRxyYtocbOwOsbquL31H+M2h52HdsgqRFODPsYJwlFikr4wMD6OX5l9bXci0PRITrltYvz73YteI8YIIRRIH/f0LloTQiuKS1Dtm0FNt9ORjCb36ymeDXx+DHCwpcz30kYW5i1Akvrz5tsy0SBt4KSS1/xDxh1XVlFCmlgJZsErVZYYdpxbU8TV8OPcfHsOv5j/Dinj6Gtz4Skgk5NNDerOFHd7dRG3L8GIJugh0gLU0wSLBw17YWbN0gQfVzSERWHAH98Csr8cWNGhzbxGsHhjA2MoGulgD33bmWuQvzFu6t3N7qHcY4n69OOrj/8+341faV6GJ5JeTct08NEfQQCdpCzbEhibNV2Cr+XxEnBxz88hGb/OrIUqJaWHbo6xNAnMSXtmr404O3xZJdCjCnm5YpjsW2bGbI45QQnTctqoiIpg4pSMozjP2gnyAlFKxd0QCFYadofWdE0ucSuPgWCnV3dUc9Bs7mY6e9tLOO5RCFmjFO+w90LmF4TBr6B0xkKCgrOrKMxlzmKEVk6MOWt9eTIAkO9/M+5wyNmqhlhHbt8gZqXVIEc7H8lNcbNCzkqAVZmrj2xgTPqmDELqLAvgQT0aaaDP1ckQEAtSupI60xDq+gVUzA6UEXD/yhQDOSRm2Ditq6kBsGXtnbg091+bj/vk2UGOH9Bfhl0IW0RzAZOBVpf+jyYDGaEv+a+WnT6JA5/lI0seZ0sRBrCgmvdH1fmL9Ysin1QnM5X2FlURAk8hphcUWhUeQWEqMzca2kVewD6msU1NEa5Ezac4qHxFAMjEq2b1mHxrox9gfIZkQsIroj5K0IwxxruBICEShTIGQKvEwJUoSj4s5nAlLJhuc7Zra1KgVfrCnLqkj4Y62YdQ/07YIUWtc5tYoJyGQUrO6UsO8wwzv+1MiqA601bSqBtQqN2P0Cy9FtOnTW5EQ45kcckFKhpCN+eHySJnIThVLHIWCuEp9GSKZoswEUP7hC/lQi0QJ7cZq5cFAxAQKHOzZreOuAg7CYgseliqRbZsVTot3LMb62WPzRaV+TBF7n7wKqeC5CH9aCOJARoAyN2lGnhMhKWqzKYrdz2bDYx5Xc5nqWORFw4/Vp3LCmiPd6fZaaNdDlMNxk2EXbGNtAASalXIAeMtOUCbyk8MpVJPbxKzXBpe1nRkATJIKMuW74SgZ/PnsThqDipjJ7uedbNWistRm6UbAthpP5kAU4ZrkmP+xjUACTcbZJ/2AydyiSBJdksLoQ5wztTJKa6HxjVaXzEvnBlW5+KgZoHgPnRIB4f0dnEj+4l5FQapzAE1hLg2vJKDoKbEdFoSgTfCkmwCLwNoEvMgoSydIy1cP6VCqOHER6JsC/2lvFYehMoE6fKmDHDgPv9aQgJXQk+HtvilmryjJIooa/hmVYXWR5V2EJuj7rYlMHy9ItmbgEUJL4KvgC03kTICaHrIUcPGhgX7eNj4ZZLaRj1dI6kgQ/nQUrlhJWLVewvjOBZpLDGfxHHxEHq+IN1bYgAqbgi5BjbWTCYC2EP1hojPdrmFXWZVRoovh1Xout/3k9V/PNIhFwNUO4sLPP2QkvbLnq7JkIVAmYicglvq8ScIkBn7lclYCZiFzie1GK4C+21Xa5EPgfxH5MAuje8YkAAAAASUVORK5CYII="
+		}];
+		//#endregion
+		//#region src/client/optional-primitives.ts
+		function optionalComponent(name) {
+			let value;
+			try {
+				value = _deepseek_ai_dsh_client_ui_primitives[name];
+			} catch {
+				return null;
+			}
+			if (typeof value === "function") return value;
+			if (value !== null && typeof value === "object" && "$$typeof" in value) return value;
+			return null;
+		}
+		/**
+		* `Tag` — the host's read-only chip, for facts with no status meaning
+		* (capabilities, categories). Null on hosts older than 0.1.7-rc.2.
+		*/
+		const HostTag = optionalComponent("Tag");
+		const HostSwitch = optionalComponent("Switch");
+		const HostCheckbox = optionalComponent("Checkbox");
 		//#endregion
 		//#region src/client/market-mark.ts
 		/**
@@ -4689,7 +5385,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			return `https://github.com/${GISCUS.repo}/discussions?discussions_q=${encodeURIComponent(term)}`;
 		}
 		/** giscus's own locale codes, which are not the ones this plugin uses. */
-		const giscusLang = (lang) => lang === "zh" ? "zh-CN" : "en";
+		const giscusLang = (lang) => lang === "zh" || lang === "zh-CN" ? "zh-CN" : lang === "ja" ? "ja" : "en";
 		//#endregion
 		//#region src/client/CommentsModal.tsx
 		/**
@@ -4913,6 +5609,434 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				})]
 			});
 		}
+		//#endregion
+		//#region src/release-candidates.ts
+		function semver(value) {
+			if (typeof value !== "string") return null;
+			const matched = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(value);
+			if (!matched) return null;
+			const prerelease = matched[4]?.split(".") ?? [];
+			if (prerelease.some((part) => /^\d+$/.test(part) && part.length > 1 && part.startsWith("0"))) return null;
+			return {
+				core: [
+					BigInt(matched[1]),
+					BigInt(matched[2]),
+					BigInt(matched[3])
+				],
+				prerelease
+			};
+		}
+		/** Accept a bounded exact npm release version, including prereleases. */
+		function isExactReleaseVersion(value) {
+			return typeof value === "string" && value.length <= 256 && value === value.trim() && semver(value) !== null;
+		}
+		//#endregion
+		//#region src/client/discovery-scan.ts
+		const BATCH_SIZE = 64;
+		const BATCH_BYTES = 32640;
+		const UNAVAILABLE_RETRY_MS = 3e5;
+		const REQUEST_RETRY_MS = 3e4;
+		const MUTABLE_SOURCE_TTL_MS = 864e5;
+		const REVISION = /^[a-f0-9]{64}$/;
+		const HOST_FILTER_KEY = "dshm-host-filter";
+		const unavailable = {
+			status: "unknown",
+			basis: "unavailable",
+			requirement: null,
+			declarations: []
+		};
+		function initialPreference() {
+			try {
+				return localStorage.getItem(HOST_FILTER_KEY) !== "all";
+			} catch {
+				return true;
+			}
+		}
+		function describeEntry(plugin) {
+			const key = hostCompatibilityKey(plugin);
+			if (key === null) return null;
+			const version = typeof plugin.version === "string" ? plugin.version.trim() : "";
+			if (!key.startsWith("https://")) {
+				const npmVersion = isExactReleaseVersion(version) ? version : void 0;
+				return {
+					key,
+					fingerprint: npmVersion ?? "",
+					npmVersion,
+					expires: npmVersion === void 0,
+					bytes: entryBytes(key, npmVersion)
+				};
+			}
+			const revision = plugin.compatibilityRevision;
+			const githubRevision = typeof revision === "string" && REVISION.test(revision) ? revision : void 0;
+			return {
+				key,
+				fingerprint: githubRevision ?? JSON.stringify([plugin.tarball ?? null, version]),
+				githubRevision,
+				expires: true,
+				bytes: entryBytes(key, githubRevision)
+			};
+		}
+		const encoder = new TextEncoder();
+		function entryBytes(key, hint) {
+			const keyBytes = encoder.encode(JSON.stringify(key)).byteLength;
+			return keyBytes + 1 + (hint === void 0 ? 0 : keyBytes + encoder.encode(JSON.stringify(hint)).byteLength + 2);
+		}
+		function requestBody(entries) {
+			const packages = entries.filter((entry) => !entry.key.startsWith("https://")).map((entry) => entry.key);
+			const github = entries.filter((entry) => entry.key.startsWith("https://")).map((entry) => entry.key);
+			const versions = entries.filter((entry) => entry.npmVersion !== void 0).map((entry) => [entry.key, entry.npmVersion]);
+			const revisions = entries.filter((entry) => entry.githubRevision !== void 0).map((entry) => [entry.key, entry.githubRevision]);
+			return {
+				packages,
+				...github.length > 0 ? { entries: github } : {},
+				...versions.length > 0 ? { versions: Object.fromEntries(versions) } : {},
+				...revisions.length > 0 ? { githubRevisions: Object.fromEntries(revisions) } : {}
+			};
+		}
+		function readVerdict(value) {
+			if (value == null || ![
+				"compatible",
+				"incompatible",
+				"unknown"
+			].includes(value.status) || ![
+				"manifest",
+				"undeclared",
+				"unavailable"
+			].includes(value.basis) || value.requirement !== null && typeof value.requirement !== "string" || !Array.isArray(value.declarations)) return unavailable;
+			return value.basis === "unavailable" ? {
+				...unavailable,
+				...value.catalogChanged === true ? { catalogChanged: true } : {},
+				...typeof value.retryAfterMs === "number" && Number.isFinite(value.retryAfterMs) && value.retryAfterMs >= 0 ? { retryAfterMs: value.retryAfterMs } : {}
+			} : value;
+		}
+		/** Shares on-demand badge lookups across the three market surfaces. */
+		var DiscoveryScan = class {
+			onCatalogGenerationChange;
+			snapshot;
+			listeners = /* @__PURE__ */ new Set();
+			entries = /* @__PURE__ */ new Map();
+			results = /* @__PURE__ */ new Map();
+			demand = /* @__PURE__ */ new Map();
+			pending;
+			hostVersion;
+			catalog = null;
+			boot;
+			enabled;
+			context = 0;
+			catalogRequest = 0;
+			resumeRequest;
+			catalogRefreshUsed = false;
+			active = false;
+			gone = false;
+			timer;
+			verdictsChanged = false;
+			constructor(onCatalogGenerationChange) {
+				this.onCatalogGenerationChange = onCatalogGenerationChange;
+			}
+			getSnapshot = () => {
+				return this.snapshot ??= {
+					enabled: this.enabled ??= initialPreference(),
+					catalog: null,
+					gone: false,
+					hostVersion: void 0,
+					verdicts: Object.create(null)
+				};
+			};
+			subscribe = (listener) => {
+				this.listeners.add(listener);
+				return () => {
+					this.listeners.delete(listener);
+				};
+			};
+			reset() {
+				clearTimeout(this.timer);
+				this.timer = void 0;
+				this.active = false;
+				this.gone = false;
+				this.context += 1;
+				this.hostVersion = void 0;
+				this.catalog = null;
+				this.catalogRequest += 1;
+				this.resumeRequest = void 0;
+				this.boot = void 0;
+				this.enabled = void 0;
+				this.entries.clear();
+				this.results.clear();
+				this.demand.clear();
+				this.catalogRefreshUsed = false;
+				this.pending = void 0;
+				this.verdictsChanged = false;
+				this.snapshot = void 0;
+			}
+			setEnabled(enabled) {
+				if (this.getSnapshot().enabled === enabled) return;
+				try {
+					localStorage.setItem(HOST_FILTER_KEY, enabled ? "compatible" : "all");
+				} catch {}
+				this.enabled = enabled;
+				this.catalogRefreshUsed = false;
+				if (enabled) {
+					const keys = this.visibleKeys();
+					this.allowRetry(keys);
+					if (keys.some((key) => this.results.get(key)?.verdict.catalogChanged === true)) this.refreshCatalog();
+				}
+				this.update();
+			}
+			async loadCatalog() {
+				const request = ++this.catalogRequest;
+				const response = await fetch(api("/dsh-market/registry"), { cache: "no-store" });
+				if (request !== this.catalogRequest) return "superseded";
+				if (response.status === 404) {
+					this.setUnavailable();
+					return "gone";
+				}
+				const body = await response.json().catch(() => ({}));
+				if (request !== this.catalogRequest) return "superseded";
+				if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : `HTTP ${response.status}`);
+				if (body.registry === void 0) throw new Error("the catalog response carried no data");
+				const host = body.hostVersion;
+				this.setCatalog(body.registry, typeof host === "string" || host === null ? host : void 0);
+				return "loaded";
+			}
+			setCatalog(catalog, hostVersion) {
+				if (catalog.updated !== this.catalog?.updated) this.onCatalogGenerationChange();
+				this.catalog = catalog;
+				this.active = true;
+				this.gone = false;
+				const next = /* @__PURE__ */ new Map();
+				for (const plugin of catalog.plugins) {
+					const described = describeEntry(plugin);
+					if (described === null || next.has(described.key)) continue;
+					const previous = this.entries.get(described.key);
+					next.set(described.key, previous?.fingerprint === described.fingerprint ? previous : described);
+				}
+				this.entries = next;
+				if (hostVersion !== void 0 && hostVersion !== this.hostVersion) {
+					this.hostVersion = hostVersion;
+					this.invalidate();
+				}
+				for (const [key, result] of this.results) {
+					if (next.get(key) === result.entry) continue;
+					this.results.delete(key);
+					this.verdictsChanged = true;
+				}
+				this.markOversizedEntries();
+				this.update();
+			}
+			setBoot(boot) {
+				const previous = this.boot;
+				this.boot = boot;
+				if (previous === void 0 || previous === boot) return;
+				this.invalidate();
+				this.markOversizedEntries();
+				this.catalogRefreshUsed = false;
+				this.update();
+			}
+			setUnavailable() {
+				if (this.gone) return;
+				this.active = false;
+				this.gone = true;
+				this.catalogRefreshUsed = false;
+				this.catalogRequest += 1;
+				this.invalidate();
+				this.update();
+			}
+			resume() {
+				if (this.resumeRequest?.id === this.catalogRequest) return this.resumeRequest.result;
+				const result = this.loadCatalog().finally(() => {
+					if (this.resumeRequest?.result === result) this.resumeRequest = void 0;
+				});
+				this.resumeRequest = {
+					id: this.catalogRequest,
+					result
+				};
+				return result;
+			}
+			setDemand(owner, catalog, keys) {
+				if (catalog !== this.catalog) return;
+				const before = this.demand.get(owner)?.keys ?? [];
+				if (catalog === null || keys.length === 0) this.demand.delete(owner);
+				else this.demand.set(owner, {
+					catalog,
+					keys
+				});
+				const arrived = keys.filter((key) => !before.includes(key));
+				this.allowRetry(arrived);
+				if (arrived.some((key) => this.results.get(key)?.verdict.catalogChanged === true)) this.refreshCatalog();
+				this.update();
+			}
+			removeDemand(owner) {
+				this.demand.delete(owner);
+				this.scheduleRetry();
+			}
+			allowRetry(keys) {
+				for (const key of keys) {
+					const result = this.results.get(key);
+					if (result !== void 0 && Number.isFinite(result.retryAt)) result.automaticRetryUsed = false;
+				}
+			}
+			invalidate() {
+				this.context += 1;
+				this.pending = void 0;
+				this.results.clear();
+				this.verdictsChanged = true;
+			}
+			markOversizedEntries() {
+				for (const entry of this.entries.values()) {
+					if (entry.bytes <= BATCH_BYTES) continue;
+					this.results.set(entry.key, {
+						entry,
+						verdict: unavailable,
+						retryAt: Infinity,
+						expiresAt: Infinity,
+						automaticRetryUsed: true
+					});
+					this.verdictsChanged = true;
+				}
+			}
+			visibleKeys() {
+				const keys = /* @__PURE__ */ new Set();
+				for (const demand of this.demand.values()) {
+					if (demand.catalog !== this.catalog) continue;
+					for (const key of demand.keys) keys.add(key);
+				}
+				return [...keys];
+			}
+			update() {
+				const previous = this.getSnapshot();
+				const enabled = this.enabled ?? previous.enabled;
+				const now = Date.now();
+				for (const [key, result] of this.results) {
+					if (result.expiresAt > now) continue;
+					this.results.delete(key);
+					this.verdictsChanged = true;
+				}
+				this.pump();
+				let verdicts = previous.verdicts;
+				if (this.verdictsChanged) {
+					verdicts = Object.create(null);
+					for (const [key, result] of this.results) verdicts[key] = result.verdict;
+					this.verdictsChanged = false;
+				}
+				if (previous.enabled === enabled && previous.catalog === this.catalog && previous.gone === this.gone && previous.hostVersion === this.hostVersion && previous.verdicts === verdicts) return;
+				this.snapshot = {
+					enabled,
+					catalog: this.catalog,
+					gone: this.gone,
+					hostVersion: this.hostVersion,
+					verdicts
+				};
+				for (const listener of this.listeners) listener();
+			}
+			pump() {
+				if (!this.active || this.pending !== void 0) {
+					this.scheduleRetry();
+					return;
+				}
+				const now = Date.now();
+				const entries = this.visibleKeys().flatMap((key) => {
+					const entry = this.entries.get(key);
+					return entry === void 0 ? [] : [entry];
+				});
+				const fresh = this.visibleBatch(entries.filter((entry) => {
+					const result = this.results.get(entry.key);
+					return result === void 0 || result.expiresAt <= now;
+				}));
+				if (fresh.length > 0) this.dispatch(fresh, false);
+				else if (this.enabled ?? this.getSnapshot().enabled) {
+					const retry = this.visibleBatch(entries.filter((entry) => {
+						const result = this.results.get(entry.key);
+						return result !== void 0 && result.retryAt <= now && !result.automaticRetryUsed;
+					}));
+					if (retry.length > 0) this.dispatch(retry, true);
+				}
+				this.scheduleRetry();
+			}
+			visibleBatch(entries) {
+				let bytes = 0;
+				let end = 0;
+				for (const entry of entries) {
+					bytes += entry.bytes;
+					if (bytes > BATCH_BYTES || end >= BATCH_SIZE) break;
+					end += 1;
+				}
+				return entries.slice(0, end);
+			}
+			scheduleRetry() {
+				clearTimeout(this.timer);
+				this.timer = void 0;
+				if (!this.active || !(this.enabled ?? this.getSnapshot().enabled) || this.pending !== void 0) return;
+				let next = Infinity;
+				for (const key of this.visibleKeys()) {
+					const result = this.results.get(key);
+					if (result === void 0 || result.automaticRetryUsed) continue;
+					next = Math.min(next, result.retryAt);
+				}
+				if (Number.isFinite(next)) this.timer = setTimeout(() => this.pump(), Math.max(0, next - Date.now()));
+			}
+			dispatch(entries, retry) {
+				const batch = {
+					entries,
+					retry,
+					context: this.context
+				};
+				this.pending = batch;
+				this.request(batch);
+			}
+			async request(batch) {
+				let responseBody;
+				let requestFailed = false;
+				try {
+					const response = await fetch(api("/dsh-market/discovery-compatibility"), {
+						method: "POST",
+						headers: { "content-type": "application/json" },
+						body: JSON.stringify(requestBody(batch.entries))
+					});
+					if (response.status === 404 && batch.context === this.context) this.setUnavailable();
+					if (!response.ok) throw new Error(`HTTP ${response.status}`);
+					responseBody = await response.json();
+					if (responseBody?.plugins === null || typeof responseBody?.plugins !== "object" || Array.isArray(responseBody.plugins)) throw new Error("Invalid compatibility response");
+				} catch {
+					requestFailed = true;
+				}
+				if (this.pending === batch) this.pending = void 0;
+				if (batch.context !== this.context) {
+					this.update();
+					return;
+				}
+				const responseHost = responseBody?.hostVersion;
+				if ((typeof responseHost === "string" || responseHost === null) && responseHost !== this.hostVersion) {
+					if (this.hostVersion === void 0) this.hostVersion = responseHost;
+					else {
+						if (this.visibleKeys().length > 0) this.refreshCatalog();
+						requestFailed = true;
+					}
+				}
+				const now = Date.now();
+				let catalogChanged = false;
+				for (const entry of batch.entries) {
+					if (this.entries.get(entry.key) !== entry) continue;
+					const verdict = readVerdict(requestFailed ? void 0 : responseBody?.plugins?.[entry.key]);
+					if (verdict.catalogChanged === true) catalogChanged = true;
+					const retryAt = verdict.basis !== "unavailable" || verdict.catalogChanged === true ? Infinity : now + (verdict.retryAfterMs ?? (requestFailed ? REQUEST_RETRY_MS : UNAVAILABLE_RETRY_MS));
+					this.results.set(entry.key, {
+						entry,
+						verdict,
+						retryAt,
+						automaticRetryUsed: batch.retry,
+						expiresAt: verdict.basis !== "unavailable" && entry.expires ? now + MUTABLE_SOURCE_TTL_MS : Infinity
+					});
+					this.verdictsChanged = true;
+				}
+				if (catalogChanged && this.visibleKeys().some((key) => this.results.get(key)?.verdict.catalogChanged === true)) this.refreshCatalog();
+				this.update();
+			}
+			refreshCatalog() {
+				if (!this.active || this.catalogRefreshUsed) return;
+				this.catalogRefreshUsed = true;
+				this.loadCatalog().catch(() => {});
+			}
+		};
 		//#endregion
 		//#region src/client/download-stats.ts
 		const validCount = (value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -5206,6 +6330,25 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		* decision — off screen. It reports the batch as one aggregate ("installing
 		* 3 / 7") instead of one line per plugin.
 		*/
+		const repairStates = {
+			reinstalled: "startupRepairReinstalled",
+			verified: "startupRepairVerified",
+			abandoned: "startupRepairAbandoned"
+		};
+		const repairCauses = {
+			"version-changed": "startupRepairVersion",
+			refused: "startupRepairRefused",
+			"not-composed": "startupRepairNotComposed",
+			timeout: "startupRepairTimeout",
+			unknown: "startupRepairUnknown",
+			abandoned: "startupRepairAbandoned"
+		};
+		const checkoutRecoveryCauses = {
+			"profile-busy": "checkoutRecoveryBusy",
+			"package-run": "checkoutRecoveryRun",
+			"writer-lock": "checkoutRecoveryLock",
+			"check-failed": "checkoutRecoveryCheck"
+		};
 		/** What the two clash outcomes are, in the order they are offered. */
 		const CHOICES = [{
 			id: "keep",
@@ -5383,11 +6526,15 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			}
 		}
 		function OperationsPanel(props) {
-			const { t, records, open } = props;
+			const { t, records, open, startupRepairEntries = [], checkoutRecoveryEntries = [] } = props;
+			const hasStartupRepair = startupRepairEntries.length > 0;
+			const needsCheckoutRecovery = checkoutRecoveryEntries.length > 0;
 			const setOpen = props.onOpenChange;
 			const wrapRef = (0, react.useRef)(null);
 			const summary = summarize(records);
 			const busy = summary.running + summary.queued > 0;
+			const showStartupRepairBadge = !busy && summary.attention === 0 && startupRepairEntries.some((entry) => entry.state === "pending" || entry.state === "abandoned");
+			const attention = summary.attention > 0 || showStartupRepairBadge || needsCheckoutRecovery;
 			const waitingOnHost = records.some((record) => record.hostOperationId !== void 0 && record.state === "queued" && record.waitSince !== void 0);
 			const [, setClock] = (0, react.useState)(0);
 			(0, react.useEffect)(() => {
@@ -5413,14 +6560,14 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			}, [open, setOpen]);
 			const waitingOnAgents = summary.running === 0 && summary.blocked > 0;
 			const batchLabel = waitingOnAgents ? t("opWaitingAgents").replace("{0}", String(summary.blocked)) : `${t("opInstalling")} ${String(summary.progressed)}/${String(summary.total)}`;
-			const label = busy ? batchLabel : summary.attention > 0 ? `${String(summary.attention)} ${t("opNeedsYou")}` : t("opTitle");
-			const quiet = records.length === 0 && !open;
+			const label = busy ? batchLabel : summary.attention > 0 ? `${String(summary.attention)} ${t("opNeedsYou")}` : showStartupRepairBadge ? `${t("opTitle")} · ${t("startupRepairBadge")}` : t("opTitle");
+			const quiet = records.length === 0 && !showStartupRepairBadge && !needsCheckoutRecovery && !open;
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 				className: Market_module_css_default.opWrap,
 				ref: wrapRef,
 				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
 					type: "button",
-					className: quiet ? `${Market_module_css_default.opEntry} ${Market_module_css_default.opEntryQuiet}` : summary.attention > 0 ? `${Market_module_css_default.opEntry} ${Market_module_css_default.opEntryAlert}` : Market_module_css_default.opEntry,
+					className: quiet ? `${Market_module_css_default.opEntry} ${Market_module_css_default.opEntryQuiet}` : attention ? `${Market_module_css_default.opEntry} ${Market_module_css_default.opEntryAlert}` : Market_module_css_default.opEntry,
 					"aria-expanded": open,
 					onClick: () => setOpen(quiet ? true : !open),
 					children: [
@@ -5428,12 +6575,12 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 							className: Market_module_css_default.spin,
 							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(IconLoadingOutline16, { size: 12 })
 						}),
-						quiet ? t("opTitle") : label,
+						needsCheckoutRecovery ? `${label} · ${t("checkoutRecoveryTitle")}` : label,
 						!busy && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 							className: open ? `${Market_module_css_default.opChevron} ${Market_module_css_default.opChevronOpen}` : Market_module_css_default.opChevron,
 							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(IconChevronDownOutline14, { size: 12 })
 						}),
-						!quiet && summary.attention > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { className: Market_module_css_default.opDot })
+						!quiet && attention && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { className: Market_module_css_default.opDot })
 					]
 				}), open && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 					className: Market_module_css_default.opPanel,
@@ -5483,7 +6630,65 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 								})
 							]
 						}),
-						records.length === 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						hasStartupRepair && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("section", {
+							"aria-label": t("startupRepairTitle"),
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: Market_module_css_default.opRepairTitle,
+								children: t("startupRepairTitle")
+							}), startupRepairEntries.map((entry) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: Market_module_css_default.opRow,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+									className: Market_module_css_default.opMain,
+									children: [
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+											className: Market_module_css_default.opName,
+											title: entry.name,
+											children: entry.name
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+											className: Market_module_css_default.opStatus,
+											children: t(entry.state === "pending" ? repairCauses[entry.cause] ?? "startupRepairUnknown" : repairStates[entry.state])
+										}),
+										entry.state === "pending" && entry.cause !== "version-changed" && entry.cause !== "abandoned" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+											className: Market_module_css_default.opStatus,
+											children: t("startupRepairPending")
+										})
+									]
+								})
+							}, entry.name))]
+						}),
+						needsCheckoutRecovery && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("section", {
+							"aria-label": t("checkoutRecoveryTitle"),
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: Market_module_css_default.opRepairTitle,
+								children: t("checkoutRecoveryTitle")
+							}), checkoutRecoveryEntries.map((entry) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: `${Market_module_css_default.opRow} ${Market_module_css_default.opRowAlert}`,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+									className: Market_module_css_default.opMain,
+									children: [
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+											className: Market_module_css_default.opName,
+											title: entry.name,
+											children: entry.name
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+											className: Market_module_css_default.opStatus,
+											children: t(entry.sourceExists ? "checkoutSourceRetained" : "checkoutSourceUnconfirmed")
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+											className: Market_module_css_default.opStatus,
+											children: t(checkoutRecoveryCauses[entry.reason])
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+											className: Market_module_css_default.opStatus,
+											children: t("checkoutRecoveryRetry")
+										})
+									]
+								})
+							}, entry.name))]
+						}),
+						records.length === 0 && !hasStartupRepair && !needsCheckoutRecovery && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 							className: Market_module_css_default.opEmpty,
 							children: [t("opEmpty"), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 								className: Market_module_css_default.opEmptyHint,
@@ -5997,6 +7202,552 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					})
 				]
 			});
+		}
+		//#endregion
+		//#region src/update-notification-settings.ts
+		/** Persisted choices shared by the profile monitor and its settings UI. */
+		const UPDATE_CHECK_INTERVAL_HOURS = [
+			6,
+			12,
+			72,
+			168
+		];
+		function isUpdateCheckIntervalHours(value) {
+			return typeof value === "number" && UPDATE_CHECK_INTERVAL_HOURS.includes(value);
+		}
+		//#endregion
+		//#region src/client/update-notifications.ts
+		/** One local snapshot shared by the market page, settings and sidebar. */
+		const IGNORED_UPDATES_SESSION_KEY$1 = "dshm-updates-ignored";
+		const RESTART_SESSION_KEY = "dshm-restart";
+		const SEEN_UPDATES_KEY_PREFIX = "dshm-updates-seen:";
+		const POLL_MS = 3e4;
+		const initialState = () => ({
+			enabled: false,
+			intervalHours: 6,
+			checking: false,
+			checkedAt: null,
+			lastSuccessAt: null,
+			nextCheckAt: null,
+			stale: false,
+			error: null,
+			updates: {},
+			boot: "",
+			updateExempt: [],
+			disabled: [],
+			blocked: [],
+			loaded: false,
+			readFailed: false
+		});
+		function readIgnoredUpdates(boot, clearStale) {
+			if (boot === "") return [];
+			const saved = readSession(IGNORED_UPDATES_SESSION_KEY$1);
+			if (saved === null || typeof saved !== "object" || Array.isArray(saved) || saved.boot !== boot || !Array.isArray(saved.names) || !saved.names.every((name) => typeof name === "string" && name !== "")) {
+				if (clearStale) try {
+					sessionStorage.removeItem(IGNORED_UPDATES_SESSION_KEY$1);
+				} catch {}
+				return [];
+			}
+			return [...new Set(saved.names)];
+		}
+		/** Called after the host reports its current boot; retire old dismissals then. */
+		function ignoredUpdatesForBoot(boot) {
+			return readIgnoredUpdates(boot, true);
+		}
+		/** The attention count excludes dismissed, disabled and already-completed updates. */
+		function notificationNames(snapshot) {
+			const restart = readSession(RESTART_SESSION_KEY);
+			const updated = restart?.boot === snapshot.boot && Array.isArray(restart.updated) ? restart.updated.filter((name) => typeof name === "string") : [];
+			const quiet = /* @__PURE__ */ new Set([
+				...snapshot.updateExempt,
+				...snapshot.disabled,
+				...snapshot.blocked,
+				...readIgnoredUpdates(snapshot.boot, false),
+				...updated
+			]);
+			return Object.entries(snapshot.updates).filter(([name, status]) => !quiet.has(name) && status.notAPlugin !== true && (status.updateAvailable === true || status.kind === "generation" && status.latest != null)).map(([name]) => name).sort();
+		}
+		const seenInMemory = /* @__PURE__ */ new Map();
+		const unpersistedSeen = /* @__PURE__ */ new Set();
+		function seenScope(snapshot) {
+			const persistent = typeof snapshot.profileKey === "string" && snapshot.profileKey !== "";
+			if (!persistent && snapshot.boot === "") return null;
+			return {
+				key: SEEN_UPDATES_KEY_PREFIX + JSON.stringify([
+					api("/dsh-market/update-notifications"),
+					persistent ? "profile" : "boot",
+					persistent ? snapshot.profileKey : snapshot.boot
+				]),
+				persistent
+			};
+		}
+		function seenStorage(scope) {
+			return scope.persistent ? localStorage : sessionStorage;
+		}
+		function readSeen(scope) {
+			if (unpersistedSeen.has(scope.key)) return seenInMemory.get(scope.key) ?? /* @__PURE__ */ new Set();
+			try {
+				const raw = seenStorage(scope).getItem(scope.key);
+				if (raw === null) {
+					seenInMemory.delete(scope.key);
+					return /* @__PURE__ */ new Set();
+				}
+				const saved = JSON.parse(raw);
+				if (!isRecord(saved) || saved.version !== 1 || !Array.isArray(saved.fingerprints) || !saved.fingerprints.every((value) => typeof value === "string" && value !== "")) {
+					seenInMemory.delete(scope.key);
+					return /* @__PURE__ */ new Set();
+				}
+				const fingerprints = new Set(saved.fingerprints);
+				seenInMemory.set(scope.key, fingerprints);
+				return fingerprints;
+			} catch (error) {
+				if (error instanceof SyntaxError) {
+					seenInMemory.delete(scope.key);
+					return /* @__PURE__ */ new Set();
+				}
+				return seenInMemory.get(scope.key) ?? /* @__PURE__ */ new Set();
+			}
+		}
+		function updateFingerprint(snapshot, name) {
+			const status = snapshot.updates[name];
+			const migration = status.sourceMigration;
+			return JSON.stringify([
+				name,
+				status.kind ?? null,
+				status.current ?? null,
+				status.version ?? null,
+				status.eligibleVersion ?? status.latest ?? null,
+				status.restoreRequired === true,
+				migration?.kind === "git-to-npm" ? [
+					migration.kind,
+					migration.repo,
+					migration.target
+				] : migration?.kind === "npm-rename" ? [
+					migration.kind,
+					migration.from,
+					migration.target
+				] : null
+			]);
+		}
+		/** Sidebar attention is unread state; the pending update list stays intact. */
+		function unseenNotificationNames(snapshot) {
+			const names = notificationNames(snapshot);
+			const scope = seenScope(snapshot);
+			if (scope === null) return names;
+			const seen = readSeen(scope);
+			return names.filter((name) => !seen.has(updateFingerprint(snapshot, name)));
+		}
+		/** Returns true only when the visit acknowledged at least one new update. */
+		function acknowledgeSnapshot(snapshot) {
+			const scope = seenScope(snapshot);
+			if (scope === null) return false;
+			const saved = readSeen(scope);
+			const seen = new Set(saved);
+			for (const name of notificationNames(snapshot)) seen.add(updateFingerprint(snapshot, name));
+			if (seen.size === saved.size) return false;
+			seenInMemory.set(scope.key, seen);
+			try {
+				seenStorage(scope).setItem(scope.key, JSON.stringify({
+					version: 1,
+					fingerprints: [...seen]
+				}));
+				unpersistedSeen.delete(scope.key);
+			} catch {
+				unpersistedSeen.add(scope.key);
+			}
+			return true;
+		}
+		function isRecord(value) {
+			return value !== null && typeof value === "object" && !Array.isArray(value);
+		}
+		function isUpdateStatus$1(value) {
+			return isRecord(value) && [
+				"updateAvailable",
+				"notAPlugin",
+				"restoreRequired"
+			].every((key) => value[key] === void 0 || typeof value[key] === "boolean") && [
+				"current",
+				"latest",
+				"version"
+			].every((key) => value[key] === void 0 || value[key] === null || typeof value[key] === "string") && ["kind", "eligibleVersion"].every((key) => value[key] === void 0 || typeof value[key] === "string") && (value.checkError === void 0 || value.checkError === "unavailable") && (value.checkFailed === void 0 || value.checkFailed === true);
+		}
+		/** Reject a malformed local response instead of replacing a useful cached result. */
+		function readSnapshot(value) {
+			if (!isRecord(value) || typeof value.enabled !== "boolean" || value.intervalHours !== void 0 && !isUpdateCheckIntervalHours(value.intervalHours) || typeof value.checking !== "boolean" || value.profileKey !== void 0 && (typeof value.profileKey !== "string" || value.profileKey === "") || typeof value.stale !== "boolean" || typeof value.boot !== "string" || !(value.error === null || typeof value.error === "string") || ![
+				"checkedAt",
+				"lastSuccessAt",
+				"nextCheckAt"
+			].every((key) => value[key] === null || typeof value[key] === "number" && Number.isFinite(value[key])) || ![
+				"updateExempt",
+				"disabled",
+				"blocked"
+			].every((key) => Array.isArray(value[key]) && value[key].every((name) => typeof name === "string")) || !isRecord(value.updates) || !Object.values(value.updates).every(isUpdateStatus$1)) throw new Error("The update notification response was incomplete. Try checking again.");
+			return {
+				...value,
+				intervalHours: value.intervalHours ?? null
+			};
+		}
+		/** The injectable transport keeps request ordering and teardown independently testable. */
+		function createUpdateNotificationsStore(request = (...args) => fetch(...args)) {
+			let state = initialState();
+			const listeners = /* @__PURE__ */ new Set();
+			let owners = 0;
+			let timer;
+			let read;
+			let command;
+			let afterChange;
+			let changeRevision = 0;
+			let lifecycle = 0;
+			let requestSequence = 0;
+			const controllers = /* @__PURE__ */ new Set();
+			const publish = (next) => {
+				state = next;
+				for (const listener of [...listeners]) listener();
+			};
+			const run = async (body) => {
+				const generation = lifecycle;
+				const sequence = ++requestSequence;
+				const controller = new AbortController();
+				controllers.add(controller);
+				try {
+					const response = await request(api("/dsh-market/update-notifications"), {
+						cache: "no-store",
+						signal: controller.signal,
+						...body === void 0 ? {} : {
+							method: "POST",
+							headers: { "content-type": "application/json" },
+							body: JSON.stringify(body)
+						}
+					});
+					if (!response.ok) throw new Error(`Update check unavailable (${response.status}). Try again.`);
+					const next = readSnapshot(await response.json());
+					if (generation === lifecycle && sequence === requestSequence) publish({
+						...next,
+						loaded: true,
+						readFailed: false
+					});
+				} catch (error) {
+					if (generation !== lifecycle || controller.signal.aborted) return state;
+					if (sequence === requestSequence) publish({
+						...state,
+						readFailed: true,
+						stale: true,
+						error: error instanceof Error ? error.message : String(error)
+					});
+					if (body !== void 0) throw error;
+				} finally {
+					controllers.delete(controller);
+				}
+				return state;
+			};
+			const refresh = () => {
+				if (command !== void 0) return command.catch(() => state);
+				if (read === void 0) {
+					const pending = run();
+					read = pending;
+					pending.finally(() => {
+						if (read === pending) read = void 0;
+					});
+				}
+				return read;
+			};
+			const mutate = (body) => {
+				const previous = command;
+				const generation = lifecycle;
+				const pending = (previous === void 0 ? Promise.resolve() : previous.catch(() => state)).then(() => generation === lifecycle ? run(body) : state);
+				command = pending;
+				pending.then(() => {
+					if (command === pending) command = void 0;
+				}, () => {
+					if (command === pending) command = void 0;
+				});
+				return pending;
+			};
+			const refreshAfterChange = () => {
+				changeRevision += 1;
+				if (afterChange !== void 0) return afterChange;
+				const generation = lifecycle;
+				const pending = Promise.resolve().then(async () => {
+					while (generation === lifecycle) {
+						await (command ?? read)?.catch(() => state);
+						if (generation !== lifecycle) return state;
+						const revision = changeRevision;
+						await refresh();
+						if (revision === changeRevision) return state;
+					}
+					return state;
+				});
+				afterChange = pending;
+				pending.finally(() => {
+					if (afterChange === pending) afterChange = void 0;
+				});
+				return pending;
+			};
+			const preferencesChanged = () => {
+				publish({ ...state });
+			};
+			const storageChanged = (event) => {
+				if (event.key === null) {
+					seenInMemory.clear();
+					unpersistedSeen.clear();
+				} else if (event.key.startsWith(SEEN_UPDATES_KEY_PREFIX)) {
+					seenInMemory.delete(event.key);
+					unpersistedSeen.delete(event.key);
+				}
+				if (event.key === null || event.key === IGNORED_UPDATES_SESSION_KEY$1 || event.key === RESTART_SESSION_KEY || event.key.startsWith(SEEN_UPDATES_KEY_PREFIX)) preferencesChanged();
+			};
+			return {
+				getSnapshot: () => state,
+				subscribe: (listener) => {
+					listeners.add(listener);
+					return () => {
+						listeners.delete(listener);
+					};
+				},
+				start: () => {
+					owners += 1;
+					if (owners === 1) {
+						refresh();
+						timer = setInterval(() => {
+							refresh();
+						}, POLL_MS);
+						if (typeof window !== "undefined") window.addEventListener("storage", storageChanged);
+					}
+					let released = false;
+					return () => {
+						if (released) return;
+						released = true;
+						owners -= 1;
+						if (owners !== 0) return;
+						if (timer !== void 0) clearInterval(timer);
+						timer = void 0;
+						if (typeof window !== "undefined") window.removeEventListener("storage", storageChanged);
+						lifecycle += 1;
+						requestSequence += 1;
+						for (const controller of controllers) controller.abort();
+						controllers.clear();
+						read = void 0;
+						command = void 0;
+						afterChange = void 0;
+						publish(initialState());
+					};
+				},
+				refresh,
+				refreshAfterChange,
+				check: () => mutate({ check: true }),
+				setEnabled: (enabled) => mutate({ enabled }),
+				setIntervalHours: (intervalHours) => state.intervalHours === null ? Promise.reject(/* @__PURE__ */ new Error("This server does not support changing the check interval. Restart Harness to use this setting.")) : mutate({ intervalHours }),
+				acknowledge: (snapshot = state) => {
+					if (acknowledgeSnapshot(snapshot)) preferencesChanged();
+				},
+				preferencesChanged
+			};
+		}
+		const updateNotifications = createUpdateNotificationsStore();
+		const getUpdateNotificationsSnapshot = updateNotifications.getSnapshot;
+		const subscribeUpdateNotifications = updateNotifications.subscribe;
+		const refreshUpdateNotifications = updateNotifications.refresh;
+		const refreshUpdateNotificationsAfterChange = updateNotifications.refreshAfterChange;
+		const checkUpdateNotifications = updateNotifications.check;
+		const setUpdateNotificationsEnabled = updateNotifications.setEnabled;
+		const setUpdateNotificationsIntervalHours = updateNotifications.setIntervalHours;
+		const notifyUpdatePreferencesChanged = updateNotifications.preferencesChanged;
+		const acknowledgeUpdateNotifications = updateNotifications.acknowledge;
+		function useUpdateNotifications() {
+			return (0, react.useSyncExternalStore)(subscribeUpdateNotifications, getUpdateNotificationsSnapshot, getUpdateNotificationsSnapshot);
+		}
+		//#endregion
+		//#region src/client/UpdateNotificationsPanel.tsx
+		/** The same snapshot that drives the sidebar; actions keep their existing owner. */
+		function UpdateNotificationsPanel({ snapshot, t, busy, onCheck, onEnabled, onIntervalHours, onUpdate, onOpenHost }) {
+			const [pending, setPending] = (0, react.useState)(false);
+			const [failed, setFailed] = (0, react.useState)(false);
+			const run = async (action) => {
+				setPending(true);
+				setFailed(false);
+				try {
+					await action();
+				} catch {
+					setFailed(true);
+				} finally {
+					setPending(false);
+				}
+			};
+			const entries = notificationNames(snapshot).map((name) => [name, snapshot.updates[name]]);
+			const failedNotice = failed || snapshot.stale && snapshot.error !== null;
+			const changedNotice = !failedNotice && snapshot.stale;
+			const state = failedNotice ? t("updateChecksFailed") : changedNotice ? t("updateChecksChanged") : snapshot.checking || pending ? t("updateChecksChecking") : snapshot.checkedAt === null ? t("updateChecksPending") : entries.length > 0 ? t("updateChecksFound").replace("{0}", String(entries.length)) : t("updateChecksNone");
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("details", {
+				className: Market_module_css_default.updateChecks,
+				"data-dsh-market-update-checks": true,
+				children: [
+					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("summary", { children: [
+						t("updateChecksTitle"),
+						" ",
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+							className: Market_module_css_default.updateChecksSummary,
+							children: state
+						})
+					] }),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: Market_module_css_default.updateChecksControls,
+						children: [
+							HostSwitch !== null ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+								className: Market_module_css_default.updateChecksToggle,
+								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(HostSwitch, {
+									checked: snapshot.enabled,
+									disabled: pending,
+									label: t("updateChecksAutomatic"),
+									onChange: (next) => {
+										run(() => onEnabled(next));
+									}
+								}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("updateChecksAutomatic") })]
+							}) : /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", { children: [
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
+									type: "checkbox",
+									checked: snapshot.enabled,
+									disabled: pending,
+									onChange: (event) => {
+										const next = event.target.checked;
+										run(() => onEnabled(next));
+									}
+								}),
+								" ",
+								t("updateChecksAutomatic")
+							] }),
+							snapshot.intervalHours !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", {
+								className: Market_module_css_default.updateChecksInterval,
+								children: [t("updateChecksInterval"), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("select", {
+									"aria-label": t("updateChecksInterval"),
+									value: snapshot.intervalHours,
+									disabled: pending,
+									onChange: (event) => {
+										const next = Number(event.target.value);
+										if (isUpdateCheckIntervalHours(next)) run(() => onIntervalHours(next));
+									},
+									children: UPDATE_CHECK_INTERVAL_HOURS.map((hours) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {
+										value: hours,
+										children: t(hours < 24 ? "updateChecksEveryHours" : "updateChecksEveryDays").replace("{0}", String(hours < 24 ? hours : hours / 24))
+									}, hours))
+								})]
+							}),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+								variant: "ghost",
+								size: "sm",
+								disabled: pending || snapshot.checking,
+								onClick: () => {
+									run(onCheck);
+								},
+								children: t("updateChecksNow")
+							})
+						]
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+						className: Market_module_css_default.updateChecksHint,
+						children: t(snapshot.intervalHours === null ? "updateChecksLegacyHint" : "updateChecksHint")
+					}),
+					(failedNotice || changedNotice) && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+						role: "status",
+						className: Market_module_css_default.updateChecksHint,
+						children: t(failedNotice ? "updateChecksFailedHint" : "updateChecksChangedHint")
+					}),
+					snapshot.lastSuccessAt !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+						className: Market_module_css_default.updateChecksHint,
+						children: t("updateChecksLastSuccess").replace("{0}", new Date(snapshot.lastSuccessAt).toLocaleString())
+					}),
+					entries.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("ul", {
+						className: Market_module_css_default.updateChecksList,
+						children: entries.map(([name, status]) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+							className: Market_module_css_default.updateChecksPackage,
+							children: [
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("b", { children: name }),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", { children: [
+									status.version ?? status.current ?? "—",
+									" → ",
+									status.eligibleVersion ?? status.latest
+								] }),
+								status.kind === "generation" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("hostUpdateHint") })
+							]
+						}), status.kind === "generation" ? onOpenHost !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+							variant: "ghost",
+							size: "sm",
+							onClick: () => onOpenHost(name),
+							children: t("updateChecksOpenHost")
+						}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+							variant: "ghost",
+							size: "sm",
+							disabled: busy || snapshot.disabled.includes(name),
+							onClick: () => onUpdate(name),
+							children: t(status.restoreRequired ? "restoreOnline" : "update")
+						})] }, name))
+					})
+				]
+			});
+		}
+		//#endregion
+		//#region src/client/dismissed-host.ts
+		/**
+		* The host rows the user already cleared (#1184).
+		*
+		* Every finished row in the operations panel is a projection of the host's
+		* own `/dsh-market/status` answer, not a record this page owns: "clear
+		* settled" and "dismiss" can only stop THIS page from drawing it. Before
+		* #1184 that decision lived in a `useRef`, so the next mount — a reload, or
+		* leaving the market and coming back — started with an empty set and the host
+		* quietly put the same rows back on screen. The user had cleared them; the
+		* page had simply forgotten.
+		*
+		* So the set is written down, next to the market's other page-local
+		* bookkeeping (`dshm-drain-v1`, `dshm-settled-v1`). It is not market state:
+		* nothing survives a profile reset here, and a different browser profile
+		* clearing its own rows must not hide them in this one.
+		*
+		* The ids are the host's `operationId`s, which is also why the list can be
+		* capped without losing anything current: an id is only ever asked about
+		* while the host still reports that operation.
+		*/
+		/** Where the cleared host rows are kept. */
+		const DISMISSED_HOST_STORAGE_KEY = "dshm-dismissed-host-v1";
+		/** Oldest first, newest last: the order that makes a cap drop the oldest. */
+		function read() {
+			try {
+				const raw = localStorage.getItem(DISMISSED_HOST_STORAGE_KEY);
+				if (raw === null) return [];
+				const parsed = JSON.parse(raw);
+				if (!Array.isArray(parsed)) return [];
+				const out = [];
+				for (const item of parsed) {
+					if (typeof item !== "string" || item === "" || out.includes(item)) continue;
+					out.push(item);
+				}
+				return out.slice(-100);
+			} catch {
+				return [];
+			}
+		}
+		function write(ids) {
+			try {
+				localStorage.setItem(DISMISSED_HOST_STORAGE_KEY, JSON.stringify(ids));
+			} catch {}
+		}
+		let cache = null;
+		/**
+		* The ids to keep off screen, read once per page. The component holds this
+		* set for the lifetime of the mount and asks it on every status poll, so the
+		* parse happens once instead of once per render.
+		*/
+		function dismissedHostIdSet() {
+			cache ??= new Set(read());
+			return cache;
+		}
+		/** The user cleared this host row: it must stay cleared across a reload. */
+		function rememberDismissedHostId(id) {
+			if (id === "") return;
+			const ids = cache ??= new Set(read());
+			if (ids.has(id)) return;
+			ids.add(id);
+			if (ids.size > 100) ids.delete(ids.values().next().value);
+			write([...ids]);
 		}
 		//#endregion
 		//#region src/client/preset-panel.tsx
@@ -7836,12 +9587,102 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			];
 		}
 		//#endregion
+		//#region src/client/sort-preference.ts
+		/** The one key all four lists share; exported for the specs' assertions. */
+		const SORT_PREFERENCE_KEY = "dshm-sort-v1";
+		const DEFAULT_CHOICE = {
+			field: "downloads",
+			dir: "desc"
+		};
+		const FIELDS = [
+			"downloads",
+			"stars",
+			"added"
+		];
+		const DIRS = ["desc", "asc"];
+		const INSTALLED_SORTS = [
+			"default",
+			"name",
+			"newest",
+			"oldest"
+		];
+		/** Whatever is in storage, as an object; anything unreadable reads as empty. */
+		function readStored() {
+			try {
+				const raw = localStorage.getItem(SORT_PREFERENCE_KEY);
+				if (raw === null) return {};
+				const parsed = JSON.parse(raw);
+				return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+			} catch {
+				return {};
+			}
+		}
+		/**
+		* One list's stored choice, key by key.
+		*
+		* A half-written entry (`field` but no `dir`, or the reverse) keeps the part
+		* that is still a known value and fills the rest from the default: falling back
+		* on the whole object would discard a choice the file does record.
+		*/
+		function choiceFrom(value) {
+			if (value === null || typeof value !== "object" || Array.isArray(value)) return DEFAULT_CHOICE;
+			const record = value;
+			const field = typeof record.field === "string" ? FIELDS.find((known) => known === record.field) : void 0;
+			const dir = typeof record.dir === "string" ? DIRS.find((known) => known === record.dir) : void 0;
+			return {
+				field: field ?? DEFAULT_CHOICE.field,
+				dir: dir ?? DEFAULT_CHOICE.dir
+			};
+		}
+		/** Replace one entry, leaving every other list's choice where it was. */
+		function writeStored(list, value) {
+			try {
+				localStorage.setItem(SORT_PREFERENCE_KEY, JSON.stringify({
+					...readStored(),
+					[list]: value
+				}));
+			} catch {}
+		}
+		function readSortChoice(list) {
+			return choiceFrom(readStored()[list]);
+		}
+		/**
+		* Save `patch` on top of the stored choice. The merge base is the file, not
+		* the caller's React state: a field click and a direction click arrive as two
+		* separate calls, and each one has to keep the other half.
+		*/
+		function rememberSortChoice(list, patch) {
+			const current = readSortChoice(list);
+			writeStored(list, {
+				field: patch.field ?? current.field,
+				dir: patch.dir ?? current.dir
+			});
+		}
+		function readInstalledSort() {
+			const value = readStored().installed;
+			return typeof value === "string" ? INSTALLED_SORTS.find((known) => known === value) ?? "default" : "default";
+		}
+		function rememberInstalledSort(value) {
+			writeStored("installed", value);
+		}
+		//#endregion
 		//#region src/client/MarketSection.tsx
 		/**
 		* The Market settings section: Discover / Favorites / Themes / Installed tabs over the
 		* /dsh-market/* host routes, with install/update/uninstall flows and the
 		* pending-restart bookkeeping in sessionStorage.
 		*/
+		/** Discover + Installed share one chip: same label fallbacks, status tip, bad ink. */
+		function hostRequirementChip(compatibility, key, t) {
+			const label = compatibility?.requirement !== null && compatibility?.requirement !== void 0 ? t("hostRequirement").replace("{0}", compatibility.requirement) : key === null ? t("hostRequirementUnavailable") : compatibility === void 0 ? t("hostRequirementLoading") : compatibility.basis === "undeclared" ? t("hostRequirementUndeclared") : t("hostRequirementUnavailable");
+			const detail = compatibility?.declarations.map((declaration) => declaration.kind === "engine" ? `engines.dsh: ${declaration.range}` : `${declaration.package ?? "peer"}: ${declaration.range}`).join("\n") || label;
+			return {
+				label,
+				title: (compatibility?.status === "compatible" || compatibility?.status === "incompatible" ? t(compatibility.status === "compatible" ? "hostStatusCompatible" : "hostStatusIncompatible") + "\n" : "") + detail,
+				bad: compatibility?.status === "incompatible",
+				status: compatibility?.status ?? "unknown"
+			};
+		}
 		function isHostDependencyFinding(value) {
 			if (value === null || typeof value !== "object") return false;
 			const finding = value;
@@ -7853,29 +9694,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		/** How long the page keeps asking for a market DSH unloaded, and how long one ask may take (#1151). */
 		const RECONNECT_BUDGET_MS = 9e4;
 		const RECONNECT_REQUEST_MS = 4e3;
+		const UPDATE_CHECK_REQUEST_MS = 3e4;
 		const IGNORED_UPDATES_SESSION_KEY = "dshm-updates-ignored";
-		const UNAVAILABLE_HOST_COMPATIBILITY = {
-			status: "unknown",
-			basis: "unavailable",
-			requirement: null,
-			declarations: []
-		};
-		/**
-		* Read the update reminders dismissed for this host process. The boot id is
-		* part of the value rather than the key so sessionStorage never accumulates
-		* one orphaned entry per process. Invalid and stale records fail open: an
-		* update reminder is safer than silently hiding one we cannot account for.
-		*/
-		function ignoredUpdatesForBoot(boot) {
-			const saved = readSession(IGNORED_UPDATES_SESSION_KEY);
-			if (!(saved !== null && typeof saved === "object" && !Array.isArray(saved) && saved.boot === boot && Array.isArray(saved.names) && saved.names.every((name) => typeof name === "string" && name !== ""))) {
-				try {
-					sessionStorage.removeItem(IGNORED_UPDATES_SESSION_KEY);
-				} catch {}
-				return [];
-			}
-			return [...new Set(saved.names)];
-		}
 		function HostDependencyDiagnostics({ findings, t }) {
 			if (findings.length === 0) return null;
 			const preview = findings.slice(0, HOST_DEPENDENCY_PREVIEW_LIMIT);
@@ -7960,6 +9780,16 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			if (phase === "linking") return t("phaseLinking");
 			return t("phaseBuilding");
 		}
+		/** Reset before effects can use the new query with the previous page or limit. */
+		function useResettableCount(initial, deps) {
+			const [count, setCount] = (0, react.useState)(initial);
+			const [previousDeps, setPreviousDeps] = (0, react.useState)(deps);
+			if (deps.length !== previousDeps.length || deps.some((value, index) => !Object.is(value, previousDeps[index]))) {
+				setPreviousDeps(deps);
+				setCount(initial);
+			}
+			return [count, setCount];
+		}
 		/**
 		* Page/page-size state shared by every paged list in this file (Discover,
 		* Themes) — each caller owns its OWN instance (their filters are
@@ -7969,11 +9799,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		* the shared body on any page move) are one implementation, not two.
 		*/
 		function usePagination(count, resetDeps, scrollToTop) {
-			const [page, setPage] = (0, react.useState)(1);
+			const [page, setPage] = useResettableCount(1, resetDeps);
 			const [pageSize, setPageSize] = (0, react.useState)(DEFAULT_PAGE_SIZE);
-			(0, react.useEffect)(() => {
-				setPage(1);
-			}, resetDeps);
 			const totalPages = Math.max(1, Math.ceil(count / pageSize));
 			const currentPage = Math.min(page, totalPages);
 			const goToPage = (next) => {
@@ -8002,10 +9829,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		* starts over, the same moment `usePagination` returns to page 1.
 		*/
 		function useShownCount(count, resetDeps, chunk) {
-			const [limit, setLimit] = (0, react.useState)(chunk);
-			(0, react.useEffect)(() => {
-				setLimit(chunk);
-			}, resetDeps);
+			const [limit, setLimit] = useResettableCount(chunk, resetDeps);
 			const shown = Math.min(count, limit);
 			return {
 				shown,
@@ -8122,11 +9946,61 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				items
 			});
 		}
+		/**
+		* The installed list's own order (#1142).
+		*
+		* Deliberately NOT the market's `FilterMenu`: that one sorts by downloads,
+		* stars or the catalog's collection date, and an installed package has none
+		* of the three. Same primitive, four options, one value — the list's order
+		* is a single choice, not a field plus a direction.
+		*/
+		function InstalledSortMenu({ value, onChange, t }) {
+			const [open, setOpen] = (0, react.useState)(false);
+			const items = (0, react.useMemo)(() => [
+				{
+					type: "label",
+					id: "is-label",
+					text: t("installedSortLabel")
+				},
+				{
+					id: "installed:default",
+					label: t("installedSortDefault")
+				},
+				{
+					id: "installed:name",
+					label: t("installedSortName")
+				},
+				{
+					id: "installed:newest",
+					label: t("installedSortNewest")
+				},
+				{
+					id: "installed:oldest",
+					label: t("installedSortOldest")
+				}
+			], [t]);
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Menu, {
+				open,
+				onClose: () => setOpen(false),
+				selectedIds: ["installed:" + value],
+				onSelect: (id) => onChange(id.slice(10)),
+				align: "end",
+				portal: true,
+				anchor: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+					variant: "outline",
+					size: "sm",
+					icon: open ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(IconChevronUpOutline14, { size: 14 }) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)(IconChevronDownOutline14, { size: 14 }),
+					onClick: () => setOpen((openNow) => !openNow),
+					children: t("installedSort")
+				}),
+				items
+			});
+		}
 		/** Keep an empty search actionable without changing the user's sort or block list. */
-		function EmptyResults({ blocked, onClear, t }) {
+		function EmptyResults({ message, onClear, t }) {
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 				className: Market_module_css_default.empty,
-				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", { children: t(blocked ? "blockedFilteredEmpty" : "empty") }), onClear && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", { children: t(message) }), onClear && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
 					variant: "outline",
 					size: "sm",
 					className: Market_module_css_default.retryBtn,
@@ -8355,6 +10229,186 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			flushList();
 			flushFence();
 			return out;
+		}
+		function notesReleaseBody(release) {
+			return typeof release?.body === "string" && release.body.trim() !== "" ? release.body : "";
+		}
+		/** Bind a supplied release page to the repository and the selected release tag. */
+		function notesReleasePage(repo, release) {
+			if (repo === void 0) return null;
+			const canonicalRepo = repo.replace(/\.git$/iu, "");
+			if (canonicalRepo.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) return null;
+			const releasesPath = "/" + canonicalRepo + "/releases";
+			const releasesUrl = "https://github.com" + releasesPath;
+			if (release?.url && release.tag) try {
+				const page = new URL(release.url);
+				const tagPrefix = releasesPath + "/tag/";
+				if (page.origin === "https://github.com" && page.username === "" && page.password === "" && page.pathname.slice(0, tagPrefix.length).toLowerCase() === tagPrefix.toLowerCase() && decodeURIComponent(page.pathname.slice(tagPrefix.length)) === release.tag) return page.origin + page.pathname;
+			} catch {}
+			return releasesUrl;
+		}
+		function UpdateNotesContent({ notes, name, target, repoUrl, t, lang }) {
+			const items = notes.history?.items ?? [];
+			const release = notes.kind === "release" ? notes.release : null;
+			const beyondTarget = notes.kind === "release" ? notes.beyondTarget : void 0;
+			const versionOf = (value) => value?.replace(/^v(?=\d)/i, "");
+			const expandedVersion = target !== null && /^[0-9a-f]{40}$/i.test(target) ? items[0]?.version : versionOf(target);
+			const snapshotRelease = beyondTarget === void 0 ? release : null;
+			const matchesSnapshot = (item) => snapshotRelease !== null && (snapshotRelease.tag !== null && snapshotRelease.tag === item.tag || versionOf(snapshotRelease.tag) === versionOf(item.version));
+			const legacyRelease = items.some(matchesSnapshot) ? null : snapshotRelease;
+			const snapshotBody = notesReleaseBody(snapshotRelease);
+			const history = snapshotBody !== "" ? items.map((item) => notesReleaseBody(item) === "" && item.tag !== null && item.tag === snapshotRelease?.tag ? {
+				...item,
+				body: snapshotBody
+			} : item) : items;
+			const commits = notes.kind === "commits" || notes.kind === "release" && (notes.commits?.items.length ?? 0) > 0 ? notes.commits : void 0;
+			const sourceUrl = notes.kind === "source" ? notes.sourceUrl ?? "" : "";
+			const repo = parseSourceUrl(repoUrl ?? "")?.repo ?? parseSourceUrl(sourceUrl)?.repo;
+			const targetRelease = history.find((item) => versionOf(item.version) === expandedVersion) ?? (expandedVersion !== void 0 && versionOf(legacyRelease?.tag ?? null) === expandedVersion ? legacyRelease ?? void 0 : void 0);
+			const targetBodyMissing = targetRelease !== void 0 && notesReleaseBody(targetRelease) === "";
+			const legacyBody = notesReleaseBody(legacyRelease);
+			const historyIncomplete = notes.history?.partial === true || history.length === 0 && (notes.history !== void 0 || notes.kind === "none");
+			const showSourceNotice = notes.kind === "source" && (!historyIncomplete || notes.reason === "unreadable");
+			const missingNotes = (message, page) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
+				message,
+				lang === "zh" ? "" : " ",
+				page === null ? t("notesHistoryRetry") : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("a", {
+					className: Market_module_css_default.notesSourceLink,
+					href: page,
+					target: "_blank",
+					rel: "noreferrer",
+					children: t("notesHistoryReleasePage")
+				})
+			] });
+			const historyHint = !targetBodyMissing && historyIncomplete && !showSourceNotice ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+				className: Market_module_css_default.spec,
+				children: missingNotes(t(history.length === 0 ? "notesHistoryEmpty" : "notesHistoryPartial"), notesReleasePage(repo))
+			}) : null;
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+				className: Market_module_css_default.notesBody,
+				children: [
+					history.length === 0 && historyHint,
+					history.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("section", {
+						className: Market_module_css_default.notesHistory,
+						children: [
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: Market_module_css_default.notesMeta,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: t("notesHistory") })
+							}),
+							historyHint,
+							history.map((item) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("details", {
+								className: Market_module_css_default.notesEntry,
+								open: versionOf(item.version) === expandedVersion,
+								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("summary", {
+									className: Market_module_css_default.notesSummary,
+									children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: displayLatest(item.version) }), item.publishedAt !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+										className: Market_module_css_default.notesDate,
+										children: " · " + item.publishedAt.slice(0, 10)
+									})]
+								}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+									className: Market_module_css_default.notesRendered,
+									children: notesReleaseBody(item) !== "" ? renderMarkdown(item.body) : item === targetRelease ? missingNotes(t("notesHistoryVersionMissing"), notesReleasePage(repo, item)) : t("notesHistoryVersionMissing")
+								})]
+							}, item.version))
+						]
+					}),
+					legacyRelease !== null && (legacyBody !== "" || historyHint === null) && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: Market_module_css_default.notesMeta,
+						children: [
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: t("notesRelease") }),
+							legacyRelease.tag !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: legacyRelease.tag }),
+							legacyRelease.publishedAt !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: " · " + legacyRelease.publishedAt.slice(0, 10) })
+						]
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+						className: Market_module_css_default.notesRendered,
+						children: legacyBody === "" ? missingNotes(t("notesHistoryVersionMissing"), notesReleasePage(repo, legacyRelease)) : renderMarkdown(legacyBody)
+					})] }),
+					commits !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+							className: Market_module_css_default.notesMeta,
+							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: t("notesCommits") })
+						}),
+						!commits.found && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+							className: Market_module_css_default.notesMeta,
+							children: t("notesCommitsRecent")
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("ul", {
+							className: Market_module_css_default.notesList,
+							children: commits.items.map((c) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("li", {
+								className: Market_module_css_default.notesRow,
+								children: [
+									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+										className: Market_module_css_default.notesDate,
+										children: c.date !== null ? c.date.slice(0, 10) : ""
+									}),
+									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+										className: Market_module_css_default.notesMsg,
+										children: mdInline(c.message)
+									}),
+									repoUrl !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("a", {
+										className: Market_module_css_default.notesSha,
+										href: repoUrl + "/commit/" + c.sha,
+										target: "_blank",
+										rel: "noreferrer",
+										title: c.message,
+										children: c.sha.slice(0, 7)
+									})
+								]
+							}, c.sha))
+						})
+					] }),
+					notes.kind === "npm" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+						className: Market_module_css_default.notesMeta,
+						children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: t("notesNpm") })
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("ul", {
+						className: Market_module_css_default.notesList,
+						children: notes.npmTimes.map((v) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("li", {
+							className: Market_module_css_default.notesRow,
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+								className: Market_module_css_default.notesDate,
+								children: v.date.slice(0, 10)
+							}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("a", {
+								className: Market_module_css_default.notesVer,
+								href: `https://www.npmjs.com/package/${encodeURIComponent(name)}/v/${encodeURIComponent(v.version)}`,
+								target: "_blank",
+								rel: "noreferrer",
+								children: v.version
+							})]
+						}, v.version))
+					})] }),
+					notes.kind === "source" && showSourceNotice && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: Market_module_css_default.spec,
+						children: [t(notes.reason === "unavailable" ? "notesLoadFail" : notes.reason === "unreadable" ? "notesSourceUnreadable" : "notesSource"), typeof notes.sourceUrl === "string" && /^https?:\/\//i.test(notes.sourceUrl) ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [lang === "zh" ? "" : " ", /* @__PURE__ */ (0, react_jsx_runtime.jsx)("a", {
+							className: Market_module_css_default.notesSourceLink,
+							href: notes.sourceUrl,
+							target: "_blank",
+							rel: "noreferrer",
+							children: t("notesSourceLink")
+						})] }) : notes.reason !== "unavailable" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [lang === "zh" ? "" : " ", t("notesSourceNoLink")] })]
+					}),
+					release !== null && beyondTarget !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("section", {
+						className: Market_module_css_default.notesHeld,
+						children: [
+							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+								className: Market_module_css_default.notesMeta,
+								children: [
+									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: t("notesHeldRelease") }),
+									release.tag !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: release.tag }),
+									release.publishedAt !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: " · " + release.publishedAt.slice(0, 10) })
+								]
+							}),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: Market_module_css_default.spec,
+								children: t("notesBeyondTarget").replace("{0}", release.tag ?? "").replace("{1}", beyondTarget)
+							}),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: Market_module_css_default.notesRendered,
+								children: notesReleaseBody(release) === "" ? t("notesHistoryVersionMissing") : renderMarkdown(release.body)
+							})
+						]
+					})
+				]
+			});
 		}
 		function OwnerAvatar({ name, owner, icon, className }) {
 			const [failed, setFailed] = (0, react.useState)(false);
@@ -8610,6 +10664,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			measuredThemePreviewTasks.clear();
 			measuredThemePreviewResults.clear();
 		}
+		const discoveryScan = new DiscoveryScan(() => {
+			resetScreenshotsCache();
+			resetThemePreviewCache();
+		});
 		/** README fetch + geometry probes, shared across search/page remounts. */
 		function measuredThemePreview(plugin) {
 			const cached = measuredThemePreviewTasks.get(plugin.url);
@@ -8736,7 +10794,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		* Two columns at the settings dialog's width; the sidebar page is wider and
 		* gets a third once each column still has room for a full card.
 		*/
-		function Masonry({ items, render }) {
+		function Masonry({ items, render, maxColumns = 3, minColumns = 2, className }) {
 			const wide = useMediaWide();
 			const ref = (0, react.useRef)(null);
 			const [columns, setColumns] = (0, react.useState)(2);
@@ -8744,13 +10802,18 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				const el = ref.current;
 				if (el === null || typeof ResizeObserver === "undefined") return;
 				const observer = new ResizeObserver(([entry]) => {
-					if (entry !== void 0) setColumns(Math.min(3, Math.max(2, Math.floor((entry.contentRect.width + 10) / 290))));
+					if (entry !== void 0) setColumns(masonryColumnCount(entry.contentRect.width, maxColumns, 290, minColumns));
 				});
 				observer.observe(el);
 				return () => observer.disconnect();
-			}, [wide]);
+			}, [
+				wide,
+				maxColumns,
+				minColumns
+			]);
+			const masonryClass = [Market_module_css_default.masonry, className].filter(Boolean).join(" ");
 			if (!wide) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-				className: Market_module_css_default.masonry,
+				className: masonryClass,
 				children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 					className: Market_module_css_default.masonryCol,
 					children: items.map(render)
@@ -8762,7 +10825,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			});
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 				ref,
-				className: Market_module_css_default.masonry,
+				className: masonryClass,
 				children: buckets.map((bucket, index) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 					className: Market_module_css_default.masonryCol,
 					children: bucket.map(render)
@@ -9410,6 +11473,26 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				})
 			});
 		}
+		/** Clock face for held-wait hints (Lucide `clock` geometry). */
+		function IconClock({ size = 12 }) {
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("svg", {
+				viewBox: "0 0 24 24",
+				width: size,
+				height: size,
+				fill: "none",
+				stroke: "currentColor",
+				strokeWidth: "1.75",
+				strokeLinecap: "round",
+				strokeLinejoin: "round",
+				"aria-hidden": "true",
+				focusable: "false",
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("circle", {
+					cx: "12",
+					cy: "12",
+					r: "10"
+				}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", { d: "M12 6v6l4 2" })]
+			});
+		}
 		/** Reminders off (Lucide `bell-off` geometry): the body breaks where the slash crosses it. */
 		function IconBellOff({ size = 16 }) {
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("svg", {
@@ -9597,19 +11680,54 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		* the Installed tab's red dot / 「更新」buttons flash off then on, and the
 		* two entries disagree until both refetches finish.
 		*/
-		let cachedRegistry = null;
 		let cachedInstalled = null;
+		let cachedLocalDescriptions = {};
 		let cachedRepoIdentities = null;
 		let cachedRepoHints = null;
-		let cachedHostCompatibility = {};
-		let cachedHostVersion = void 0;
-		/** Names with an in-flight discovery-compatibility request (module-wide). */
-		const hostCompatibilityInFlight = /* @__PURE__ */ new Set();
-		/** Subscribers for useSyncExternalStore — every mounted MarketSection. */
-		const hostCompatibilityListeners = /* @__PURE__ */ new Set();
-		let cachedUpdates = {};
-		/** False until /dsh-market/updates has answered at least once this process. */
-		let cachedUpdatesReady = false;
+		const emptyUpdateCheck = {
+			updates: {},
+			installed: {},
+			ready: false,
+			failed: /* @__PURE__ */ new Set()
+		};
+		let updateCheckSnapshot = emptyUpdateCheck;
+		let updateCheckBoot = null;
+		let updateCheckRequest = 0;
+		let updateCheckCommitted = 0;
+		let installedCheckCommitted = 0;
+		const updateCheckListeners = /* @__PURE__ */ new Set();
+		/** A manual check on either surface fences older background samples on both. */
+		const pendingUpdateNotificationReads = /* @__PURE__ */ new Set();
+		function getUpdateCheckSnapshot() {
+			return updateCheckSnapshot;
+		}
+		function subscribeUpdateCheck(listener) {
+			updateCheckListeners.add(listener);
+			return () => {
+				updateCheckListeners.delete(listener);
+			};
+		}
+		function publishUpdateCheck(snapshot) {
+			updateCheckSnapshot = snapshot;
+			for (const listener of updateCheckListeners) listener();
+		}
+		function releaseUpdateNotificationRead(request) {
+			if (pendingUpdateNotificationReads.delete(request)) publishUpdateCheck({ ...updateCheckSnapshot });
+		}
+		function resetUpdateCheck(boot) {
+			pendingUpdateNotificationReads.clear();
+			updateCheckBoot = boot;
+			updateCheckCommitted = ++updateCheckRequest;
+			installedCheckCommitted = updateCheckRequest;
+			publishUpdateCheck(emptyUpdateCheck);
+		}
+		function observeUpdateCheckBoot(boot, previous) {
+			if (previous !== updateCheckBoot) return false;
+			if (updateCheckBoot === null) updateCheckBoot = boot;
+			if (updateCheckBoot === boot) return false;
+			resetUpdateCheck(boot);
+			return true;
+		}
 		let cachedInstalledReady = false;
 		let cachedSkins = [];
 		let cachedDisabledNames = [];
@@ -9630,32 +11748,34 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				});
 			};
 		}
-		/** Any cached answer counts — including unavailable. Re-querying every
-		* remount used to re-POST thousands of names; a host-version change (below)
-		* is what drops the map for a fresh scan. */
-		function hostCompatibilitySettled(name) {
-			return cachedHostCompatibility[name] !== void 0;
-		}
-		function clearHostCompatibilityCache() {
-			cachedHostCompatibility = {};
-			hostCompatibilityInFlight.clear();
-			for (const listener of hostCompatibilityListeners) listener();
-		}
-		function subscribeHostCompatibility(onStoreChange) {
-			hostCompatibilityListeners.add(onStoreChange);
-			return () => {
-				hostCompatibilityListeners.delete(onStoreChange);
-			};
-		}
-		/** Merge into the module cache and notify every mounted MarketSection — a
-		* sidebar/settings switch used to drop in-flight setStates and leave the
-		* note frozen at 「正在检查 665/2455」. */
-		function commitHostCompatibility(accepted) {
-			cachedHostCompatibility = {
-				...cachedHostCompatibility,
-				...accepted
-			};
-			for (const listener of hostCompatibilityListeners) listener();
+		/**
+		* Sponsors sit in the row that already holds the repo link and version, so they
+		* add no height. One sponsor shows its name; several show logos only (the name is
+		* in the tooltip) and never more than three, so the row cannot grow with the list.
+		*/
+		function SponsorMark({ lang, t }) {
+			const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+			const list = SPONSORS.filter((sponsor) => sponsor.until === null || sponsor.until >= today).slice(0, 3);
+			if (list.length === 0) return null;
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+				className: Market_module_css_default.sponsorMark,
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+					className: Market_module_css_default.sponsorLabel,
+					children: t("sponsorsLabel")
+				}), list.map((sponsor) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("a", {
+					className: Market_module_css_default.sponsorItem,
+					href: sponsor.url,
+					target: "_blank",
+					rel: "noreferrer sponsored",
+					title: `${sponsor.name[lang]} · ${sponsor.scope[lang]}`,
+					children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("img", {
+						className: Market_module_css_default.sponsorLogo,
+						src: sponsor.logo,
+						alt: sponsor.name[lang],
+						height: 14
+					})
+				}, sponsor.id))]
+			});
 		}
 		/** Discover grid page-size choices — the catalog grows daily, so cap each page. */
 		const PAGE_SIZES = [
@@ -9715,9 +11835,58 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			for (const [name, spec] of Object.entries(value)) if (typeof spec === "string") installed[name] = spec;
 			return installed;
 		}
+		/** Optional /installed metadata: older hosts omit it, malformed values are not text. */
+		function localDescriptionsFromUnknown(value) {
+			if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+			const descriptions = {};
+			for (const [name, description] of Object.entries(value)) if (typeof description === "string" && description.trim() !== "") descriptions[name] = description.trim();
+			return descriptions;
+		}
 		/** A `{name: {...}}` map, or anything else — for untyped server fields. */
 		function isRecordOfRecords(value) {
 			return value !== null && typeof value === "object" && !Array.isArray(value);
+		}
+		function isInstalledSnapshot(value) {
+			return isRecordOfRecords(value) && Object.values(value).every((spec) => typeof spec === "string");
+		}
+		function isUpdateStatus(value) {
+			if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+			const status = value;
+			return typeof status.updateAvailable === "boolean" && (status.checkFailed === void 0 || status.checkFailed === true) && (status.checkError === void 0 || status.checkError === "unavailable") && (status.kind === void 0 || typeof status.kind === "string") && (status.version === void 0 || status.version === null || typeof status.version === "string") && (status.latest === void 0 || status.latest === null || typeof status.latest === "string") && (status.current === void 0 || status.current === null || typeof status.current === "string");
+		}
+		function readUpdateStatuses(body) {
+			const updates = body?.updates;
+			if (!isRecordOfRecords(updates) || !Object.values(updates).every(isUpdateStatus)) throw new Error("Invalid update list");
+			return updates;
+		}
+		function applyUpdateCheck(request, received, installed) {
+			if (request < updateCheckCommitted) return;
+			updateCheckCommitted = request;
+			const previous = updateCheckSnapshot;
+			const hasSameSpec = (name) => installed?.[name] !== void 0 && installed[name] === previous.installed[name];
+			if (received === null) {
+				const updates = installed === null ? previous.updates : Object.fromEntries(Object.entries(previous.updates).filter(([name]) => hasSameSpec(name)));
+				publishUpdateCheck({
+					...previous,
+					updates,
+					installed: installed ?? previous.installed,
+					failed: null
+				});
+				return;
+			}
+			const failed = /* @__PURE__ */ new Set();
+			publishUpdateCheck({
+				updates: Object.fromEntries(Object.entries(received).map(([name, status]) => {
+					if (status.checkFailed !== true && status.checkError !== "unavailable") return [name, status];
+					failed.add(name);
+					const confirmed = previous.updates[name];
+					if (hasSameSpec(name) && confirmed?.checkFailed !== true && confirmed?.checkError !== "unavailable" && typeof status.version === "string" && status.version === confirmed?.version && status.kind === confirmed.kind) return [name, confirmed];
+					return [name, status];
+				})),
+				installed: installed ?? {},
+				ready: installed !== null,
+				failed
+			});
 		}
 		function sameInstalledMap(left, right) {
 			const names = Object.keys(left);
@@ -9725,11 +11894,24 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		}
 		/** Same cap as `MAX_NOTE` in hot.ts; the server trims anything longer. */
 		const NOTE_MAX = 200;
-		/** `latest` is a semver for npm installs and a commit sha for github ones. */
-		function displayLatest(latest) {
-			if (/^\d/.test(latest)) return "v" + latest;
-			if (/^[0-9a-f]{12,40}$/i.test(latest)) return latest.slice(0, 7);
-			return latest;
+		/** Describe the pending release separately from any version the update button can install. */
+		function marketWaitTip(held, eligible, locale, t) {
+			const pending = marketHeldVersionText(held, locale, t);
+			if (eligible === null) return pending;
+			return `${t("marketVersionAvailableNow").replace("{0}", displayLatest(eligible))} · ${pending}`;
+		}
+		/** Compact held-wait for the trailing row (clock + short label); version/reason in title. */
+		function heldUpdateBeside(held, t) {
+			const left = Date.parse(held.until) - Date.now();
+			const estimated = held.estimated === true;
+			const known = Number.isFinite(left) && left > 0;
+			const amount = known ? String(Math.max(1, Math.ceil(left / (estimated ? 6e4 : 36e5)))) : "";
+			const label = !known ? t("updateHeldBesideUnknown") : estimated ? t("updateHeldBesideEstimated").replace("{1}", amount) : t("updateHeldBeside").replace("{1}", amount);
+			const reason = !known ? t("updateHeldBesideUnknown") : t(estimated ? "updateHeldEstimatedHint" : "updateHeldHint").replace("{1}", amount);
+			return {
+				label,
+				title: `${displayLatest(held.latest)} · ${reason}`
+			};
 		}
 		/** The tail of a local checkout path; the full path stays in the title and the copy button. */
 		function shortLocalPath(path) {
@@ -9875,21 +12057,6 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			return list.filter((record) => record.id === keepId || record.id !== `host-${operationId}` && record.hostOperationId !== operationId);
 		}
 		/**
-		* Whether the "compatible with this host" filter starts on, and remembers the
-		* answer once the user disagrees with the default (#872).
-		*
-		* Storage may be unavailable (private mode, a locked-down webview); the
-		* default is what matters, so a failure to read it is not a failure.
-		*/
-		const HOST_FILTER_KEY = "dshm-host-filter";
-		function readHostFilterPreference() {
-			try {
-				return localStorage.getItem(HOST_FILTER_KEY) !== "all";
-			} catch {
-				return true;
-			}
-		}
-		/**
 		* 最近收录 display preferences: collapsed / hidden (#940).
 		*
 		* The block only appears on the discover tab with an empty search and both
@@ -9898,7 +12065,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		* are display preferences, not profile settings: since 0.1.7 the settings
 		* surface is deliberately just `allowRestart`.
 		*
-		* Same read discipline as HOST_FILTER_KEY above: an unavailable store falls
+		* When localStorage is unavailable, the preference falls
 		* back to the default, and the default is "expanded and shown".
 		*/
 		const RECENT_COLLAPSED_KEY = "dshm-recent-collapsed";
@@ -10049,6 +12216,26 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			return top <= line + 2 && top >= line - 4;
 		}
 		/**
+		* Mirrors "this row is sitting on its sticky line" onto the row itself (#1237).
+		*
+		* A theme may set `--dsw-alias-bg-base` to a transparent colour so the
+		* wallpaper shows through — that is the host's own page-background token, and
+		* the market's sticky rows are the only thing between that transparency and
+		* the cards scrolling underneath them. Such a theme wants no surface while the
+		* row is still in flow and one once it sticks; until now it had no way to tell
+		* the two apart except by matching the CSS modules' hashed class names.
+		*
+		* `data-dshm-stuck` is that state, on a selector that survives the hashes.
+		* The market's own stylesheet reads it only to pick `--dshm-stuck-bg`; with
+		* that hook unset the surface stays exactly `--dsw-alias-bg-base`, so a host
+		* without such a theme is unchanged.
+		*/
+		function markStuck(el, pinned) {
+			if (!(el instanceof HTMLElement)) return;
+			if (pinned) el.dataset.dshmStuck = "true";
+			else delete el.dataset.dshmStuck;
+		}
+		/**
 		* ScrollTop where the market's tab row first sticks under the host chrome.
 		* Unsticks for one measurement so a currently-pinned head still reports its
 		* in-flow offset. That is the "top" Plugins back-to-top aims for — tabs stay
@@ -10065,10 +12252,13 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 		function MarketSection(props) {
 			const t = props.t;
 			const initialWebdav = (0, react.useMemo)(savedWebdav, []);
-			const localeSnap = (0, react.useSyncExternalStore)((cb) => props.locale.subscribe(cb), () => props.locale.getSnapshot());
-			const lang = String(localeSnap.active).toLowerCase().startsWith("zh") ? "zh" : "en";
+			const uiLocale = marketUiLocale((0, react.useSyncExternalStore)((cb) => props.locale.subscribe(cb), () => props.locale.getSnapshot()).active);
+			const lang = uiLocale === "zh-CN" ? "zh" : "en";
 			const surface = props.surface ?? "settings";
 			const sidebar = props.sidebar;
+			const notificationSnapshot = useUpdateNotifications();
+			const latestNotification = (0, react.useRef)(notificationSnapshot);
+			latestNotification.current = notificationSnapshot;
 			const hostNavigation = props.hostNavigation;
 			const openInHost = (0, react.useSyncExternalStore)((cb) => hostNavigation?.subscribe(cb) ?? (() => {}), () => hostNavigation?.get());
 			const [sidebarSnap, setSidebarSnap] = (0, react.useState)(() => ({
@@ -10103,7 +12293,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				});
 			}, [sidebar]);
 			const themeSnap = (0, react.useSyncExternalStore)(props.themeStore.subscribe, props.themeStore.getSnapshot);
-			const [data, setData] = (0, react.useState)(cachedRegistry);
+			const compatibility = (0, react.useSyncExternalStore)(discoveryScan.subscribe, discoveryScan.getSnapshot);
+			const { catalog: data, enabled: compatibleWithHost, hostVersion, verdicts: hostCompatibility } = compatibility;
 			const [loadError, setLoadError] = (0, react.useState)(null);
 			/**
 			* The host answered 404 on one of the market's own routes (#962).
@@ -10115,13 +12306,16 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			* exactly why it owes the user this sentence instead of a spinner.
 			*/
 			const [marketGone, setMarketGone] = (0, react.useState)(false);
+			const [startupRepair, setStartupRepair] = (0, react.useState)();
+			const [checkoutRecovery, setCheckoutRecovery] = (0, react.useState)();
+			const repairStatusRequest = (0, react.useRef)(0);
 			const [reconnecting, setReconnecting] = (0, react.useState)(true);
 			const [reconnectRound, setReconnectRound] = (0, react.useState)(0);
 			const [installed, setInstalledState] = (0, react.useState)(cachedInstalled ?? {});
-			const setInstalled = (0, react.useCallback)((value) => {
-				cachedInstalled = value;
-				setInstalledState(value);
-			}, []);
+			const [localDescriptions, setLocalDescriptionsState] = (0, react.useState)(() => cachedLocalDescriptions);
+			const setLocalDescriptions = (0, react.useCallback)(cacheState((value) => {
+				cachedLocalDescriptions = value;
+			}, setLocalDescriptionsState), []);
 			const [repoIdentities, setRepoIdentitiesState] = (0, react.useState)(cachedRepoIdentities ?? {});
 			const setRepoIdentities = (0, react.useCallback)((value) => {
 				cachedRepoIdentities = value;
@@ -10184,23 +12378,45 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			const recordSeq = (0, react.useRef)(0);
 			/** The synthetic install task rebuilt from dshm-pending after a remount. */
 			const recoveredInstall = (0, react.useRef)(null);
-			/** The synthetic task rebuilt from dshm-updating after this section remounts. */
-			const recoveredUpdateRecordId = (0, react.useRef)(null);
+			/** The local task tracking dshm-updating, either awaiting its reply or recovering it. */
+			const pendingUpdate = (0, react.useRef)(null);
+			const mountedRef = (0, react.useRef)(true);
+			(0, react.useEffect)(() => {
+				mountedRef.current = true;
+				return () => {
+					mountedRef.current = false;
+					pendingUpdate.current = null;
+				};
+			}, []);
 			/**
 			* The install queue: agents-busy 409s become `queued` records instead of
 			* failures, and drain automatically when agents go idle (see drainQueue).
 			* Persisted in localStorage so a refresh keeps the queue; only `queued`
 			* records persist — `running` recovery stays on the dshm-pending paths.
 			*/
-			const [updates, setUpdatesState] = (0, react.useState)(() => cachedUpdates);
-			const setUpdates = (0, react.useCallback)(cacheState((value) => {
-				cachedUpdates = value;
-			}, setUpdatesState), []);
+			const updateCheck = (0, react.useSyncExternalStore)(subscribeUpdateCheck, getUpdateCheckSnapshot);
+			const { updates } = updateCheck;
+			/**
+			* The release in this profile that is still inside the safety wait, as last
+			* heard from the server (#1252). pnpm refuses every change while it holds,
+			* so a batch or the queue stops at the first such refusal instead of trying
+			* each plugin in turn. The update check is the authority: whatever it says
+			* next replaces this.
+			*/
+			const profileBlockRef = (0, react.useRef)(null);
+			const profileBlocked = (0, react.useMemo)(() => Object.values(updates).find((status) => status.profileBlocked !== void 0)?.profileBlocked ?? null, [updates]);
+			(0, react.useEffect)(() => {
+				profileBlockRef.current = profileBlocked;
+			}, [profileBlocked]);
+			/**
+			* The host answered an update with "restart first" (#1253): an earlier one in
+			* this run already moved the loaded packages, and every later one would be
+			* refused the same way. Tied to the host's boot id, so a restart ends it.
+			*/
+			const [restartHold, setRestartHold] = (0, react.useState)(null);
+			const restartHoldRef = (0, react.useRef)(false);
 			const queueRestoredRef = (0, react.useRef)(false);
-			const [queueSnapshotReady, setQueueSnapshotReady] = (0, react.useState)({
-				installed: cachedInstalledReady,
-				updates: cachedUpdatesReady
-			});
+			const [installedReady, setInstalledReady] = (0, react.useState)(cachedInstalledReady);
 			(0, react.useEffect)(() => {
 				if (queueRestoredRef.current) return;
 				let saved = null;
@@ -10214,8 +12430,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					return;
 				}
 				if (data === null) return;
-				if (saved.some((row) => row?.kind === "update" || row?.kind === "uninstall") && !queueSnapshotReady.installed) return;
-				if (saved.some((row) => row?.kind === "update") && !queueSnapshotReady.updates) return;
+				if (saved.some((row) => row?.kind === "update" || row?.kind === "uninstall") && !installedReady) return;
+				if (saved.some((row) => row?.kind === "update" && (!updateCheck.ready || updateCheck.failed === null || updateCheck.failed.has(row.name)))) return;
 				queueRestoredRef.current = true;
 				try {
 					localStorage.removeItem("dshm-queue-v1");
@@ -10314,8 +12530,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				data,
 				t,
 				lang,
-				queueSnapshotReady,
+				installedReady,
 				installed,
+				updateCheck,
 				updates
 			]);
 			(0, react.useEffect)(() => {
@@ -10475,11 +12692,16 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			* shows these plugins and their update actions; only proactive prompts use
 			* this set. */
 			const [ignoredUpdateNames, setIgnoredUpdateNames] = (0, react.useState)([]);
+			(0, react.useEffect)(() => {
+				notifyUpdatePreferencesChanged();
+			}, [ignoredUpdateNames]);
 			const [updatingName, setUpdatingName] = (0, react.useState)(null);
 			/** Update-notes dialog (#294): which row opened it, and what it resolved to. */
 			const [notesFor, setNotesFor] = (0, react.useState)(null);
 			const [updateNotes, setUpdateNotes] = (0, react.useState)(null);
 			const [notesState, setNotesState] = (0, react.useState)("loading");
+			const notesRequest = (0, react.useRef)(null);
+			(0, react.useEffect)(() => () => notesRequest.current?.abort(), []);
 			const [staleName, setStaleName] = (0, react.useState)(null);
 			const [restoreConfirm, setRestoreConfirm] = (0, react.useState)(null);
 			/** A release whose declared host requirement this host does not meet (#404). kind distinguishes the update dialog from the fresh-install dialog. */
@@ -10563,6 +12785,22 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			}, setDisabledNamesState), []);
 			/** The user's own note per plugin (#347): package name → text. */
 			const [notes, setNotes] = (0, react.useState)({});
+			/**
+			* When this market installed/updated each package (#1142). Only packages
+			* the market itself installed have an entry: the CLI and the host's own
+			* plugins page leave nothing on disk that says when, and the row shows
+			* `—` rather than guessing from a directory mtime pnpm rewrites.
+			*/
+			const [installTimes, setInstallTimes] = (0, react.useState)({});
+			/**
+			* How the installed list is ordered (#1142). Its own value, NOT the
+			* market's `SortField`: that one is downloads/stars/added, and none of the
+			* three exist for an installed package — `added` is the catalog's
+			* collection date, which is a different question from when the user
+			* installed it. The choice outlives this mount (#1142) — the mirror effect
+			* below keeps it in localStorage.
+			*/
+			const [installedSort, setInstalledSort] = (0, react.useState)(() => readInstalledSort());
 			/** Catalog URLs bookmarked for later install (#414). */
 			const [favoriteUrls, setFavoriteUrlsState] = (0, react.useState)(() => cachedFavoriteUrls);
 			const setFavoriteUrls = (0, react.useCallback)(cacheState((value) => {
@@ -10574,6 +12812,13 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				cachedBlockedNames = value;
 			}, setBlockedNamesState), []);
 			const [updateExemptNames, setUpdateExemptNames] = (0, react.useState)([]);
+			(0, react.useEffect)(() => {
+				refreshUpdateNotificationsAfterChange();
+			}, [
+				updateExemptNames,
+				disabledNames,
+				blockedNames
+			]);
 			/** Rows the user asked to show the AUTHOR's description on, despite a note. */
 			const [showTheirs, setShowTheirs] = (0, react.useState)([]);
 			/** The row whose note is being edited, and the text in the box. */
@@ -10633,7 +12878,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			* "npm latest" beside a number that is not npm's latest is a bug report
 			* waiting to be filed. Null until the catalog answers.
 			*/
-			const [catalogUpdated, setCatalogUpdated] = (0, react.useState)(null);
+			const catalogUpdated = data?.updated?.trim() || null;
 			const catalogVersionTip = (0, react.useMemo)(() => catalogUpdated === null ? t("catalogVersionUndated") : t("catalogVersionDated").replace("{0}", catalogUpdated), [catalogUpdated, t]);
 			/** Non-live activation results from the last operation, shown as a banner. */
 			const [activationWarnings, setActivationWarnings] = (0, react.useState)([]);
@@ -10697,6 +12942,11 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			const [envFixing, setEnvFixing] = (0, react.useState)(false);
 			const [envFailed, setEnvFailed] = (0, react.useState)(false);
 			const [bootId, setBootId] = (0, react.useState)(null);
+			const bootIdRef = (0, react.useRef)(null);
+			(0, react.useEffect)(() => {
+				bootIdRef.current = bootId;
+				restartHoldRef.current = restartHold !== null && restartHold.boot === bootId;
+			}, [bootId, restartHold]);
 			/** One-click restart (#14 by @ysyyhhh): server capability + in-flight state. */
 			const [restartEnabled, setRestartEnabled] = (0, react.useState)(false);
 			/** Supervisor the host detected around itself, when it named one (#229). */
@@ -10768,38 +13018,60 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			const restoringStickRef = (0, react.useRef)(false);
 			/** Hidden file input behind the Import button (a Button can't host an <input>). */
 			const fileInputRef = (0, react.useRef)(null);
-			const [sortField, setSortField] = (0, react.useState)("downloads");
-			const [sortDir, setSortDir] = (0, react.useState)("desc");
+			const [sortField, setSortField] = (0, react.useState)(() => readSortChoice("discover").field);
+			const [sortDir, setSortDir] = (0, react.useState)(() => readSortChoice("discover").dir);
 			const [timeRange, setTimeRange] = (0, react.useState)("all");
-			/** Undefined while the first catalog response is pending; null means the host cannot be located. */
-			const [hostVersion, setHostVersionState] = (0, react.useState)(() => cachedHostVersion);
-			const setHostVersion = (0, react.useCallback)((value) => {
-				if (typeof cachedHostVersion === "string" && typeof value === "string" && value !== cachedHostVersion) clearHostCompatibilityCache();
-				cachedHostVersion = value;
-				setHostVersionState(value);
-			}, []);
-			/** v1 is deliberately opt-in: undeclared/unknown entries stay visible even when enabled. */
-			const [compatibleWithHost, setCompatibleWithHostState] = (0, react.useState)(readHostFilterPreference);
 			const setCompatibleWithHost = (0, react.useCallback)((next) => {
-				setCompatibleWithHostState(next);
-				try {
-					localStorage.setItem(HOST_FILTER_KEY, next ? "compatible" : "all");
-				} catch {}
+				discoveryScan.setEnabled(next);
 			}, []);
 			/** The profile this page is running in, for the manual command's own
 			* `--profile` token (#872). The catalog's is always `web`. */
 			const [profileName, setProfileName] = (0, react.useState)(null);
-			const hostCompatibility = (0, react.useSyncExternalStore)(subscribeHostCompatibility, () => cachedHostCompatibility, () => cachedHostCompatibility);
-			const [hostCompatibilityPending, setHostCompatibilityPending] = (0, react.useState)(0);
+			const compatibilityDemandOwner = (0, react.useRef)({});
 			const [catsOpen, setCatsOpen] = (0, react.useState)(false);
 			/** Themes tab: independent from Discover's sort/time state above — a
 			* search or sort choice in one tab has no business resetting the other. */
-			const [themeSortField, setThemeSortField] = (0, react.useState)("downloads");
-			const [themeSortDir, setThemeSortDir] = (0, react.useState)("desc");
+			const [themeSortField, setThemeSortField] = (0, react.useState)(() => readSortChoice("themes").field);
+			const [themeSortDir, setThemeSortDir] = (0, react.useState)(() => readSortChoice("themes").dir);
 			const [themeTimeRange, setThemeTimeRange] = (0, react.useState)("all");
-			const [favSortField, setFavSortField] = (0, react.useState)("downloads");
-			const [favSortDir, setFavSortDir] = (0, react.useState)("desc");
+			const [favSortField, setFavSortField] = (0, react.useState)(() => readSortChoice("favorites").field);
+			const [favSortDir, setFavSortDir] = (0, react.useState)(() => readSortChoice("favorites").dir);
 			const [favTimeRange, setFavTimeRange] = (0, react.useState)("all");
+			/**
+			* Each list's order is a display preference, not a profile setting (#1142):
+			* the choice used to live only in this component's state, so a tab switch or
+			* a reload put every list back on its default. The mirror writes the value
+			* that is on screen, which is why it also runs on the first render — a fresh
+			* profile records the default it started from, a reloaded one records the
+			* choice it restored, and neither can drift from what the user is seeing.
+			*
+			* localStorage rather than state.json: the same line the catalog's
+			* compatibility filter (`dshm-host-filter`) and the "recently added" flags
+			* (#940) take.
+			*/
+			(0, react.useEffect)(() => {
+				rememberSortChoice("discover", {
+					field: sortField,
+					dir: sortDir
+				});
+				rememberSortChoice("themes", {
+					field: themeSortField,
+					dir: themeSortDir
+				});
+				rememberSortChoice("favorites", {
+					field: favSortField,
+					dir: favSortDir
+				});
+				rememberInstalledSort(installedSort);
+			}, [
+				sortField,
+				sortDir,
+				themeSortField,
+				themeSortDir,
+				favSortField,
+				favSortDir,
+				installedSort
+			]);
 			/** WebDAV provider-preset dropdown (primitives Menu). */
 			const [presetOpen, setPresetOpen] = (0, react.useState)(false);
 			/** Install-command disclosure inside the confirm dialog. */
@@ -10840,18 +13112,81 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			});
 			/** True while the drain is executing one queued request (no parallel starts). */
 			const drainingRef = (0, react.useRef)(false);
-			const refreshInstalled = (0, react.useCallback)((force) => {
-				fetch(api("/dsh-market/installed"), { cache: "no-store" }).then((res) => res.json()).then((body) => {
-					setInstalled(body.installed || {});
+			const mounted = (0, react.useRef)(false);
+			const refreshRequest = (0, react.useRef)(0);
+			const refreshInFlight = (0, react.useRef)(false);
+			const bridgedNotification = (0, react.useRef)(null);
+			const notificationReads = (0, react.useRef)(/* @__PURE__ */ new Set());
+			const [checkingUpdates, setCheckingUpdates] = (0, react.useState)(false);
+			(0, react.useEffect)(() => {
+				mounted.current = true;
+				return () => {
+					mounted.current = false;
+					refreshRequest.current = 0;
+					refreshInFlight.current = false;
+					for (const request of notificationReads.current) releaseUpdateNotificationRead(request);
+					notificationReads.current.clear();
+				};
+			}, []);
+			const refreshInstalled = (0, react.useCallback)((force, notification) => {
+				if (!mounted.current) return;
+				const request = ++updateCheckRequest;
+				const boot = updateCheckBoot;
+				refreshRequest.current = request;
+				refreshInFlight.current = true;
+				if (notification === void 0) {
+					bridgedNotification.current = latestNotification.current;
+					notificationReads.current.add(request);
+					pendingUpdateNotificationReads.add(request);
+				}
+				const ownsRefresh = () => mounted.current && refreshRequest.current === request;
+				const isCurrent = () => ownsRefresh() && (boot === null || boot === updateCheckBoot) && (notification === void 0 || updateCheckBoot === null || notification.boot === updateCheckBoot);
+				setCheckingUpdates(true);
+				const requestOptions = {
+					cache: "no-store",
+					signal: AbortSignal.timeout(UPDATE_CHECK_REQUEST_MS)
+				};
+				const installRead = fetch(api("/dsh-market/installed"), requestOptions).then((res) => {
+					if (!res.ok) throw new Error(`HTTP ${String(res.status)}`);
+					return res.json();
+				}).then((body) => {
+					if (!isCurrent() || !isInstalledSnapshot(body?.installed)) return null;
+					const installed = body.installed;
+					if (request >= installedCheckCommitted) {
+						cachedInstalled = installed;
+						installedCheckCommitted = request;
+					}
+					setInstalledState(installed);
+					if (notification !== void 0) {
+						cachedInstalledReady = true;
+						setInstalledReady(true);
+						return installed;
+					}
+					setLocalDescriptions(localDescriptionsFromUnknown(body.descriptions));
 					setRepoIdentities(installedRepoIdentities(body.repoIdentities));
 					setRepoHints(installedRepoHints(body.repoHints));
-					setInstalledFiles(Array.isArray(body.present) ? body.present : Object.keys(body.installed || {}));
+					setInstalledFiles(Array.isArray(body.present) ? body.present : Object.keys(installed));
 					setSkins(body.live || []);
 					if (Array.isArray(body.disabled)) {
 						setDisabledNames(body.disabled);
 						if (loadedDisabled.current === null) loadedDisabled.current = new Set(body.disabled);
 					}
 					if (body.notes !== null && typeof body.notes === "object" && !Array.isArray(body.notes)) setNotes(body.notes);
+					if (body.installTimes !== null && typeof body.installTimes === "object" && !Array.isArray(body.installTimes)) {
+						const stamps = {};
+						for (const [name, raw] of Object.entries(body.installTimes)) {
+							if (raw === null || typeof raw !== "object" || Array.isArray(raw)) continue;
+							const record = raw;
+							const installedAt = typeof record.installedAt === "string" ? record.installedAt : void 0;
+							const updatedAt = typeof record.updatedAt === "string" ? record.updatedAt : void 0;
+							if (installedAt === void 0 && updatedAt === void 0) continue;
+							stamps[name] = {
+								...installedAt === void 0 ? {} : { installedAt },
+								...updatedAt === void 0 ? {} : { updatedAt }
+							};
+						}
+						setInstallTimes(stamps);
+					}
 					if (Array.isArray(body.patchDisabled)) setPatchDisabledNames(body.patchDisabled);
 					if (typeof body.profile === "string") setProfileName(body.profile);
 					if (Array.isArray(body.unbundled)) setUnbundledNames(body.unbundled);
@@ -10868,19 +13203,49 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					installedReadGen.current += 1;
 					setHostDependencyFindings(findings);
 					cachedInstalledReady = true;
-					setQueueSnapshotReady((ready) => ({
-						...ready,
-						installed: true
-					}));
-				}).catch(() => {});
-				fetch(api("/dsh-market/updates") + (force === true ? "?force=1" : ""), { cache: "no-store" }).then((res) => res.json()).then((body) => {
-					setUpdates(body.updates || {});
-					cachedUpdatesReady = true;
-					setQueueSnapshotReady((ready) => ({
-						...ready,
-						updates: true
-					}));
-				}).catch(() => {});
+					setInstalledReady(true);
+					return installed;
+				}).catch(() => null);
+				const updateRead = notification !== void 0 ? Promise.resolve(notification.updates) : fetch(api("/dsh-market/updates") + (force === true ? "?force=1" : ""), requestOptions).then((res) => {
+					if (!res.ok) throw new Error(`HTTP ${String(res.status)}`);
+					return res.json();
+				}).then(readUpdateStatuses).catch(() => {
+					if (isCurrent()) applyUpdateCheck(request, null, null);
+					if (ownsRefresh()) {
+						refreshInFlight.current = false;
+						setCheckingUpdates(false);
+					}
+					return null;
+				});
+				Promise.all([updateRead, installRead]).then(([received, installed]) => {
+					if (isCurrent()) {
+						if (notification?.checkedAt === null && request >= updateCheckCommitted) {
+							updateCheckCommitted = request;
+							publishUpdateCheck({
+								...emptyUpdateCheck,
+								installed: installed ?? {}
+							});
+						} else {
+							applyUpdateCheck(request, received, installed);
+							if (notification?.error != null && request === updateCheckCommitted && updateCheckSnapshot.failed?.size === 0) publishUpdateCheck({
+								...updateCheckSnapshot,
+								failed: null
+							});
+						}
+					}
+					if (notification === void 0) {
+						const release = () => {
+							notificationReads.current.delete(request);
+							releaseUpdateNotificationRead(request);
+						};
+						if (ownsRefresh()) refreshUpdateNotificationsAfterChange().finally(release);
+						else release();
+					}
+					if (ownsRefresh()) {
+						refreshInFlight.current = false;
+						setCheckingUpdates(false);
+					}
+				});
 			}, [
 				setActivations,
 				setBlockedNames,
@@ -10888,8 +13253,20 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				setFavoriteUrls,
 				setInstalledBundles,
 				setInstalledFiles,
-				setSkins,
-				setUpdates
+				setLocalDescriptions,
+				setSkins
+			]);
+			(0, react.useEffect)(() => {
+				if (!notificationSnapshot.loaded || notificationSnapshot.readFailed || notificationSnapshot.checking || refreshInFlight.current || pendingUpdateNotificationReads.size > 0 || updateCheckBoot !== null && notificationSnapshot.boot !== updateCheckBoot) return;
+				const previous = bridgedNotification.current;
+				if (previous?.updates === notificationSnapshot.updates && previous.checkedAt === notificationSnapshot.checkedAt && previous.error === notificationSnapshot.error && previous.boot === notificationSnapshot.boot) return;
+				bridgedNotification.current = notificationSnapshot;
+				refreshInstalled(void 0, notificationSnapshot);
+			}, [
+				notificationSnapshot,
+				checkingUpdates,
+				updateCheck,
+				refreshInstalled
 			]);
 			/**
 			* Host-owned deferred operations (#411).
@@ -10902,8 +13279,14 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			*/
 			const settledHostRef = (0, react.useRef)(/* @__PURE__ */ new Set());
 			const knownHostIdsRef = (0, react.useRef)(/* @__PURE__ */ new Set());
-			/** Host operations the user cleared; a status poll must not add them back. */
-			const dismissedHostRef = (0, react.useRef)(/* @__PURE__ */ new Set());
+			/**
+			* Host operations the user cleared; a status poll must not add them back —
+			* and neither must a reload. The set is read from storage and written back
+			* per id, because these rows belong to the host: clearing one only ever
+			* hides it here, so a set that lived only in memory brought the row back on
+			* the next mount (#1184).
+			*/
+			const dismissedHostRef = (0, react.useRef)(dismissedHostIdSet());
 			const drainMarkerRestoredRef = (0, react.useRef)(false);
 			const clearDrainMarker = (0, react.useCallback)((operationId) => {
 				try {
@@ -11145,9 +13528,17 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			* with the user left to guess whether the plugin landed.
 			*/
 			const noteMarketGone = (0, react.useCallback)(() => {
+				if (!mountedRef.current) return;
+				discoveryScan.setUnavailable();
+				refreshRequest.current = 0;
+				repairStatusRequest.current += 1;
+				setStartupRepair(void 0);
+				setCheckoutRecovery(void 0);
+				setCheckingUpdates(false);
 				setMarketGone(true);
 				setBusyUrl(null);
 				setUpdatingName(null);
+				pendingUpdate.current = null;
 				setRemovingName(null);
 				setRecords((list) => list.map((record) => record.state === "running" || record.state === "queued" ? {
 					...record,
@@ -11159,39 +13550,79 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					sessionStorage.removeItem("dshm-updating");
 				} catch {}
 			}, [t]);
+			(0, react.useEffect)(() => {
+				if (compatibility.gone) noteMarketGone();
+			}, [compatibility.gone, noteMarketGone]);
 			/**
 			* The status payload, or `null` when the route answered 404 (#962). Every
 			* poll that reads this stops on the null: the market is no longer mounted,
 			* so there is no status to read and nothing left to poll for.
 			*/
-			const readMarketStatus = (0, react.useCallback)(async (res) => {
+			const readMarketStatus = (0, react.useCallback)(async (res, repairRequest) => {
 				if (res.status === 404) {
-					noteMarketGone();
+					if (repairRequest === void 0 || repairRequest === repairStatusRequest.current) noteMarketGone();
 					return null;
 				}
 				return await res.json();
 			}, [noteMarketGone]);
+			const applyRepairStatus = (0, react.useCallback)((status, request) => {
+				if (!mounted.current || request !== repairStatusRequest.current) return;
+				const report = status.startupRepair;
+				setStartupRepair((previous) => report && previous?.id === report.id && previous.revision > report.revision ? previous : report);
+				setCheckoutRecovery(status.checkoutRecovery);
+			}, []);
+			const refreshRepairStatus = (0, react.useCallback)(async (signal) => {
+				const request = ++repairStatusRequest.current;
+				try {
+					const res = await fetch(api("/dsh-market/status"), {
+						cache: "no-store",
+						signal: signal ?? null
+					});
+					if (!signal?.aborted && (res.ok || res.status === 404)) {
+						const status = await readMarketStatus(res, request);
+						if (!signal?.aborted && status !== null) applyRepairStatus(status, request);
+					}
+				} catch {}
+			}, [readMarketStatus, applyRepairStatus]);
+			const checkingRepair = startupRepair?.checking === true || checkoutRecovery?.checking === true;
+			(0, react.useEffect)(() => {
+				if (!checkingRepair || marketGone) return;
+				const controller = new AbortController();
+				let timer = setTimeout(() => {
+					poll();
+				}, 2e3);
+				async function poll() {
+					await refreshRepairStatus(controller.signal);
+					if (!controller.signal.aborted) timer = setTimeout(() => {
+						poll();
+					}, 2e3);
+				}
+				return () => {
+					controller.abort();
+					clearTimeout(timer);
+				};
+			}, [
+				checkingRepair,
+				marketGone,
+				refreshRepairStatus
+			]);
+			const wasCheckingCheckout = (0, react.useRef)(false);
+			(0, react.useEffect)(() => {
+				const checking = checkoutRecovery?.checking === true;
+				if (wasCheckingCheckout.current && !checking && !marketGone) refreshInstalled();
+				wasCheckingCheckout.current = checking;
+			}, [
+				checkoutRecovery,
+				marketGone,
+				refreshInstalled
+			]);
 			const loadCatalog = (0, react.useCallback)(() => {
 				setLoadError(null);
-				return fetch(api("/dsh-market/registry"), { cache: "no-store" }).then(async (res) => {
-					const body = await res.json().catch(() => ({}));
-					if (res.status === 404) {
+				return discoveryScan.resume().then((outcome) => {
+					if (outcome === "gone") {
 						noteMarketGone();
 						throw new Error(t("marketGoneTitle"));
 					}
-					if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : `HTTP ${String(res.status)}`);
-					return body;
-				}).then((body) => {
-					if (body.registry === void 0) throw new Error("the catalog response carried no data");
-					if (body.registry.updated !== cachedRegistry?.updated) {
-						resetScreenshotsCache();
-						resetThemePreviewCache();
-					}
-					cachedRegistry = body.registry;
-					setData(body.registry);
-					const catalogDate = body.registry.updated;
-					setCatalogUpdated(typeof catalogDate === "string" && catalogDate.trim() !== "" ? catalogDate : null);
-					setHostVersion(typeof body.hostVersion === "string" ? body.hostVersion : null);
 					setLoadError(null);
 				}).catch((error) => {
 					setLoadError(error instanceof Error ? error.message : String(error));
@@ -11216,6 +13647,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				let inFlight;
 				let stopped = false;
 				const attempt = async () => {
+					const boot = updateCheckBoot;
+					const repairRequest = ++repairStatusRequest.current;
 					inFlight = new AbortController();
 					const cutoff = setTimeout(() => inFlight?.abort(), RECONNECT_REQUEST_MS);
 					try {
@@ -11225,6 +13658,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						});
 						const status = res.ok ? await res.json() : null;
 						if (!stopped && status !== null && typeof status === "object" && typeof status.boot === "string") {
+							applyRepairStatus(status, repairRequest);
+							discoveryScan.setBoot(status.boot);
+							observeUpdateCheckBoot(status.boot, boot);
 							setMarketGone(false);
 							loadCatalog();
 							refreshInstalled();
@@ -11255,60 +13691,16 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				marketGone,
 				reconnectRound,
 				loadCatalog,
-				refreshInstalled
+				refreshInstalled,
+				applyRepairStatus
 			]);
-			const loadHostCompatibility = (0, react.useCallback)(async (names) => {
-				const unique = [...new Set(names)].filter((name) => {
-					if (name === "" || hostCompatibilitySettled(name) || hostCompatibilityInFlight.has(name)) return false;
-					hostCompatibilityInFlight.add(name);
-					return true;
-				});
-				if (unique.length === 0) return;
-				setHostCompatibilityPending((count) => count + unique.length);
-				for (let offset = 0; offset < unique.length; offset += 64) {
-					const chunk = unique.slice(offset, offset + 64);
-					try {
-						const response = await fetch(api("/dsh-market/discovery-compatibility"), {
-							method: "POST",
-							headers: { "content-type": "application/json" },
-							body: JSON.stringify({
-								packages: chunk.filter((key) => !key.startsWith("https://")),
-								...chunk.some((key) => key.startsWith("https://")) ? { entries: chunk.filter((key) => key.startsWith("https://")) } : {}
-							})
-						});
-						const body = await response.json();
-						if (!response.ok || body.plugins === null || typeof body.plugins !== "object") throw new Error(`HTTP ${String(response.status)}`);
-						if (typeof body.hostVersion === "string" || body.hostVersion === null) setHostVersion(body.hostVersion);
-						const accepted = {};
-						for (const name of chunk) {
-							const item = body.plugins[name];
-							if (item === null || item === void 0 || ![
-								"compatible",
-								"incompatible",
-								"unknown"
-							].includes(item.status) || ![
-								"manifest",
-								"undeclared",
-								"unavailable"
-							].includes(item.basis) || item.requirement !== null && typeof item.requirement !== "string" || !Array.isArray(item.declarations)) {
-								accepted[name] = UNAVAILABLE_HOST_COMPATIBILITY;
-								continue;
-							}
-							accepted[name] = item;
-						}
-						commitHostCompatibility(accepted);
-					} catch {
-						commitHostCompatibility(Object.fromEntries(chunk.map((name) => [name, UNAVAILABLE_HOST_COMPATIBILITY])));
-					} finally {
-						for (const name of chunk) hostCompatibilityInFlight.delete(name);
-						setHostCompatibilityPending((count) => Math.max(0, count - chunk.length));
-					}
-				}
-			}, [setHostVersion]);
 			(0, react.useEffect)(() => {
 				loadCatalog();
-				fetch(api("/dsh-market/status"), { cache: "no-store" }).then(readMarketStatus).then((status) => {
+				const boot = updateCheckBoot;
+				const repairRequest = ++repairStatusRequest.current;
+				fetch(api("/dsh-market/status"), { cache: "no-store" }).then((res) => readMarketStatus(res, repairRequest)).then((status) => {
 					if (status === null) return;
+					applyRepairStatus(status, repairRequest);
 					statusRef.current = {
 						busy: status.busy === true,
 						runningAgents: Array.isArray(status.runningAgents) ? status.runningAgents.map(String) : [],
@@ -11320,6 +13712,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					setEnvReady(status.pnpm !== false);
 					applyGithubRouting(status);
 					if (typeof status.boot === "string") {
+						discoveryScan.setBoot(status.boot);
+						if (mounted.current && observeUpdateCheckBoot(status.boot, boot)) refreshInstalled();
 						setBootId(status.boot);
 						setIgnoredUpdateNames(ignoredUpdatesForBoot(status.boot));
 						try {
@@ -11333,12 +13727,14 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					if (typeof status.version === "string" && status.version !== "") setVersion(status.version);
 				}).catch(() => {});
 				refreshInstalled();
+				refreshUpdateNotifications();
 			}, [
 				applyDrainStatus,
 				refreshInstalled,
 				loadCatalog,
 				readMarketStatus,
-				restoreDrainMarkers
+				restoreDrainMarkers,
+				applyRepairStatus
 			]);
 			(0, react.useEffect)(() => {
 				if (bootId === null) return;
@@ -11358,6 +13754,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				if (bootId === null) return;
 				if (doneUrls.length === 0 && updatedNames.length === 0 && restartNames.length === 0 && removedCount === 0 && toggleRestart === 0) {
 					sessionStorage.removeItem("dshm-restart");
+					notifyUpdatePreferencesChanged();
 					return;
 				}
 				sessionStorage.setItem("dshm-restart", JSON.stringify({
@@ -11368,6 +13765,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					removed: removedCount,
 					toggled: toggleRestart
 				}));
+				notifyUpdatePreferencesChanged();
 			}, [
 				bootId,
 				doneUrls,
@@ -11405,7 +13803,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				if (updating !== null && typeof updating.name === "string" && updating.name !== "") {
 					setUpdatingName(updating.name);
 					const id = `recovered-update:${updating.name}`;
-					recoveredUpdateRecordId.current = id;
+					pendingUpdate.current = {
+						recordId: id,
+						recovering: true
+					};
 					setRecords((list) => list.some((record) => record.kind === "update" && record.name === updating.name && record.state === "running") ? list : enqueue(list, {
 						id,
 						kind: "update",
@@ -11429,7 +13830,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				}));
 			}, [data]);
 			(0, react.useEffect)(() => {
-				if (busyUrl === null && updatingName === null) {
+				if (busyUrl === null && updatingName === null && removingName === null) {
 					setHostBusy(false);
 					statusRef.current = {
 						...statusRef.current,
@@ -11443,8 +13844,11 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					return;
 				}
 				const timer = setInterval(() => {
-					fetch(api("/dsh-market/status"), { cache: "no-store" }).then(readMarketStatus).then((status) => {
+					const polledUpdate = pendingUpdate.current;
+					const repairRequest = polledUpdate === null ? void 0 : ++repairStatusRequest.current;
+					fetch(api("/dsh-market/status"), { cache: "no-store" }).then((res) => readMarketStatus(res, repairRequest)).then((status) => {
 						if (status === null) return;
+						if (repairRequest !== void 0 && typeof status.boot === "string") applyRepairStatus(status, repairRequest);
 						statusRef.current = {
 							busy: status.busy === true,
 							runningAgents: Array.isArray(status.runningAgents) ? status.runningAgents.map(String) : [],
@@ -11456,6 +13860,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						setHostBusy(status.busy === true);
 						setDebuggerLatch(typeof status.debugger === "string" ? status.debugger : null);
 						if (status.active) {
+							if (pendingUpdate.current === polledUpdate) updateIdleStrikes.current = 0;
 							setCancelling(status.cancelling === true);
 							if (status.phase !== null && status.phase !== void 0) {
 								setProgressPhase(status.phase);
@@ -11518,27 +13923,30 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 									setInstallError(t("installFail") + " — " + t("exportLog"));
 								}
 							}
-							if (updatingName !== null && status.busy !== true) {
-								if (++updateIdleStrikes.current >= 2) {
-									updateIdleStrikes.current = 0;
-									sessionStorage.removeItem("dshm-updating");
-									const recoveredId = recoveredUpdateRecordId.current;
-									if (recoveredId !== null) {
-										setRecords((list) => drop(list, recoveredId));
-										recoveredUpdateRecordId.current = null;
-									}
-									setUpdatingName(null);
-									refreshInstalled();
-								}
-							} else updateIdleStrikes.current = 0;
+							if (pendingUpdate.current !== polledUpdate) return;
+							if (updatingName === null || status.busy === true || polledUpdate?.recovering === false) {
+								updateIdleStrikes.current = 0;
+								return;
+							}
+							if (++updateIdleStrikes.current < 2) return;
+							updateIdleStrikes.current = 0;
+							if (polledUpdate !== null) {
+								sessionStorage.removeItem("dshm-updating");
+								pendingUpdate.current = null;
+								setRecords((list) => list.filter((record) => record.id !== polledUpdate.recordId || record.state !== "running" || record.hostOperationId !== void 0));
+							}
+							setUpdatingName(null);
+							refreshInstalled();
 						}
 					}).catch(() => {});
 				}, 2e3);
 				return () => clearInterval(timer);
 			}, [
 				applyDrainStatus,
+				applyRepairStatus,
 				busyUrl,
 				updatingName,
+				removingName,
 				data,
 				installed,
 				repoIdentities,
@@ -11630,10 +14038,16 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			}, [surface, themesFullscreen]);
 			(0, react.useLayoutEffect)(() => {
 				const root = rootRef.current;
+				/** Drops #1237's stuck marks. Scroll state, so it leaves with the offsets. */
+				const clearStuck = () => {
+					markStuck(headRef.current, false);
+					markStuck(root?.querySelector(`.${Market_module_css_default.cats}`) ?? null, false);
+				};
 				if (surface !== "plugins" || root === null || themesFullscreen) {
 					root?.style.removeProperty("--dshm-host-sticky-top");
 					root?.style.removeProperty("--dshm-plugins-head-height");
 					root?.style.removeProperty("--dshm-empty-view-height");
+					clearStuck();
 					return;
 				}
 				const host = listScroller(surface, root, null, false);
@@ -11641,6 +14055,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					root.style.removeProperty("--dshm-host-sticky-top");
 					root.style.removeProperty("--dshm-plugins-head-height");
 					root.style.removeProperty("--dshm-empty-view-height");
+					clearStuck();
 					return;
 				}
 				let frame = 0;
@@ -11660,14 +14075,19 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						const view = Math.max(0, Math.round(hostRect.bottom - top));
 						root.style.setProperty("--dshm-empty-view-height", `${String(view)}px`);
 					}
+					const cats = root.querySelector(`.${Market_module_css_default.cats}`);
+					const catsEl = cats instanceof HTMLElement ? cats : null;
+					const headPinned = head !== null && isPinned(host, head, hostTop);
+					const catsPinned = catsEl !== null && isPinned(host, catsEl, hostTop + headHeight);
+					markStuck(head, headPinned);
+					markStuck(catsEl, catsPinned);
 					if (restoringStickRef.current) return;
 					const y = host.scrollTop;
 					if (y > 0) pluginsYRef.current = y;
-					if (head !== null && isPinned(host, head, hostTop)) headFloorRef.current = headFloorRef.current === null ? y : Math.min(headFloorRef.current, y);
+					if (headPinned) headFloorRef.current = headFloorRef.current === null ? y : Math.min(headFloorRef.current, y);
 					else if (headFloorRef.current !== null && y > 0 && y + 4 < headFloorRef.current) headFloorRef.current = null;
-					const cats = root.querySelector(`.${Market_module_css_default.cats}`);
-					if (cats instanceof HTMLElement && isPinned(host, cats, hostTop + headHeight)) catsFloorRef.current = catsFloorRef.current === null ? y : Math.min(catsFloorRef.current, y);
-					else if (cats === null) catsFloorRef.current = null;
+					if (catsPinned) catsFloorRef.current = catsFloorRef.current === null ? y : Math.min(catsFloorRef.current, y);
+					else if (catsEl === null) catsFloorRef.current = null;
 					else if (catsFloorRef.current !== null && y > 0 && y + 4 < catsFloorRef.current) catsFloorRef.current = null;
 				};
 				const schedule = () => {
@@ -11682,6 +14102,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					root.style.removeProperty("--dshm-host-sticky-top");
 					root.style.removeProperty("--dshm-plugins-head-height");
 					root.style.removeProperty("--dshm-empty-view-height");
+					clearStuck();
 				};
 				apply();
 				host.addEventListener("scroll", schedule, { passive: true });
@@ -11720,7 +14141,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				sortDir,
 				timeRange
 			]);
-			const pluginBlocked = (plugin) => blockAliases(plugin, matchInstalledName(plugin, installed, repoIdentities, data?.plugins, repoHints)).some((name) => blockedNameSet.has(name));
+			const pluginBlocked = (plugin) => blockedNameSet.size > 0 && blockAliases(plugin, matchInstalledName(plugin, installed, repoIdentities, data?.plugins, repoHints)).some((name) => blockedNameSet.has(name));
 			const installedBlocked = (0, react.useMemo)(() => {
 				const compute = (name) => {
 					if (blockedNameSet.has(name)) return true;
@@ -11754,35 +14175,12 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				data,
 				repoHints
 			]);
-			const { plugins, hostHiddenCount } = (0, react.useMemo)(() => {
-				if (!compatibleWithHost) return {
-					plugins: pluginsUnblocked,
-					hostHiddenCount: 0
-				};
-				const compatible = (plugin) => {
-					const key = hostCompatibilityKey(plugin);
-					return key === null || hostCompatibility[key]?.status !== "incompatible";
-				};
-				let hidden = 0;
-				for (const plugin of pluginsAll) if (!compatible(plugin)) hidden += 1;
-				return {
-					plugins: pluginsUnblocked.filter(compatible),
-					hostHiddenCount: hidden
-				};
-			}, [
-				pluginsAll,
-				pluginsUnblocked,
-				compatibleWithHost,
-				hostCompatibility
-			]);
 			const recentlyAdded = (0, react.useMemo)(() => data === null || tab !== "discover" || q.trim() !== "" || cat !== "all" || timeRange !== "all" || sortField !== "downloads" || sortDir !== "desc" ? [] : visiblePlugins(data.plugins, {
 				category: "all",
 				query: "",
 				lang,
 				sort: "downloads-desc",
-				sinceDays: 7,
-				hostCompatibility,
-				compatibleWithHost
+				sinceDays: 7
 			}).filter((plugin) => !pluginBlocked(plugin)), [
 				data,
 				tab,
@@ -11792,14 +14190,11 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				sortField,
 				sortDir,
 				lang,
-				hostCompatibility,
-				compatibleWithHost,
 				blockedNameSet,
 				installed,
 				repoIdentities,
 				repoHints
 			]);
-			const hasRecent = recentlyAdded.length > 0;
 			const [recentCollapsed, setRecentCollapsed] = (0, react.useState)(() => readRecentFlag(RECENT_COLLAPSED_KEY));
 			const [recentHidden, setRecentHidden] = (0, react.useState)(() => readRecentFlag(RECENT_HIDDEN_KEY));
 			const toggleRecentCollapsed = (0, react.useCallback)(() => {
@@ -11817,43 +14212,31 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				setRecentCollapsed(false);
 				writeRecentFlag(RECENT_COLLAPSED_KEY, false);
 			}, []);
-			const recentPlugins = recentlyAdded.slice(0, RECENT_STRIP_LIMIT);
-			const { currentPage, totalPages, pageSize, goToPage, changePageSize } = usePagination(plugins.length, [
+			const discoverResetDeps = [
 				q,
 				cat,
 				sortField,
 				sortDir,
-				timeRange,
-				compatibleWithHost
-			], scrollToTop);
-			const discoverMore = useShownCount(plugins.length, [
-				q,
-				cat,
-				sortField,
-				sortDir,
-				timeRange,
-				compatibleWithHost
-			], DEFAULT_PAGE_SIZE);
-			const pagePlugins = surface === "plugins" ? plugins.slice(0, discoverMore.shown) : plugins.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-			const pageHostPackages = [...new Set([...pagePlugins, ...recentPlugins].flatMap((plugin) => hostCompatibilityKey(plugin) === null ? [] : [hostCompatibilityKey(plugin)]))];
-			const allHostPackages = (0, react.useMemo)(() => [...new Set((data?.plugins ?? []).flatMap((plugin) => hostCompatibilityKey(plugin) === null ? [] : [hostCompatibilityKey(plugin)]))], [data]);
-			const pageHostPackagesKey = pageHostPackages.join("\0");
-			const allHostPackagesKey = allHostPackages.join("\0");
-			(0, react.useEffect)(() => {
-				if (tab === "discover") loadHostCompatibility(pageHostPackages);
-			}, [
-				tab,
-				pageHostPackagesKey,
-				loadHostCompatibility
-			]);
-			(0, react.useEffect)(() => {
-				if (compatibleWithHost) loadHostCompatibility(allHostPackages);
-			}, [
-				compatibleWithHost,
-				allHostPackagesKey,
-				loadHostCompatibility
-			]);
-			const loadedHostPackages = allHostPackages.reduce((count, name) => count + (hostCompatibility[name] === void 0 ? 0 : 1), 0);
+				timeRange
+			];
+			const { currentPage, totalPages, pageSize, goToPage, changePageSize } = usePagination(pluginsUnblocked.length, discoverResetDeps, scrollToTop);
+			const discoverMore = useShownCount(pluginsUnblocked.length, discoverResetDeps, DEFAULT_PAGE_SIZE);
+			const basePage = surface === "plugins" ? pluginsUnblocked.slice(0, discoverMore.shown) : pluginsUnblocked.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+			const baseRecent = recentlyAdded.slice(0, RECENT_STRIP_LIMIT);
+			const hostVerdict = (plugin) => {
+				const key = hostCompatibilityKey(plugin);
+				return key === null ? void 0 : hostCompatibility[key];
+			};
+			const compatible = (plugin) => !compatibleWithHost || hostVerdict(plugin)?.status !== "incompatible";
+			const pagePlugins = basePage.filter(compatible);
+			const recentPlugins = baseRecent.filter(compatible);
+			const hasRecent = recentPlugins.length > 0;
+			const discoverCandidates = [.../* @__PURE__ */ new Set([...basePage, ...!recentHidden && !recentCollapsed ? baseRecent : []])];
+			const pageHostPackages = [...new Set(discoverCandidates.map(hostCompatibilityKey).filter((key) => key !== null))];
+			const pageVerdicts = discoverCandidates.map(hostVerdict);
+			const loadedHostPackages = pageHostPackages.filter((key) => hostCompatibility[key] !== void 0).length;
+			const hostHiddenCount = pageVerdicts.filter((verdict) => verdict?.status === "incompatible").length;
+			const hostUnavailableCount = pageVerdicts.filter((verdict) => verdict?.basis === "unavailable").length;
 			const themePluginsAll = (0, react.useMemo)(() => data === null ? [] : visiblePlugins(data.plugins, {
 				category: "theme",
 				query: qThemes,
@@ -11937,15 +14320,27 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			const favoriteThemeMore = useShownCount(favoriteThemes.length, favResetDeps, DEFAULT_PAGE_SIZE);
 			const favoritePagePlugins = surface === "plugins" ? favoritePlugins.slice(0, favoritePluginMore.shown) : favoritePlugins.slice((favoritePluginPagination.currentPage - 1) * favoritePluginPagination.pageSize, favoritePluginPagination.currentPage * favoritePluginPagination.pageSize);
 			const favoritePageThemes = surface === "plugins" ? favoriteThemes.slice(0, favoriteThemeMore.shown) : favoriteThemes.slice((favoriteThemePagination.currentPage - 1) * favoriteThemePagination.pageSize, favoriteThemePagination.currentPage * favoriteThemePagination.pageSize);
-			const favoritePageHostPackages = [...new Set(favoritePagePlugins.flatMap((plugin) => hostCompatibilityKey(plugin) === null ? [] : [hostCompatibilityKey(plugin)]))];
-			const favoritePageHostPackagesKey = favoritePageHostPackages.join("\0");
-			(0, react.useEffect)(() => {
-				if (tab === "favorites") loadHostCompatibility(favoritePageHostPackages);
-			}, [
-				tab,
-				favoritePageHostPackagesKey,
-				loadHostCompatibility
+			const installedHostPackages = (0, react.useMemo)(() => [...new Set(Object.entries(installed).flatMap(([name, spec]) => {
+				const entry = data === null ? void 0 : catalogEntryForInstalled(data.plugins, name, String(spec), repoIdentities[name], repoHints[name]);
+				if (entry === void 0) return [];
+				const key = hostCompatibilityKey(entry);
+				return key === null ? [] : [key];
+			}))], [
+				installed,
+				data,
+				repoIdentities,
+				repoHints
 			]);
+			const compatibilityKeys = (marketGone ? [] : tab === "discover" ? pageHostPackages : tab === "favorites" ? favoritePagePlugins.map(hostCompatibilityKey).filter((key) => key !== null) : tab === "installed" ? installedHostPackages : []).join("\0");
+			(0, react.useEffect)(() => {
+				discoveryScan.setDemand(compatibilityDemandOwner.current, data, compatibilityKeys === "" ? [] : compatibilityKeys.split("\0"));
+			}, [data, compatibilityKeys]);
+			(0, react.useEffect)(() => {
+				const owner = compatibilityDemandOwner.current;
+				return () => {
+					discoveryScan.removeDemand(owner);
+				};
+			}, []);
 			const favoriteStale = (0, react.useMemo)(() => data === null ? [] : staleFavoriteUrls(favoriteUrls, data.plugins), [data, favoriteUrls]);
 			const favoritesAllStale = favoriteUrls.length > 0 && favoriteStale.length === favoriteUrls.length && qFavorites.trim() === "";
 			/** Tab badge counts catalog-visible bookmarks once the registry is loaded. */
@@ -12433,6 +14828,11 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				updateIdleStrikes.current = 0;
 				sessionStorage.setItem("dshm-updating", JSON.stringify({ name }));
 				const updateRecordId = nextRecordId();
+				const attempt = {
+					recordId: updateRecordId,
+					recovering: false
+				};
+				pendingUpdate.current = attempt;
 				setRecords((list) => enqueue(list, {
 					id: updateRecordId,
 					kind: "update",
@@ -12452,12 +14852,19 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						...confirmAgentsRunning ? { confirmAgentsRunning: true } : {},
 						...!restore && statusRef.current.agentDrain && !preferReject ? { busyPolicy: "drain" } : {}
 					})
-				}).then((res) => res.json().then((body) => ({
-					status: res.status,
-					body
-				}))).then(({ status, body }) => {
-					sessionStorage.removeItem("dshm-updating");
-					setUpdatingName(null);
+				}).then(async (res) => {
+					const body = await res.json();
+					if (body === null || typeof body !== "object" || Array.isArray(body)) throw new Error("Invalid update response");
+					return {
+						status: res.status,
+						body
+					};
+				}).then(({ status, body }) => {
+					if (pendingUpdate.current === attempt) {
+						pendingUpdate.current = null;
+						sessionStorage.removeItem("dshm-updating");
+						setUpdatingName(null);
+					}
 					if (status === 202 && typeof body.operationId === "string") {
 						const operation = body.operation;
 						setRecords((list) => patch(withoutHostProjection(list, body.operationId, updateRecordId), updateRecordId, {
@@ -12481,6 +14888,24 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						setRecords((list) => drop(list, updateRecordId));
 						refreshInstalled();
 						if (body.partial === true) setInstallError(t("partialNote"));
+						return;
+					}
+					const releaseBlocked = body.failureCode === "PROFILE_RELEASE_BLOCKED" && body.profileBlocked !== null && typeof body.profileBlocked === "object" ? body.profileBlocked : null;
+					if (releaseBlocked !== null && typeof releaseBlocked.name === "string" && typeof releaseBlocked.version === "string") {
+						profileBlockRef.current = {
+							name: releaseBlocked.name,
+							version: releaseBlocked.version,
+							readyAt: typeof releaseBlocked.readyAt === "string" ? releaseBlocked.readyAt : null
+						};
+						refreshInstalled(true);
+					}
+					if (body.failureCode === "RESTART_REQUIRED") {
+						restartHoldRef.current = true;
+						setRestartHold({ boot: bootIdRef.current });
+						setRecords((list) => patch(list, updateRecordId, {
+							state: "warned",
+							reason: t("restartFirstNote")
+						}));
 						return;
 					}
 					if (status === 409 && body.staleTarget === true) {
@@ -12518,7 +14943,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 							doUpdate(name, force, restore, compatVersion, confirmAgentsRunning, eligibleVersion, true);
 							return;
 						}
-						if (status === 409) {
+						if (status === 409 && releaseBlocked === null) {
 							if (body.failureCode === "AGENT_BARRIER_LOST") {
 								setRecords((list) => patch(list, updateRecordId, {
 									state: "failed",
@@ -12586,9 +15011,17 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						}));
 						setInstallError((restore ? t("restoreFail") : t("updateFail")) + ": " + name + " — " + localizeBilingual(clipped, lang));
 					}
-				}).catch(() => {});
+				}).catch(() => {
+					if (pendingUpdate.current === attempt) pendingUpdate.current = {
+						...attempt,
+						recovering: true
+					};
+				}).finally(() => {
+					if (restore && mounted.current) refreshRepairStatus();
+				});
 			}, [
 				refreshInstalled,
+				refreshRepairStatus,
 				installed,
 				rememberDrainMarker,
 				t,
@@ -12715,19 +15148,31 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			exists while a user is actually looking at one plugin's notes, and
 			closing the dialog abandons the render — the server side caches the
 			payload, so reopening is cheap. */
-			const openNotes = (0, react.useCallback)((name, current, latest, repoUrl) => {
+			const openNotes = (0, react.useCallback)((name, current, latest, target, repoUrl) => {
+				notesRequest.current?.abort();
+				const request = new AbortController();
+				notesRequest.current = request;
 				setNotesFor({
 					name,
 					current,
 					latest,
+					target,
 					repoUrl
 				});
 				setUpdateNotes(null);
 				setNotesState("loading");
-				fetch(`${api("/dsh-market/changelog")}?name=${encodeURIComponent(name)}`).then((res) => res.json()).then((body) => {
+				fetch(`${api("/dsh-market/changelog")}?name=${encodeURIComponent(name)}${target !== null ? `&target=${encodeURIComponent(target)}` : ""}`, { signal: request.signal }).then((res) => res.json()).then((body) => {
+					if (request.signal.aborted) return;
 					setUpdateNotes(body);
 					setNotesState("ready");
-				}).catch(() => setNotesState("fail"));
+				}).catch(() => {
+					if (!request.signal.aborted) setNotesState("fail");
+				});
+			}, []);
+			const closeNotes = (0, react.useCallback)(() => {
+				notesRequest.current?.abort();
+				notesRequest.current = null;
+				setNotesFor(null);
 			}, []);
 			const doUseSkin = (0, react.useCallback)((name) => {
 				setInstallError(null);
@@ -12810,6 +15255,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					}
 					if (status === 409) {
 						setFavoriteError(t("favoriteBusy"));
+						return;
+					}
+					if (body?.code === "FAVORITES_LIMIT_REACHED" && typeof body.limit === "number") {
+						setFavoriteError(t("favoriteLimitReached").replace("{0}", String(body.limit)));
 						return;
 					}
 					setFavoriteError(typeof body?.error === "string" ? body.error : t("favoriteFailed"));
@@ -13234,6 +15683,16 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						if (operationInFlight()) return;
 						const task = recordsRef.current.find((record) => record.state === "queued" && record.hostOperationId === void 0 && (record.kind === "install" || runningAgents.length === 0));
 						if (task === void 0 || recordsRef.current.some((record) => record.state === "running" && record.hostOperationId === void 0)) return;
+						if (task.kind === "update" && restartHoldRef.current) return;
+						const blocked = profileBlockRef.current;
+						if (task.kind === "update" && blocked !== null && profileBlockStillHolds(blocked)) {
+							const reason = t("profileBlockedSkipped").replace("{0}", profileBlockedText(blocked, t));
+							setRecords((list) => patch(list, task.id, {
+								state: "failed",
+								reason
+							}));
+							return;
+						}
 						setRecords((list) => list.filter((record) => record.id !== task.id));
 						drainingRef.current = true;
 						try {
@@ -13254,7 +15713,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			}, [
 				applyDrainStatus,
 				readMarketStatus,
-				restoreDrainMarkers
+				restoreDrainMarkers,
+				t
 			]);
 			/** A queued record's "run now": retry immediately instead of waiting for idle. */
 			const runQueuedNow = (0, react.useCallback)((record, confirmAgentsRunning = false) => {
@@ -13375,6 +15835,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						return true;
 					}
 					const text = (v) => typeof v === "string" ? v : v == null ? "" : JSON.stringify(v);
+					if (body.partial === true) {
+						setGroupPayload(body);
+						refreshInstalled();
+					}
 					setInstallError(text(body.error) || t("toggleFail"));
 					if (Array.isArray(body.restartMembers) && body.restartMembers.length > 0) setToggleRestart((n) => n + body.restartMembers.length);
 					if (Array.isArray(body.refreshMembers) && body.refreshMembers.length > 0) setRefreshNames((names) => [.../* @__PURE__ */ new Set([...names, ...body.refreshMembers])]);
@@ -13558,6 +16022,19 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				}));
 				setUpdatingAll(true);
 				const next = () => {
+					const blocked = profileBlockRef.current;
+					if (names.length > 0 && blocked !== null && profileBlockStillHolds(blocked)) {
+						const reason = t("profileBlockedSkipped").replace("{0}", profileBlockedText(blocked, t));
+						const skipped = names.splice(0, names.length);
+						setRecords((list) => skipped.reduce((acc, item) => enqueue(acc, {
+							id: nextRecordId(),
+							kind: "update",
+							name: item.name,
+							state: "failed",
+							reason
+						}), list));
+					}
+					if (restartHoldRef.current) names.splice(0, names.length);
 					const item = names.shift();
 					if (item === void 0) {
 						setUpdatingAll(false);
@@ -13571,7 +16048,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				reminderBatchUpdatableNames,
 				doUpdate,
 				refreshInstalled,
-				updates
+				updates,
+				t,
+				nextRecordId
 			]);
 			const finishRestore = (0, react.useCallback)((body) => {
 				const errors = Array.isArray(body.errors) ? body.errors : [];
@@ -13682,6 +16161,11 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				if (error instanceof TypeError) return t("gistErrNetwork");
 				return String(error);
 			};
+			/** The picker list: dependency plugins + bundle-only plugins, deduplicated. */
+			const exportOptions = (0, react.useMemo)(() => {
+				return [.../* @__PURE__ */ new Set([...Object.keys(installed), ...installedBundles])].sort();
+			}, [installed, installedBundles]);
+			const exportAllSelected = exportOptions.length > 0 && exportOptions.every((name) => exportSelection.has(name));
 			const runGist = (0, react.useCallback)((action) => {
 				setGistBusy(true);
 				setGistMessage(null);
@@ -13703,12 +16187,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					}
 					body.gistId = gistId.trim();
 				}
-				if (action === "export") {
-					const allNames = /* @__PURE__ */ new Set([...Object.keys(installed), ...installedBundles]);
-					if (!(exportSelection.size === allNames.size && exportSelection.size > 0)) {
-						body.includeDeps = [...exportSelection];
-						if (exportIncludeConfig) body.includeConfig = true;
-					}
+				if (action === "export" && !exportAllSelected) {
+					body.includeDeps = [...exportSelection];
+					if (exportIncludeConfig) body.includeConfig = true;
 				}
 				fetch(api("/dsh-market/gist"), {
 					method: "POST",
@@ -13751,19 +16232,15 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					if (action === "export") setExportError(message);
 				}).finally(() => setGistBusy(false));
 			}, [
+				exportAllSelected,
 				exportIncludeConfig,
 				exportSelection,
 				gistId,
+				gistMode,
 				gistToken,
-				installed,
-				installedBundles,
 				previewBackup,
 				t
 			]);
-			/** The picker list: dependency plugins + bundle-only plugins, deduplicated. */
-			const exportOptions = (0, react.useMemo)(() => {
-				return [.../* @__PURE__ */ new Set([...Object.keys(installed), ...installedBundles])].sort();
-			}, [installed, installedBundles]);
 			/** Classify an install spec for the export picker badge. */
 			const specKind = (spec) => {
 				if (spec === void 0) return "bundle";
@@ -13772,11 +16249,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				return "npm";
 			};
 			const openExportPicker = (0, react.useCallback)(() => {
-				const names = /* @__PURE__ */ new Set([...Object.keys(installed), ...installedBundles]);
-				setExportSelection(new Set(names));
+				setExportSelection(new Set(exportOptions));
 				setExportIncludeConfig(false);
 				setExportOpen(true);
-			}, [installed, installedBundles]);
+			}, [exportOptions]);
 			const runWebdavRef = (0, react.useRef)(runWebdav);
 			(0, react.useEffect)(() => {
 				runWebdavRef.current = runWebdav;
@@ -13847,7 +16323,15 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					const bOn = effectiveDisabledSet.has(nameB) ? 0 : 1;
 					if (aOn !== bOn) return bOn - aOn;
 					const aUp = isPluginUpdatable(nameA, String(specA), updates[nameA], updatedNames, quietUpdateSet) ? 1 : 0;
-					return (isPluginUpdatable(nameB, String(specB), updates[nameB], updatedNames, quietUpdateSet) ? 1 : 0) - aUp;
+					const bUp = isPluginUpdatable(nameB, String(specB), updates[nameB], updatedNames, quietUpdateSet) ? 1 : 0;
+					if (aUp !== bUp) return bUp - aUp;
+					return compareInstalledRows(installedSort, {
+						name: nameA,
+						installedAt: installTimes[nameA]?.installedAt
+					}, {
+						name: nameB,
+						installedAt: installTimes[nameB]?.installedAt
+					});
 				});
 			}, [
 				isInstalledListActive,
@@ -13855,7 +16339,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				selfName,
 				updatesLoaded,
 				effectiveDisabledSet,
-				dependencyOnlyNames
+				dependencyOnlyNames,
+				installedSort,
+				installTimes
 			]);
 			const missingRestoreCount = Object.keys(pendingDependencies).filter((name) => !installedFiles.includes(name)).length;
 			const hasUpdates = reminderUpdatableNames.length > 0;
@@ -13874,6 +16360,36 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				label: favoriteUrlSet.has(url) ? t("favoriteRemove") : t("favoriteAdd"),
 				onToggle: () => toggleFavorite(url)
 			});
+			/** Bookmarks with no catalog entry have no card, so each gets its own row
+			* and its own remove button; a bulk clear sits beside them when there are several. */
+			const renderStaleFavorites = () => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+				className: Market_module_css_default.favoritesStaleBar,
+				"data-testid": "favorites-stale",
+				children: [
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("favoritesStaleNote").replace("{0}", String(favoriteStale.length)) }),
+					favoriteStale.map((url) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: Market_module_css_default.favoritesStaleRow,
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+							className: Market_module_css_default.favoritesStaleName,
+							children: url.replace(/^https?:\/\/(www\.)?github\.com\//, "")
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+							variant: "outline",
+							size: "sm",
+							disabled: clearingStale,
+							"aria-label": `${t("favoriteRemove")} ${url}`,
+							onClick: () => toggleFavorite(url),
+							children: t("favoriteRemove")
+						})]
+					}, url)),
+					favoriteStale.length > 1 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+						variant: "outline",
+						size: "sm",
+						disabled: clearingStale,
+						onClick: () => clearStaleFavorites(),
+						children: clearingStale ? t("favoritesClearingStale") : t("favoritesClearStale")
+					})
+				]
+			});
 			const renderPluginMenu = (plugin, key = plugin.url) => {
 				const aliases = blockAliases(plugin, matchInstalledName(plugin, installed, repoIdentities, data?.plugins, repoHints));
 				const hidden = aliases.some((name) => blockedNameSet.has(name));
@@ -13882,6 +16398,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					onClose: () => setPluginMenuUrl(null),
 					onSelect: (id) => {
 						setPluginMenuUrl(null);
+						if (id === "favorite") toggleFavorite(plugin.url);
 						if (id === "block") toggleBlock(blockToggleName(aliases));
 					},
 					align: "end",
@@ -13895,20 +16412,33 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						children: "···"
 					}),
 					items: [{
+						id: "favorite",
+						label: favoriteUrlSet.has(plugin.url) ? t("favoriteRemove") : t("favoriteAdd")
+					}, {
 						id: "block",
 						label: hidden ? t("blockRemove") : t("blockAdd")
 					}]
 				});
 			};
+			/** Catalog copy wins; an installed package can still explain itself when
+			* it has no usable catalog description (#1147). Shared by all installed views. */
+			const authoredDescription = (name, entry) => {
+				for (const description of [
+					entry?.description?.[lang],
+					entry?.description?.en,
+					localDescriptions[name]
+				]) if (typeof description === "string" && description.trim() !== "") return description.trim();
+				return "";
+			};
 			/**
 			* What the group view says about an installed plugin beyond its name: the
-			* user's own note, else the catalog's description (#1006). One place, so a
-			* plugin reads the same whether it sits in a group or in "Ungrouped".
+			* user's own note, else the author's description (#1006, #1147). One place,
+			* so a plugin reads the same in a group or in "Ungrouped".
 			*/
 			const installedBlurb = (name) => {
 				const entry = data === null ? void 0 : catalogEntryForInstalled(data.plugins, name, String(installed[name]), repoIdentities[name], repoHints[name]);
 				const note = notes[name];
-				const authored = entry?.description && (entry.description[lang] || entry.description.en) || "";
+				const authored = authoredDescription(name, entry);
 				return {
 					entry,
 					note,
@@ -14310,9 +16840,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				const record = recordForUrl(records, p.url);
 				const blocked = record !== null && (record.state === "input" || record.state === "failed");
 				const compatibilityKey = hostCompatibilityKey(p);
-				const compatibility = compatibilityKey === null ? void 0 : hostCompatibility[compatibilityKey];
-				const hostRequirementLabel = compatibility?.requirement !== null && compatibility?.requirement !== void 0 ? t("hostRequirement").replace("{0}", compatibility.requirement) : compatibilityKey === null ? t("hostRequirementUnavailable") : compatibility === void 0 ? t("hostRequirementLoading") : compatibility.basis === "undeclared" ? t("hostRequirementUndeclared") : t("hostRequirementUnavailable");
-				const hostRequirementTitle = compatibility?.declarations.map((declaration) => declaration.kind === "engine" ? `engines.dsh: ${declaration.range}` : `${declaration.package ?? "peer"}: ${declaration.range}`).join("\n") || hostRequirementLabel;
+				const hostChip = hostRequirementChip(compatibilityKey === null ? void 0 : hostCompatibility[compatibilityKey], compatibilityKey, t);
 				return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 					className: blocked ? `${Market_module_css_default.card} ${Market_module_css_default.cardBlocked}` : Market_module_css_default.card,
 					children: [
@@ -14396,11 +16924,15 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 							className: Market_module_css_default.foot,
 							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 								className: Market_module_css_default.footTags,
-								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-									className: compatibility?.status === "incompatible" ? `${Market_module_css_default.hostRequirement} ${Market_module_css_default.hostRequirementBad}` : Market_module_css_default.hostRequirement,
-									"data-status": compatibility?.status ?? "unknown",
-									title: (compatibility?.status === "compatible" || compatibility?.status === "incompatible" ? t(compatibility.status === "compatible" ? "hostStatusCompatible" : "hostStatusIncompatible") + "\n" : "") + hostRequirementTitle,
-									children: hostRequirementLabel
+								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(CardTip, {
+									label: hostChip.title,
+									maxWidth: 320,
+									children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+										className: hostChip.bad ? `${Market_module_css_default.hostRequirement} ${Market_module_css_default.hostRequirementBad}` : Market_module_css_default.hostRequirement,
+										"data-status": hostChip.status,
+										tabIndex: 0,
+										children: hostChip.label
+									})
 								}), pluginCategories(p).map((category) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 									className: Market_module_css_default.tag,
 									children: data.categories[category] && (data.categories[category][lang] || data.categories[category].en) || category
@@ -14841,6 +17373,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				groups,
 				installedThemeNames
 			]);
+			const marketUpdateStatus = updates[selfName];
+			const eligibleMarketVersion = marketUpdateStatus?.updateAvailable === true ? marketUpdateStatus.eligibleVersion ?? marketUpdateStatus.latest ?? null : null;
+			const heldMarketVersion = marketUpdateStatus?.heldUpdate;
+			const showMarketWait = typeof heldMarketVersion?.latest === "string" && heldMarketVersion.latest !== "" && heldMarketVersion.latest !== eligibleMarketVersion && !updatedNames.includes(selfName) && !quietUpdateSet.has(selfName);
 			const batchActions = /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
 				(() => {
 					const self = installed["dshmarket"] !== void 0 ? "dshmarket" : "dsh-market";
@@ -14883,6 +17419,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				onClick: doExportLog,
 				children: exportState === "busy" ? t("exportingLog") : t("exportLog")
 			});
+			const updateCheckFailed = updateCheck.failed === null || updateCheck.failed.size > 0 && updateCheck.failed.size >= Object.keys(updateCheck.updates).length;
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 				ref: rootRef,
 				className: `${Market_module_css_default.root} notranslate`,
@@ -14927,9 +17464,23 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 											children: "dsh-market"
 										}),
 										version !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-											className: Market_module_css_default.version,
-											title: t("versionHint"),
-											children: ["v", version]
+											className: Market_module_css_default.marketVersionGroup,
+											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+												className: Market_module_css_default.version,
+												title: t("versionHint"),
+												children: ["v", version]
+											}), showMarketWait && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+												label: () => marketWaitTip(heldMarketVersion, eligibleMarketVersion, uiLocale, t),
+												side: "bottom",
+												delayMs: HOVER_TIP_DELAY_MS,
+												portal: true,
+												maxWidth: 320,
+												children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+													className: Market_module_css_default.marketVersionWait,
+													tabIndex: 0,
+													children: t("marketVersionWaiting")
+												})
+											})]
 										}),
 										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("a", {
 											className: Market_module_css_default.submitLink,
@@ -15009,7 +17560,13 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 										},
 										children: t("tabAdvanced")
 									}),
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { className: Market_module_css_default.grow }),
+									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+										className: surface === "plugins" ? `${Market_module_css_default.grow} ${Market_module_css_default.sponsorSlot}` : Market_module_css_default.grow,
+										children: surface === "plugins" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { className: Market_module_css_default.sponsorWrapFloor }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(SponsorMark, {
+											lang,
+											t
+										})] })
+									}),
 									surface === "plugins" && batchActions,
 									surface === "plugins" && exportLogButton,
 									/* @__PURE__ */ (0, react_jsx_runtime.jsx)(OperationsPanel, {
@@ -15017,17 +17574,19 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 										lang,
 										describe: describePlugin,
 										records,
+										startupRepairEntries: startupRepair?.entries,
+										checkoutRecoveryEntries: checkoutRecovery?.entries,
 										open: operationsOpen,
 										onOpenChange: setOperationsOpen,
 										replacing,
 										envReady,
 										onClearSettled: () => {
-											for (const record of recordsRef.current) if (record.hostOperationId !== void 0 && (record.state === "done" || record.state === "warned" || record.state === "failed")) dismissedHostRef.current.add(record.hostOperationId);
+											for (const record of recordsRef.current) if (record.hostOperationId !== void 0 && (record.state === "done" || record.state === "warned" || record.state === "failed")) rememberDismissedHostId(record.hostOperationId);
 											setRecords((list) => clearSettled(list));
 										},
 										onCancel: (record) => doCancel(record),
 										onDismiss: (record) => {
-											if (record.hostOperationId !== void 0) dismissedHostRef.current.add(record.hostOperationId);
+											if (record.hostOperationId !== void 0) rememberDismissedHostId(record.hostOperationId);
 											setRecords((list) => drop(list, record.id));
 										},
 										onRefresh: () => location.reload(),
@@ -15051,6 +17610,34 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 										}
 									})
 								]
+							}),
+							!marketGone && updateCheckFailed && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+								className: Market_module_css_default.updateCheckNotice,
+								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									role: "status",
+									children: t("updateCheckFailed")
+								}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+									variant: "ghost",
+									size: "sm",
+									"aria-label": t("updateCheckRetry"),
+									disabled: checkingUpdates,
+									onClick: () => refreshInstalled(true),
+									children: t("loadRetry")
+								})]
+							}),
+							!marketGone && restartHold !== null && restartHold.boot === bootId && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: Market_module_css_default.updateCheckNotice,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									role: "status",
+									children: t("restartFirstNote")
+								})
+							}),
+							!marketGone && profileBlocked !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: Market_module_css_default.updateCheckNotice,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									role: "status",
+									children: profileBlockedText(profileBlocked, t)
+								})
 							}),
 							(tab === "backup" || tab === "diagnostics") && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 								className: Market_module_css_default.subTabs,
@@ -15235,6 +17822,19 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 									className: Market_module_css_default.grow,
 									children: configNamespaceIssues.map((finding) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", { children: t("configNamespaceNotice").replace("{0}", finding.name).replace("{1}", finding.namespaces.join("、")).replace("{2}", finding.ownEntryIds.join("、") || "—") }, finding.name))
 								})]
+							}),
+							tab === "installed" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(UpdateNotificationsPanel, {
+								snapshot: notificationSnapshot,
+								t,
+								busy: updatingName !== null || busyUrl !== null || removingName !== null,
+								onCheck: checkUpdateNotifications,
+								onEnabled: setUpdateNotificationsEnabled,
+								onIntervalHours: setUpdateNotificationsIntervalHours,
+								onUpdate: (name) => {
+									if (updates[name]?.restoreRequired === true) askRestore(name);
+									else doUpdate(name);
+								},
+								onOpenHost: openInHost === void 0 ? void 0 : (name) => openInHost.openBundle(name)
 							}),
 							tab === "installed" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(HostDependencyDiagnostics, {
 								findings: hostDependencyFindings,
@@ -15731,9 +18331,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 												setCatsOpen(next);
 											}
 										})]
-									}), compatibleWithHost && typeof hostVersion === "string" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+									}), compatibleWithHost && typeof hostVersion === "string" && pageHostPackages.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 										className: Market_module_css_default.hostFilterNote,
-										children: hostCompatibilityPending > 0 || loadedHostPackages < allHostPackages.length ? t("hostFilterLoading").replace("{0}", String(loadedHostPackages)).replace("{1}", String(allHostPackages.length)) : t("hostFilterActive").replace("{0}", hostVersion).replace("{1}", String(hostHiddenCount))
+										children: loadedHostPackages < pageHostPackages.length ? t("hostFilterLoading").replace("{0}", String(loadedHostPackages)).replace("{1}", String(pageHostPackages.length)) : t(hostUnavailableCount > 0 ? "hostFilterIncomplete" : "hostFilterActive").replace("{0}", hostVersion).replace("{1}", String(hostHiddenCount)).replace("{2}", String(hostUnavailableCount))
 									})]
 								})]
 							}),
@@ -15771,8 +18371,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 									children: recentPlugins.map((plugin) => recentTile(plugin))
 								})]
 							})),
-							plugins.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(EmptyResults, {
-								blocked: pluginsAll.length > hostHiddenCount,
+							pagePlugins.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(EmptyResults, {
+								message: basePage.length > 0 ? "hostFilterEmpty" : pluginsAll.length > 0 ? "blockedFilteredEmpty" : "empty",
 								t,
 								onClear: data.plugins.length > 0 && (q !== "" || cat !== "all" || timeRange !== "all" || compatibleWithHost) ? () => {
 									setQ("");
@@ -15782,10 +18382,11 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 									setCompatibleWithHost(false);
 									bodyRef.current?.querySelector("input")?.focus();
 								} : void 0
-							}) : /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(Masonry, {
+							}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Masonry, {
 								items: pagePlugins,
 								render: (plugin) => pluginCard(plugin)
-							}), surface === "plugins" ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(LoadMore, {
+							}),
+							pluginsUnblocked.length > 0 && (surface === "plugins" ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(LoadMore, {
 								more: discoverMore.more,
 								onLoad: discoverMore.loadMore,
 								t
@@ -15796,7 +18397,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 								onGoToPage: goToPage,
 								onChangePageSize: changePageSize,
 								t
-							})] })
+							}))
 						] }) : tab === "favorites" ? data === null ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 							className: Market_module_css_default.loading,
 							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
@@ -15834,27 +18435,12 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 								className: Market_module_css_default.empty,
 								children: t("favoritesStaleEmpty")
-							}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-								variant: "outline",
-								size: "sm",
-								disabled: clearingStale,
-								onClick: () => clearStaleFavorites(),
-								children: clearingStale ? t("favoritesClearingStale") : t("favoritesClearStale")
-							})]
+							}), renderStaleFavorites()]
 						}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 							className: Market_module_css_default.empty,
 							children: t("empty")
 						}) : /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
-							favoriteStale.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-								className: Market_module_css_default.favoritesStaleBar,
-								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("favoritesStaleNote").replace("{0}", String(favoriteStale.length)) }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-									variant: "outline",
-									size: "sm",
-									disabled: clearingStale,
-									onClick: () => clearStaleFavorites(),
-									children: clearingStale ? t("favoritesClearingStale") : t("favoritesClearStale")
-								})]
-							}),
+							favoriteStale.length > 0 && renderStaleFavorites(),
 							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 								className: Market_module_css_default.themeResultBar,
 								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("favoritesResultCount").replace("{0}", String(favoriteListed.length)) })
@@ -15958,7 +18544,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 								className: Market_module_css_default.empty,
 								children: t("themeEmpty")
 							}) : themePlugins$1.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(EmptyResults, {
-								blocked: themePluginsAll.length > 0,
+								message: themePluginsAll.length > 0 ? "blockedFilteredEmpty" : "empty",
 								t,
 								onClear: qThemes !== "" || themeTimeRange !== "all" ? () => {
 									setQThemes("");
@@ -16042,53 +18628,77 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 							}),
 							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 								className: Market_module_css_default.tabSearchRow,
-								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(SearchInput, {
-									resetToken: installedSearchReset,
-									className: Market_module_css_default.tabSearch,
-									placeholder: t("searchPh"),
-									value: qInstalled,
-									onCommit: setQInstalled,
-									t
-								}, "installed"), installedView === "groups" && (creatingGroup ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-									className: Market_module_css_default.groupCreateInline,
-									onBlur: (event) => {
-										const next = event.relatedTarget;
-										if (next instanceof Node && event.currentTarget.contains(next)) return;
-										cancelCreateGroup();
-									},
-									children: [
-										/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Input, {
-											className: Market_module_css_default.inlineInput,
-											placeholder: t("groupNamePh"),
-											value: newGroupName,
-											onChange: (e) => setNewGroupName(e.target.value),
-											onKeyDown: (e) => {
-												if (e.key === "Enter") doCreateGroup();
-												if (e.key === "Escape") cancelCreateGroup();
-											},
-											autoFocus: true
-										}),
-										/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-											variant: "primary",
-											size: "sm",
-											onClick: doCreateGroup,
-											children: t("groupCreate")
-										}),
-										/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-											variant: "ghost",
-											size: "sm",
-											onClick: cancelCreateGroup,
-											children: t("cancel")
-										})
-									]
-								}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-									variant: "outline",
-									size: "sm",
-									onClick: () => setCreatingGroup(true),
-									children: t("groupNew")
-								}))]
+								children: [
+									/* @__PURE__ */ (0, react_jsx_runtime.jsx)(SearchInput, {
+										resetToken: installedSearchReset,
+										className: Market_module_css_default.tabSearch,
+										placeholder: t("searchPh"),
+										value: qInstalled,
+										onCommit: setQInstalled,
+										t
+									}, "installed"),
+									installedView === "list" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(InstalledSortMenu, {
+										value: installedSort,
+										onChange: setInstalledSort,
+										t
+									}),
+									installedView === "groups" && (creatingGroup ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+										className: Market_module_css_default.groupCreateInline,
+										onBlur: (event) => {
+											const next = event.relatedTarget;
+											if (next instanceof Node && event.currentTarget.contains(next)) return;
+											cancelCreateGroup();
+										},
+										children: [
+											/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Input, {
+												className: Market_module_css_default.inlineInput,
+												placeholder: t("groupNamePh"),
+												value: newGroupName,
+												onChange: (e) => setNewGroupName(e.target.value),
+												onKeyDown: (e) => {
+													if (e.key === "Enter") doCreateGroup();
+													if (e.key === "Escape") cancelCreateGroup();
+												},
+												autoFocus: true
+											}),
+											/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+												variant: "primary",
+												size: "sm",
+												onClick: doCreateGroup,
+												children: t("groupCreate")
+											}),
+											/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+												variant: "ghost",
+												size: "sm",
+												onClick: cancelCreateGroup,
+												children: t("cancel")
+											})
+										]
+									}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+										variant: "outline",
+										size: "sm",
+										onClick: () => setCreatingGroup(true),
+										children: t("groupNew")
+									}))
+								]
 							}),
 							installedView === "groups" ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
+								groupOrder.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+									className: Market_module_css_default.groupBulkActions,
+									children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+										variant: "ghost",
+										size: "sm",
+										disabled: groupQuery !== "" || groupOrder.every((gid) => collapsedGroups.has(gid)),
+										onClick: () => setCollapsedGroups(new Set(groupOrder)),
+										children: t("groupCollapseAll")
+									}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+										variant: "ghost",
+										size: "sm",
+										disabled: groupQuery !== "" || !groupOrder.some((gid) => collapsedGroups.has(gid)),
+										onClick: () => setCollapsedGroups(/* @__PURE__ */ new Set()),
+										children: t("groupExpandAll")
+									})]
+								}),
 								groupQuery === "" && groupOrder.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 									className: Market_module_css_default.empty,
 									children: t("noGroups")
@@ -16372,6 +18982,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 								className: Market_module_css_default.empty,
 								children: t("installedEmpty")
 							}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Masonry, {
+								maxColumns: 2,
+								minColumns: 1,
+								className: Market_module_css_default.masonryInstalled,
 								items: orderedInstalledEntries.filter(([name, spec]) => {
 									const needle = qInstalled.trim().toLowerCase();
 									if (needle === "") return true;
@@ -16393,13 +19006,33 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 									const act = activations[name];
 									const meta = act !== void 0 ? activationMeta(act.state, t, act.dependencyOf, act.loadedByProfile, act.library) : null;
 									const version = status && status.version ? "v" + status.version : "";
+									const stamp = installTimes[name];
+									const installedOn = installedDateText(stamp?.installedAt);
+									const updatedOn = installedDateText(stamp?.updatedAt);
+									const installedWhenTitle = [installedOn === null ? t("installedAtUnknown") : `${t("installedAtLabel")} ${installedOn}`, updatedOn === null ? "" : `${t("updatedAtLabel")} ${updatedOn}`].filter(Boolean).join(" · ");
 									const specText = String(spec);
 									const specRedundant = version !== "" && /^[\^~]?\d/.test(specText);
+									const releaseSource = entry !== void 0 && catalogReleaseSourceOf(specText, entry) !== null;
 									const localPath = localPathOf(specText);
 									const ghSpec = /^github:([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:#|$)/.exec(specText);
 									const repoUrl = entry !== void 0 ? entry.url : ghSpec !== null ? "https://github.com/" + ghSpec[1] : null;
 									const off = act?.library !== true && effectiveDisabledSet.has(name);
 									const toggleable = act?.library !== true && (off || act !== void 0 && (act.state === "live" || act.state === "restart"));
+									const updatable = isPluginUpdatable(name, String(spec), status, updatedNames);
+									const metaBits = [
+										version,
+										localDev ? t("linkedDev") : "",
+										installedOn === null ? "" : `${t("installedAtLabel")} ${installedOn}`
+									].filter(Boolean);
+									const compatibilityKey = entry !== void 0 ? hostCompatibilityKey(entry) : null;
+									const compatibility = compatibilityKey === null ? void 0 : hostCompatibility[compatibilityKey];
+									const hostChip = hostRequirementChip(compatibility, compatibilityKey, t);
+									const showIncompat = !localDev && act?.state === "incompatible";
+									const showHostRequirement = !missing && !localDev && !showIncompat && entry !== void 0 && compatibility?.requirement != null;
+									const note = notes[name];
+									const authored = authoredDescription(name, entry);
+									const theirs = showTheirs.includes(name);
+									const shown = note !== void 0 && !theirs ? note : authored;
 									return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 										className: missing ? `${Market_module_css_default.irow} ${Market_module_css_default.irowMissing}` : Market_module_css_default.irow,
 										children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
@@ -16429,9 +19062,18 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 														children: renderInstalledBlockMenu(name)
 													})]
 												}),
-												(version !== "" || localDev) && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+												(metaBits.length > 0 || updatable) && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 													className: Market_module_css_default.irowMeta,
-													children: [version, localDev ? t("linkedDev") : ""].filter(Boolean).join(" · ")
+													children: [metaBits.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+														className: Market_module_css_default.irowMetaText,
+														title: installedWhenTitle,
+														children: metaBits.join(" · ")
+													}), updatable && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														className: Market_module_css_default.notesLink,
+														onClick: () => openNotes(name, status?.current ?? null, status?.latest ?? null, status?.eligibleVersion ?? status?.latest ?? null, repoUrl),
+														children: `${t("notesLink")} ›`
+													})]
 												}),
 												specRedundant ? null : localPath !== null ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 													className: Market_module_css_default.irowPath,
@@ -16454,6 +19096,19 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 															})
 														})
 													]
+												}) : releaseSource ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+													className: Market_module_css_default.irowPath,
+													children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+														className: Market_module_css_default.irowPathIcon,
+														children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(IconLinkOutline14, { size: 14 })
+													}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("a", {
+														className: `${Market_module_css_default.spec} ${Market_module_css_default.src}`,
+														href: specText,
+														title: specText,
+														target: "_blank",
+														rel: "noreferrer",
+														children: "GitHub Release"
+													})]
 												}) : repoUrl !== null ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 													className: Market_module_css_default.irowPath,
 													children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
@@ -16470,66 +19125,74 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 													className: Market_module_css_default.spec,
 													children: specText
 												}),
-												notingName === name ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-													className: Market_module_css_default.noteEdit,
-													children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Input, {
-														className: Market_module_css_default.noteInput,
-														value: noteDraft,
-														maxLength: NOTE_MAX,
-														autoFocus: true,
-														placeholder: t("notePlaceholder"),
-														onChange: (e) => setNoteDraft(e.target.value),
-														onKeyDown: (e) => {
-															if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-															if (e.key === "Enter") saveNote(name, noteDraft);
-															if (e.key === "Escape") setNotingName(null);
-														}
-													}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-														className: Market_module_css_default.noteEditBar,
-														children: [
-															/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-																className: Market_module_css_default.noteCount,
-																"aria-hidden": "true",
-																children: `${noteDraft.length}/${NOTE_MAX}`
-															}),
-															/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-																variant: "ghost",
-																size: "sm",
-																onClick: () => setNotingName(null),
-																children: t("cancel")
-															}),
-															/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-																variant: "primary",
-																size: "sm",
-																onClick: () => saveNote(name, noteDraft),
-																children: t("noteSave")
+												/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+													className: Market_module_css_default.irowDescBand,
+													children: [notingName === name ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+														className: Market_module_css_default.noteEdit,
+														children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Input, {
+															className: Market_module_css_default.noteInput,
+															value: noteDraft,
+															maxLength: NOTE_MAX,
+															autoFocus: true,
+															placeholder: t("notePlaceholder"),
+															onChange: (e) => setNoteDraft(e.target.value),
+															onKeyDown: (e) => {
+																if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+																if (e.key === "Enter") saveNote(name, noteDraft);
+																if (e.key === "Escape") setNotingName(null);
+															}
+														}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+															className: Market_module_css_default.noteEditBar,
+															children: [
+																/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+																	className: Market_module_css_default.noteCount,
+																	"aria-hidden": "true",
+																	children: `${noteDraft.length}/${NOTE_MAX}`
+																}),
+																/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+																	variant: "ghost",
+																	size: "sm",
+																	onClick: () => setNotingName(null),
+																	children: t("cancel")
+																}),
+																/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+																	variant: "primary",
+																	size: "sm",
+																	onClick: () => saveNote(name, noteDraft),
+																	children: t("noteSave")
+																})
+															]
+														})]
+													}) : shown !== "" ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+														className: `${Market_module_css_default.desc} ${Market_module_css_default.descTight} ${Market_module_css_default.irowBody}`,
+														children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(CardDesc, {
+															text: shown,
+															t,
+															lines: 3,
+															className: Market_module_css_default.irowDesc,
+															textClassName: note !== void 0 && !theirs ? Market_module_css_default.noteMine : void 0
+														}, shown)
+													}) : null, (showHostRequirement || notingName !== name) && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+														className: shown === "" || notingName === name ? `${Market_module_css_default.irowFootRow} ${Market_module_css_default.irowNoteActionsSpaced}` : Market_module_css_default.irowFootRow,
+														children: [showHostRequirement && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(CardTip, {
+															label: hostChip.title,
+															maxWidth: 320,
+															children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+																className: hostChip.bad ? `${Market_module_css_default.hostRequirement} ${Market_module_css_default.hostRequirementBad}` : Market_module_css_default.hostRequirement,
+																"data-status": hostChip.status,
+																tabIndex: 0,
+																children: hostChip.label
 															})
-														]
-													})]
-												}) : (() => {
-													const note = notes[name];
-													const authored = entry?.description && (entry.description[lang] || entry.description.en) || "";
-													const theirs = showTheirs.includes(name);
-													const shown = note !== void 0 && !theirs ? note : authored;
-													return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-														className: `${Market_module_css_default.desc} ${Market_module_css_default.descTight} ${Market_module_css_default.noteRow}`,
-														children: [
-															shown !== "" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(CardDesc, {
-																text: shown,
-																t,
-																lines: 3,
-																className: Market_module_css_default.irowDesc,
-																textClassName: note !== void 0 && !theirs ? Market_module_css_default.noteMine : void 0
-															}, shown),
-															note !== void 0 && authored !== "" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+														}), notingName !== name && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+															className: Market_module_css_default.irowNoteActions,
+															children: [note !== void 0 && authored !== "" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 																type: "button",
 																className: Market_module_css_default.noteToggle,
 																title: theirs ? t("noteSeeMine") : t("noteSeeTheirs"),
 																"aria-label": theirs ? t("noteSeeMine") : t("noteSeeTheirs"),
 																onClick: () => setShowTheirs((list) => theirs ? list.filter((n) => n !== name) : list.concat(name)),
 																children: theirs ? t("noteMine") : t("noteTheirs")
-															}),
-															/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+															}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
 																type: "button",
 																className: Market_module_css_default.noteAdd,
 																onClick: () => {
@@ -16537,48 +19200,33 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 																	setNotingName(name);
 																},
 																children: [note === void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(IconPlus, { size: 14 }), note === void 0 ? t("noteAdd") : t("noteEdit")]
-															})
-														]
-													});
-												})(),
-												(() => {
-													const updatable = isPluginUpdatable(name, String(spec), status, updatedNames);
-													const exempt = updateExemptSet.has(name);
-													if (!updatable && !exempt) return null;
-													const ignored = !exempt && bootId !== null && ignoredUpdateSet.has(name);
-													const sep = /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-														className: Market_module_css_default.irowStatusSep,
-														"aria-hidden": "true",
-														children: "·"
-													});
-													return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
-														updatable && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-															className: Market_module_css_default.irowStatus,
-															children: [!generation && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-																className: Market_module_css_default.irowStatusPart,
-																children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-																	className: Market_module_css_default.irowStatusFact,
-																	children: status?.eligibleVersion != null ? t("hostUpdateReady").replace("{0}", displayLatest(status.eligibleVersion)) : status?.latest != null ? t("hostUpdateReady").replace("{0}", displayLatest(status.latest)) : t("updateAvailableShort")
-																}), sep]
-															}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-																type: "button",
-																className: Market_module_css_default.notesLink,
-																onClick: () => openNotes(name, status?.current ?? null, status?.latest ?? null, repoUrl),
-																children: `${t("notesLink")} ›`
 															})]
-														}),
-														updatable && status?.eligibleVersion !== void 0 && status.restoreRequired !== true && status.heldUpdate !== void 0 && status.heldUpdate.latest !== status.eligibleVersion && (() => {
-															const left = Date.parse(status.heldUpdate.until) - Date.now();
-															const known = status.heldUpdate.estimated !== true && Number.isFinite(left) && left > 0;
-															return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-																className: Market_module_css_default.irowStatus,
-																children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-																	className: Market_module_css_default.metaInline,
-																	children: t(known ? "updateHeldTarget" : "updateHeldTargetUnknown").replace("{0}", displayLatest(status.heldUpdate.latest)).replace("{1}", String(Math.max(1, Math.ceil(left / 36e5)))).replace("{2}", displayLatest(status.eligibleVersion))
+														})]
+													})]
+												}),
+												(() => {
+													const exempt = updateExemptSet.has(name);
+													const ignored = !exempt && bootId !== null && ignoredUpdateSet.has(name);
+													if (!exempt && !ignored && !showIncompat) return null;
+													return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+														className: Market_module_css_default.irowStatusBand,
+														children: [showIncompat && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+															className: Market_module_css_default.irowIncompat,
+															children: [
+																/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+																	className: Market_module_css_default.irowIncompatTitle,
+																	children: t("installedIncompatTitle")
+																}),
+																/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+																	className: Market_module_css_default.irowIncompatBody,
+																	children: t("installedIncompatWhy").replace("{0}", compatibility?.requirement ?? t("hostIncompatibleUnknown")).replace("{1}", (typeof hostVersion === "string" ? hostVersion : null) ?? t("hostIncompatibleUnknown"))
+																}),
+																/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+																	className: Market_module_css_default.irowIncompatBody,
+																	children: status?.updateAvailable === true ? t("installedIncompatNextUpdate") : compatibility?.status === "incompatible" ? t("installedIncompatNextHost") : t("installedIncompatNextUnknown")
 																})
-															});
-														})(),
-														(exempt || ignored) && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+															]
+														}), (exempt || ignored) && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 															className: Market_module_css_default.irowStatus,
 															children: [
 																/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
@@ -16613,8 +19261,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 																	})
 																})
 															]
-														})
-													] });
+														})]
+													});
 												})(),
 												!off && act !== void 0 && meta !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 													className: Market_module_css_default.act,
@@ -16622,7 +19270,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 														act.library === true ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 															className: Market_module_css_default.metaTag,
 															children: meta.label
-														}) : meta.dot !== "done" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+														}) : meta.dot !== "done" && (localDev || act.state !== "incompatible") && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 															className: meta.dot === "error" ? Market_module_css_default.actBroken : Market_module_css_default.actWarn,
 															children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, {
 																state: meta.dot,
@@ -16728,79 +19376,108 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 														children: t("installReplacement")
 													})] });
 												})(),
-												/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+												/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 													className: Market_module_css_default.irowTrailing,
-													children: [
-														!missing && status?.sourceMigration !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-															variant: "outline",
-															size: "sm",
-															disabled: updatingName !== null || removingName !== null || busyUrl !== null,
-															onClick: () => askSourceMigration(name),
-															children: status.sourceMigration.kind === "npm-rename" ? t("renameRowAction") : t("migrateNpm")
-														}),
-														missing ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-															className: Market_module_css_default.metaTag,
-															children: t("notInstalled")
-														}) : updatedNames.includes(name) ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-															className: `${Market_module_css_default.metaTag} ${Market_module_css_default.metaTagOk}`,
-															children: act?.library === true ? t("updatedLibrary") : act?.state === "live" ? t("updatedLive") : t("updated")
-														}) : updatingName === name ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-															variant: "outline",
-															size: "sm",
-															className: Market_module_css_default.warnBtn,
-															disabled: true,
-															children: t("updating")
-														}) : status !== void 0 && generation && status.latest != null ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-															className: Market_module_css_default.metaTag,
-															title: t("hostUpdateHint"),
-															children: t("hostUpdateReady").replace("{0}", status.latest)
-														}) : status && status.updateAvailable ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-															variant: "outline",
-															size: "sm",
-															className: Market_module_css_default.warnBtn,
-															disabled: updatingName !== null,
-															onClick: () => {
-																if (status.restoreRequired === true) askRestore(name);
-																else doUpdate(name);
-															},
-															children: status.restoreRequired === true ? t("restoreOnline") : status.eligibleVersion !== void 0 ? `${t("update")} ${displayLatest(status.eligibleVersion)}` : t("update")
-														}), status.heldUpdate !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-															className: Market_module_css_default.metaTag,
-															children: t("updateHeldTag").replace("{0}", displayLatest(status.heldUpdate.latest))
-														})] }) : status?.heldUpdate !== void 0 ? (() => {
-															const left = Date.parse(status.heldUpdate.until) - Date.now();
-															const estimated = status.heldUpdate.estimated === true;
-															const amount = String(Math.max(1, Math.ceil(left / (estimated ? 6e4 : 36e5))));
-															const hint = t(estimated ? "updateHeldEstimatedHint" : "updateHeldHint").replace("{1}", amount);
-															return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+													children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+														className: Market_module_css_default.irowTrailingRow,
+														children: [
+															!missing && status?.sourceMigration !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+																variant: "outline",
+																size: "sm",
+																disabled: updatingName !== null || removingName !== null || busyUrl !== null,
+																onClick: () => askSourceMigration(name),
+																children: status.sourceMigration.kind === "npm-rename" ? t("renameRowAction") : t("migrateNpm")
+															}),
+															missing ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 																className: Market_module_css_default.metaTag,
-																title: hint,
-																children: t("updateHeldTag").replace("{0}", displayLatest(status.heldUpdate.latest))
-															});
-														})() : localDev ? null : status?.unreleasedCommit != null ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-															className: Market_module_css_default.metaTag,
-															title: t("unreleasedCommitsHint"),
-															children: t("unreleasedCommits").replace("{0}", displayLatest(status.unreleasedCommit))
-														}) : status?.newerPrerelease !== void 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-															className: Market_module_css_default.metaTag,
-															title: t("newerPrereleaseHint"),
-															children: t("newerPrereleaseAvailable").replace("{0}", status.newerPrerelease)
-														}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-															variant: "outline",
-															size: "sm",
-															disabled: updatingName !== null || removingName !== null || busyUrl !== null,
-															onClick: () => doUpdate(name, false, false, status.newerPrerelease),
-															children: t("install")
-														})] }) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-															className: Market_module_css_default.metaTag,
-															title: t("upToDate"),
-															children: t("upToDate")
-														}),
-														removingName === name && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-															className: Market_module_css_default.metaTag,
-															children: t("uninstalling")
-														})
-													]
+																children: t("notInstalled")
+															}) : updatedNames.includes(name) ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+																className: `${Market_module_css_default.metaTag} ${Market_module_css_default.metaTagOk}`,
+																children: act?.library === true ? t("updatedLibrary") : act?.state === "live" ? t("updatedLive") : t("updated")
+															}) : updatingName === name ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+																variant: "outline",
+																size: "sm",
+																className: Market_module_css_default.irowUpdateBtn,
+																disabled: true,
+																children: t("updating")
+															}) : status !== void 0 && generation && status.latest != null ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+																className: Market_module_css_default.metaTag,
+																title: t("hostUpdateHint"),
+																children: t("hostUpdateReady").replace("{0}", status.latest)
+															}) : status?.profileBlocked !== void 0 && status.updateAvailable !== true ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+																label: profileBlockedText(status.profileBlocked, t),
+																side: "top",
+																delayMs: HOVER_TIP_DELAY_MS,
+																portal: true,
+																maxWidth: 280,
+																children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+																	className: Market_module_css_default.irowTrailingHint,
+																	children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(IconClock, { size: 12 }), t("profileBlockedBeside")]
+																})
+															}) : status && status.updateAvailable ? (() => {
+																const held = status.heldUpdate !== void 0 ? heldUpdateBeside(status.heldUpdate, t) : null;
+																return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [held !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+																	label: held.title,
+																	side: "top",
+																	delayMs: HOVER_TIP_DELAY_MS,
+																	portal: true,
+																	maxWidth: 280,
+																	children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+																		className: Market_module_css_default.irowTrailingHint,
+																		children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(IconClock, { size: 12 }), held.label]
+																	})
+																}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+																	variant: "outline",
+																	size: "sm",
+																	className: Market_module_css_default.irowUpdateBtn,
+																	disabled: updatingName !== null,
+																	onClick: () => {
+																		if (status.restoreRequired === true) askRestore(name);
+																		else doUpdate(name);
+																	},
+																	children: status.restoreRequired === true ? t("restoreOnline") : (() => {
+																		const target = status.eligibleVersion ?? status.latest;
+																		return target != null && target !== "" ? `${t("update")} ${displayLatest(target)}` : t("update");
+																	})()
+																})] });
+															})() : status?.heldUpdate !== void 0 ? (() => {
+																const held = heldUpdateBeside(status.heldUpdate, t);
+																return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+																	label: held.title,
+																	side: "top",
+																	delayMs: HOVER_TIP_DELAY_MS,
+																	portal: true,
+																	maxWidth: 280,
+																	children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+																		className: Market_module_css_default.irowTrailingHint,
+																		children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(IconClock, { size: 12 }), held.label]
+																	})
+																});
+															})() : localDev ? null : status?.unreleasedCommit != null ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+																className: Market_module_css_default.metaTag,
+																title: t("unreleasedCommitsHint"),
+																children: t("unreleasedCommits").replace("{0}", displayLatest(status.unreleasedCommit))
+															}) : status?.newerPrerelease !== void 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+																className: Market_module_css_default.metaTag,
+																title: t("newerPrereleaseHint"),
+																children: t("newerPrereleaseAvailable").replace("{0}", status.newerPrerelease)
+															}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+																variant: "outline",
+																size: "sm",
+																disabled: updatingName !== null || removingName !== null || busyUrl !== null,
+																onClick: () => doUpdate(name, false, false, status.newerPrerelease),
+																children: t("install")
+															})] }) : updateCheck.failed === null || updateCheck.failed.has(name) ? null : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+																className: Market_module_css_default.metaTag,
+																title: t("upToDate"),
+																children: t("upToDate")
+															}),
+															removingName === name && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+																className: Market_module_css_default.metaTag,
+																children: t("uninstalling")
+															})
+														]
+													})
 												})
 											]
 										})]
@@ -17161,7 +19838,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					commentsFor !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(CommentsModal, {
 						name: pluginName(commentsFor.name, commentsFor.npm),
 						url: commentsFor.url,
-						lang,
+						lang: uiLocale,
 						onClose: () => setCommentsFor(null),
 						t
 					}, commentsFor.url),
@@ -17333,8 +20010,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					}),
 					notesFor !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(_deepseek_ai_dsh_client_ui_primitives.Modal, {
 						open: true,
-						onClose: () => setNotesFor(null),
-						className: notesState === "ready" && updateNotes?.kind === "release" ? Market_module_css_default.notesModalWide : void 0,
+						onClose: closeNotes,
+						className: notesState === "ready" && (updateNotes?.kind === "release" || (updateNotes?.history?.items.length ?? 0) > 0) ? Market_module_css_default.notesModalWide : void 0,
 						title: notesFor.repoUrl !== null ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("a", {
 							className: Market_module_css_default.nameLink,
 							href: notesFor.repoUrl + "#readme",
@@ -17344,7 +20021,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						}) : notesFor.name,
 						footer: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
 							variant: "ghost",
-							onClick: () => setNotesFor(null),
+							onClick: closeNotes,
 							children: t("gotIt")
 						}),
 						children: [
@@ -17361,7 +20038,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 									}),
 									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 										className: Market_module_css_default.spec,
-										children: notesFor.latest !== null && notesFor.latest.length === 40 ? notesFor.latest.slice(0, 7) : notesFor.latest
+										children: (() => {
+											const end = notesFor.target ?? notesFor.latest;
+											return end !== null && end.length === 40 ? end.slice(0, 7) : end;
+										})()
 									})
 								]
 							}),
@@ -17373,89 +20053,14 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 								className: Market_module_css_default.spec,
 								children: t("notesLoadFail")
 							}),
-							notesState === "ready" && updateNotes !== null && (updateNotes.kind === "release" ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-								className: Market_module_css_default.notesBody,
-								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-									className: Market_module_css_default.notesMeta,
-									children: [
-										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: t("notesRelease") }),
-										updateNotes.release.tag !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: " " + updateNotes.release.tag }),
-										updateNotes.release.publishedAt !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: " · " + updateNotes.release.publishedAt.slice(0, 10) })
-									]
-								}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-									className: Market_module_css_default.notesRendered,
-									children: renderMarkdown(updateNotes.release.body || t("notesNone"))
-								})]
-							}) : updateNotes.kind === "commits" ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-								className: Market_module_css_default.notesBody,
-								children: [
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-										className: Market_module_css_default.notesMeta,
-										children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: t("notesCommits") })
-									}),
-									!updateNotes.commits.found && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-										className: Market_module_css_default.notesMeta,
-										children: t("notesCommitsRecent")
-									}),
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("ul", {
-										className: Market_module_css_default.notesList,
-										children: updateNotes.commits.items.map((c) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("li", {
-											className: Market_module_css_default.notesRow,
-											children: [
-												/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-													className: Market_module_css_default.notesDate,
-													children: c.date !== null ? c.date.slice(0, 10) : ""
-												}),
-												/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-													className: Market_module_css_default.notesMsg,
-													children: mdInline(c.message)
-												}),
-												notesFor.repoUrl !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("a", {
-													className: Market_module_css_default.notesSha,
-													href: notesFor.repoUrl + "/commit/" + c.sha,
-													target: "_blank",
-													rel: "noreferrer",
-													title: c.message,
-													children: c.sha.slice(0, 7)
-												})
-											]
-										}, c.sha))
-									})
-								]
-							}) : updateNotes.kind === "npm" ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-								className: Market_module_css_default.notesBody,
-								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-									className: Market_module_css_default.notesMeta,
-									children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: t("notesNpm") })
-								}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("ul", {
-									className: Market_module_css_default.notesList,
-									children: updateNotes.npmTimes.map((v) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("li", {
-										className: Market_module_css_default.notesRow,
-										children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-											className: Market_module_css_default.notesDate,
-											children: v.date.slice(0, 10)
-										}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("a", {
-											className: Market_module_css_default.notesVer,
-											href: `https://www.npmjs.com/package/${encodeURIComponent(notesFor.name)}/v/${encodeURIComponent(v.version)}`,
-											target: "_blank",
-											rel: "noreferrer",
-											children: v.version
-										})]
-									}, v.version))
-								})]
-							}) : updateNotes.kind === "source" ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-								className: Market_module_css_default.spec,
-								children: [t(updateNotes.reason === "unavailable" ? "notesLoadFail" : updateNotes.reason === "unreadable" ? "notesSourceUnreadable" : "notesSource"), typeof updateNotes.sourceUrl === "string" && /^https?:\/\//i.test(updateNotes.sourceUrl) ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [lang === "zh" ? "" : " ", /* @__PURE__ */ (0, react_jsx_runtime.jsx)("a", {
-									className: Market_module_css_default.notesSourceLink,
-									href: updateNotes.sourceUrl,
-									target: "_blank",
-									rel: "noreferrer",
-									children: t("notesSourceLink")
-								})] }) : updateNotes.reason !== "unavailable" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [lang === "zh" ? "" : " ", t("notesSourceNoLink")] })]
-							}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-								className: Market_module_css_default.spec,
-								children: t("notesNone")
-							}))
+							notesState === "ready" && updateNotes !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(UpdateNotesContent, {
+								notes: updateNotes,
+								name: notesFor.name,
+								target: notesFor.target ?? notesFor.latest,
+								repoUrl: notesFor.repoUrl,
+								t,
+								lang
+							})
 						]
 					}),
 					restoreConfirmOpen && pendingBackup !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Modal, {
@@ -17544,9 +20149,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 								className: Market_module_css_default.backupCheck,
 								onChange: setExportIncludeConfig
 							}),
-							exportIncludeConfig && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+							(exportAllSelected || exportIncludeConfig) && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
 								className: Market_module_css_default.backupWarn,
-								children: t("credsWarning")
+								children: t("gistConfigWarning")
 							}),
 							exportError !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
 								className: Market_module_css_default.backupWarn,
@@ -17946,9 +20551,12 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			return {
 				updateAvailable: own.updateAvailable === true,
 				latest: own.latest ?? null,
+				eligibleVersion: own.eligibleVersion ?? null,
+				heldUpdate: own.heldUpdate ?? null,
 				channelSwitch: own.channelSwitch ?? null,
 				restoreRequired: own.restoreRequired === true,
-				hostManaged: own.kind === "generation"
+				hostManaged: own.kind === "generation",
+				profileBlocked: own.profileBlocked ?? null
 			};
 		}
 		/**
@@ -17965,7 +20573,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				storage.removeItem(key);
 			} catch {}
 		}
-		function SettingsCard({ t, onRemoved, sidebar, entries }) {
+		function SettingsCard({ t, locale, onRemoved, sidebar, entries }) {
+			const activeLocale = (0, react.useSyncExternalStore)((listener) => locale?.subscribe(listener) ?? (() => {}), () => locale?.getSnapshot().active ?? "en");
 			const [open, setOpen] = (0, react.useState)(false);
 			const [advancedOpen, setAdvancedOpen] = (0, react.useState)(false);
 			const advancedId = (0, react.useId)();
@@ -17999,6 +20608,12 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			}, [entries]);
 			const [status, setStatus] = (0, react.useState)(null);
 			const [update, setUpdate] = (0, react.useState)(null);
+			const notificationSnapshot = useUpdateNotifications();
+			(0, react.useEffect)(() => {
+				if (!notificationSnapshot.loaded) return;
+				const own = notificationSnapshot.updates.dshmarket ?? notificationSnapshot.updates["dsh-market"];
+				setUpdate(own === void 0 ? null : readUpdate(own));
+			}, [notificationSnapshot.updates, notificationSnapshot.loaded]);
 			const [phase, setPhase] = (0, react.useState)("idle");
 			const [restoreConfirming, setRestoreConfirming] = (0, react.useState)(false);
 			const [purge, setPurge] = (0, react.useState)(false);
@@ -18046,6 +20661,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						const body = await (await fetch(api("/dsh-market/updates"), { cache: "no-store" })).json();
 						const own = body.updates?.["dshmarket"] ?? body.updates?.["dsh-market"];
 						if (live && own !== void 0) setUpdate(readUpdate(own));
+						refreshUpdateNotifications();
 					} catch {}
 				})();
 				return () => {
@@ -18069,6 +20685,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						const body = await post(api("/dsh-market/update"), {
 							name: "dshmarket",
 							...update?.restoreRequired === true ? { restore: true } : {},
+							...update?.eligibleVersion != null ? { eligibleVersion: update.eligibleVersion } : {},
 							...force ? { force: true } : {}
 						});
 						if (body.ok === true) setPhase("updated");
@@ -18085,6 +20702,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			}, [
 				post,
 				t,
+				update?.eligibleVersion,
 				update?.restoreRequired
 			]);
 			const onRemove = (0, react.useCallback)(() => {
@@ -18116,6 +20734,9 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				t
 			]);
 			const busy = phase === "working";
+			const checkStale = notificationSnapshot.loaded && notificationSnapshot.stale;
+			const checkFailed = checkStale && notificationSnapshot.error !== null;
+			const pluginListChanged = checkStale && !checkFailed;
 			const version = status?.version ?? null;
 			const prerelease = version !== null && version.includes("-");
 			/** Re-ask what this channel offers; the previous answer was for another one. */
@@ -18123,6 +20744,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				const body = await (await fetch(api("/dsh-market/updates") + "?force=1", { cache: "no-store" })).json();
 				const own = body.updates?.["dshmarket"] ?? body.updates?.["dsh-market"];
 				setUpdate(own === void 0 ? null : readUpdate(own));
+				refreshUpdateNotifications();
 			}, []);
 			/**
 			* Select a channel — and show the one the SERVER accepted.
@@ -18325,7 +20947,10 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				id: advancedId,
 				className: Market_module_css_default.setAdvancedBody
 			}, entryRows.map((node, index) => (0, react.createElement)(react.Fragment, { key: index }, node))) : null) : null;
-			const body = phase === "removed" ? row(t("setSelfRemoved"), t("setSelfRemovedHint"), null) : (0, react.createElement)(react.Fragment, null, advanced, row(t("setIndexSource"), t("setIndexSourceHint"), null), status?.selfManaged === true ? row((update?.updateAvailable === true || update?.hostManaged === true) && update.latest !== null ? `${t("setSelfUpdateReady")} ${update.latest}` : update?.channelSwitch != null ? `${t("setChannelSwitch")} ${update.channelSwitch}` : t("setSelfUpToDate"), phase === "updated" ? t("setSelfUpdatedHint") : update?.channelSwitch != null ? t("setChannelSwitchHint") : update?.updateAvailable === true ? t("setSelfUpdateHint") : update?.hostManaged === true && update.latest !== null ? t("setSelfHostManagedHint") : t("setSelfUpToDateHint"), phase === "updated" ? null : update?.updateAvailable === true ? (0, react.createElement)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+			const offeredVersion = update?.eligibleVersion ?? update?.latest ?? null;
+			const held = update?.heldUpdate;
+			const heldVersionText = held != null && typeof held.latest === "string" && held.latest !== "" && (update?.updateAvailable !== true || held.latest !== offeredVersion) ? marketHeldVersionText(held, activeLocale, t) : null;
+			const body = phase === "removed" ? row(t("setSelfRemoved"), t("setSelfRemovedHint"), null) : (0, react.createElement)(react.Fragment, null, advanced, row(t("setIndexSource"), t("setIndexSourceHint"), null), status?.selfManaged === true ? row((update?.updateAvailable === true || update?.hostManaged === true) && offeredVersion !== null ? `${t("setSelfUpdateReady")} ${offeredVersion}` : update?.channelSwitch != null ? `${t("setChannelSwitch")} ${update.channelSwitch}` : checkFailed ? t("updateChecksFailed") : pluginListChanged ? t("updateChecksChanged") : update?.profileBlocked != null || heldVersionText !== null ? t("setSelfUpdateWaiting") : update === null ? t("updateChecksPending") : t("setSelfUpToDate"), phase === "updated" ? t("setSelfUpdatedHint") : update?.channelSwitch != null ? t("setChannelSwitchHint") : update?.updateAvailable === true ? [t("setSelfUpdateHint"), heldVersionText].filter(Boolean).join(" · ") : update?.hostManaged === true && update.latest !== null ? t("setSelfHostManagedHint") : checkFailed ? t("updateChecksFailedHint") : pluginListChanged ? t("updateChecksChangedHint") : update?.profileBlocked != null ? profileBlockedText(update.profileBlocked, t) : heldVersionText ?? t("setSelfUpToDateHint"), phase === "updated" ? null : update?.updateAvailable === true ? (0, react.createElement)(_deepseek_ai_dsh_client_ui_primitives.Button, {
 				variant: "primary",
 				size: "sm",
 				disabled: busy,
@@ -18787,6 +21412,233 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 			};
 		}
 		//#endregion
+		//#region src/client/PluginsUpdateIndicator.tsx
+		/** Decorate the host's existing Plugins icon without replacing its button or page. */
+		const DOT_STYLE = {
+			position: "absolute",
+			right: -2,
+			top: -2,
+			width: 6,
+			height: 6,
+			borderRadius: "50%",
+			background: "var(--dsw-alias-state-error-primary, #e5484d)",
+			boxShadow: "0 0 0 1.5px var(--dsw-alias-bg-base, #fff)",
+			pointerEvents: "none"
+		};
+		const ANNOUNCEMENT_STYLE = {
+			position: "absolute",
+			width: 1,
+			height: 1,
+			padding: 0,
+			margin: -1,
+			overflow: "hidden",
+			clipPath: "inset(50%)",
+			whiteSpace: "nowrap",
+			border: 0
+		};
+		/** The host may mount more than one responsive sidebar; any active copy is a visit. */
+		function createIconActivity() {
+			const instances = /* @__PURE__ */ new Map();
+			const listeners = /* @__PURE__ */ new Set();
+			let current;
+			const publish = () => {
+				const values = [...instances.values()];
+				const next = values.includes(true) ? true : values.includes(false) ? false : void 0;
+				if (next === current) return;
+				current = next;
+				for (const listener of listeners) listener();
+			};
+			return {
+				getSnapshot: () => current,
+				subscribe: (listener) => {
+					listeners.add(listener);
+					return () => {
+						listeners.delete(listener);
+					};
+				},
+				track: (active) => {
+					const key = Symbol();
+					instances.set(key, active);
+					publish();
+					return () => {
+						instances.delete(key);
+						publish();
+					};
+				}
+			};
+		}
+		function PluginsUpdateIcon({ original: Original, owner, activity }) {
+			const snapshot = useUpdateNotifications();
+			(0, react.useLayoutEffect)(() => activity.track(owner.active), [activity, owner.active]);
+			(0, react.useLayoutEffect)(() => {
+				if (owner.active === true) acknowledgeUpdateNotifications(snapshot);
+			}, [owner.active, snapshot]);
+			const count = owner.active === false ? unseenNotificationNames(snapshot).length : 0;
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+				"data-dsh-market-plugins-indicator": "",
+				style: {
+					position: "relative",
+					display: "inline-flex",
+					lineHeight: 0
+				},
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(Original, { ...owner }), count > 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+					"data-dsh-market-update-dot": "",
+					"data-update-count": count,
+					"aria-hidden": "true",
+					style: DOT_STYLE
+				}) : null]
+			});
+		}
+		function UpdateAnnouncement({ t, locale, activity }) {
+			(0, react.useSyncExternalStore)((listener) => locale.subscribe(listener), () => locale.getSnapshot().active, () => locale.getSnapshot().active);
+			const active = (0, react.useSyncExternalStore)(activity.subscribe, activity.getSnapshot, activity.getSnapshot);
+			const snapshot = useUpdateNotifications();
+			const count = active === false ? unseenNotificationNames(snapshot).length : 0;
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+				role: "status",
+				"aria-live": "polite",
+				"aria-atomic": "true",
+				"data-dsh-market-update-announcement": "",
+				style: ANNOUNCEMENT_STYLE,
+				children: count > 0 ? t("updateNotificationsAnnouncement").replace("{count}", String(count)) : ""
+			});
+		}
+		/** Newer slot registries explicitly expose shadowing winners; older hosts keep their icon. */
+		function supportsDecoration(slots) {
+			if (slots === null || typeof slots !== "object") return false;
+			return [
+				"inject",
+				"register",
+				"entries",
+				"entriesOfSlot",
+				"subscribe"
+			].every((name) => typeof slots[name] === "function");
+		}
+		/**
+		* Only a presentation-only native icon is wrapped. Its own injected business
+		* face, store or child slots are never called or copied into another entry.
+		*/
+		function canWrap(entry) {
+			return isIconComponent(entry.component) && entry.inject === void 0 && entry.store === void 0 && (entry.children === void 0 || Object.keys(entry.children).length === 0);
+		}
+		function installPluginsUpdateIndicator(host, t, locale) {
+			if (!supportsDecoration(host.slots)) return () => {};
+			const slots = host.slots;
+			let disposed = false;
+			let stopIcon;
+			let stopAnnouncement;
+			const controllers = [];
+			const activity = createIconActivity();
+			const quietly = (stop) => {
+				try {
+					stop?.();
+				} catch {}
+			};
+			const dispose = () => {
+				if (disposed) return;
+				disposed = true;
+				quietly(stopIcon);
+				quietly(stopAnnouncement);
+				for (const stop of controllers.splice(0).reverse()) quietly(stop);
+			};
+			const install = (slot, callback) => {
+				if (disposed) return;
+				const off = slots.inject(slot, () => {
+					if (disposed) return () => {};
+					try {
+						return callback();
+					} catch {
+						dispose();
+						return () => {};
+					}
+				});
+				if (typeof off === "function") {
+					if (disposed) quietly(off);
+					else controllers.push(off);
+				}
+			};
+			try {
+				install("sidebar.panellist", () => {
+					let original;
+					let Decoration;
+					let stopDecoration;
+					let closed = false;
+					let reconciling = false;
+					let changedWhileReconciling = false;
+					const remove = () => {
+						const stop = stopDecoration;
+						stopDecoration = void 0;
+						Decoration = void 0;
+						original = void 0;
+						quietly(stop);
+					};
+					const reconcile = () => {
+						if (closed || disposed) return;
+						if (reconciling) {
+							changedWhileReconciling = true;
+							return;
+						}
+						reconciling = true;
+						try {
+							const entries = slots.entries("sidebar.panellist").filter((entry) => entry.options.id === "plugins" && entry.component !== Decoration);
+							const next = entries.length === 1 && (entries[0].options.priority ?? 0) === 0 && canWrap(entries[0]) ? entries[0] : void 0;
+							if (next === original) return;
+							remove();
+							if (next === void 0) return;
+							if (slots.entriesOfSlot("sidebar.panellist").find((entry) => entry.options.id === "plugins") !== next) return;
+							const Original = next.component;
+							Decoration = (owner) => (0, react.createElement)(PluginsUpdateIcon, {
+								original: Original,
+								owner,
+								activity
+							});
+							const off = slots.register({
+								name: "sidebar.panellist",
+								id: "plugins",
+								priority: -1,
+								...next.options.order === void 0 ? {} : { order: next.options.order },
+								...next.options.label === void 0 ? {} : { label: next.options.label },
+								...next.locale === void 0 ? {} : { locale: next.locale }
+							}, Decoration);
+							original = next;
+							stopDecoration = typeof off === "function" ? off : void 0;
+						} catch {
+							dispose();
+						} finally {
+							reconciling = false;
+							if (changedWhileReconciling) {
+								changedWhileReconciling = false;
+								queueMicrotask(reconcile);
+							}
+						}
+					};
+					const unsubscribe = slots.subscribe("sidebar.panellist", reconcile);
+					stopIcon = () => {
+						closed = true;
+						quietly(unsubscribe);
+						remove();
+					};
+					reconcile();
+					return stopIcon;
+				});
+				install("shell.overlay", () => {
+					const off = slots.register({
+						name: "shell.overlay",
+						id: "dsh-market-update-announcement"
+					}, () => (0, react.createElement)(UpdateAnnouncement, {
+						t,
+						locale,
+						activity
+					}));
+					stopAnnouncement = typeof off === "function" ? off : () => {};
+					return stopAnnouncement;
+				});
+			} catch {
+				dispose();
+			}
+			return dispose;
+		}
+		//#endregion
 		//#region src/client/index.ts
 		/**
 		* dsh-market client: registers a "Market" settings section rendering the
@@ -18853,6 +21705,8 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				ja
 			}), "dsh-market: dictionaries");
 			const t = ctx.locale.bind(NS);
+			ctx.effect(() => updateNotifications.start(), "dsh-market: update snapshots");
+			ctx.effect(() => installPluginsUpdateIndicator(ctx, t, ctx.locale), "dsh-market: Plugins update indicator");
 			let stopNavStandIn;
 			let hostPaintsNavIcon = false;
 			ctx.slots.inject("settings.section.icon", () => {
@@ -18910,10 +21764,14 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 						label: () => t("nav"),
 						locale: NS,
 						inject: () => ({ t })
-					}, (ownerProps = {}) => buildMarketElement({
+					}, (ownerProps = {}) => (0, react.createElement)(SettingsNoticeFrame, {
+						t,
+						entries,
+						hostNavigation
+					}, buildMarketElement({
 						...ownerProps,
 						surface: "settings"
-					}));
+					})));
 					return typeof off === "function" ? off : () => {};
 				}),
 				pluginsTabGate: createSectionGate(() => {
@@ -18973,9 +21831,14 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				layout = scoped.layout;
 			});
 			ctx.inject(["pluginNavigation"], (scoped) => {
-				hostNavigation.attach({ openBundle: (name) => {
-					scoped.pluginNavigation.openBundle(name);
-				} });
+				hostNavigation.attach({
+					openBundle: (name) => {
+						scoped.pluginNavigation.openBundle(name);
+					},
+					...typeof scoped.pluginNavigation.openList === "function" ? { openList: () => {
+						scoped.pluginNavigation.openList?.();
+					} } : {}
+				});
 			});
 			const retire = () => {
 				entries.retire();
@@ -19008,6 +21871,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 					inject: () => ({ t })
 				}, () => (0, react.createElement)(SettingsCard, {
 					t,
+					locale: ctx.locale,
 					sidebar,
 					entries,
 					onRemoved: retire
@@ -19021,6 +21885,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				inject: () => ({ t })
 			}, (ownerProps = {}) => ownerProps.view === "summary" ? null : (0, react.createElement)(SettingsCard, {
 				t,
+				locale: ctx.locale,
 				sidebar,
 				entries,
 				onRemoved: retire
@@ -19035,6 +21900,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
 				inject: () => ({ t })
 			}, () => (0, react.createElement)(SettingsCard, {
 				t,
+				locale: ctx.locale,
 				sidebar,
 				entries,
 				onRemoved: retire

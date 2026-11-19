@@ -194,6 +194,12 @@ export interface InstallResult {
      * an ordinary failure without parsing a sentence.
      */
     refusalCode?: string;
+    /**
+     * The desktop host refused with `bundle-in-use` after an update already
+     * settled behind a restart in this process (#1253): the answer is "restart",
+     * not "that plugin is in use".
+     */
+    needsRestart?: boolean;
     /** Package names pnpm reported as having ignored build scripts (ndjson). */
     ignoredBuilds?: string[];
     /**
@@ -262,6 +268,8 @@ export interface PluginCommandRuntime {
      * "nothing else is running".
      */
     busy?(): boolean;
+    /** A managed package command can still write after its caller times out. */
+    packageWritesSettled?(): boolean;
 }
 /** One running package operation, however it was started. */
 export interface DesktopPnpmHandleLike {
@@ -452,13 +460,30 @@ export declare const BOOT_ID: string;
  * it (defense in depth on top of per-route validation — the win32 bare-dsh
  * fallback runs through a shell). Suggested in #16 by @anupamme.
  *
- * `^`, `~` and `=` are intentionally allowed: restore/install flows turn
- * manifest specs such as "dsh-better-sidebar": "^0.14.0" into targets like
+ * `^`, `~` and `=`: restore/install flows turn manifest specs such as
+ * "dsh-better-sidebar": "^0.14.0" into targets like
  * `dsh-better-sidebar@^0.14.0`, and regex-valid semver ranges must not be
  * mistaken for shell injection (whitespace and shell metacharacters remain
  * rejected — the win32 bare-dsh fallback is the reason to keep them out).
+ *
+ * `&` is deliberately absent: a bare `&` backgrounds the child and must stay
+ * rejected. The one shape that needs it — pnpm's monorepo selector,
+ * `#<ref>&path:/packages/x` — is admitted by `isSafePluginTarget` instead.
  */
 export declare const TARGET_RE: RegExp;
+/**
+ * Whether one plugin target is safe to hand to a spawned pnpm.
+ *
+ * A target is safe when `TARGET_RE` accepts it whole, or when it is that same
+ * allowlisted head followed only by `&path:` selectors. pnpm spells a
+ * monorepo subdirectory as `github:owner/repo#<ref>&path:/packages/x`, which
+ * `TARGET_RE` alone rejects — every GitHub subpath install then failed as
+ * "unsafe plugin target".
+ *
+ * @param target - the last argv element the caller built.
+ * @returns true when no segment could be read as a shell separator.
+ */
+export declare function isSafePluginTarget(target: string): boolean;
 /**
  * Run the host-supplied package manager in a profile directory.
  *

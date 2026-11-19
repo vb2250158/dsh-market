@@ -111,6 +111,7 @@ export interface RepairOptions {
     journal?: PendingUpdateJournal;
     timeoutMs?: number;
 }
+export type RepairFailureCause = 'version-changed' | 'refused' | 'not-composed' | 'timeout' | 'unknown' | 'abandoned';
 export interface RepairReport {
     /** Packages a previous start removed and this one put back. */
     reinstalled: string[];
@@ -119,6 +120,7 @@ export interface RepairReport {
     failed: Array<{
         name: string;
         reason: string;
+        cause: RepairFailureCause;
     }>;
     /** Packages the market has stopped retrying by itself (see MAX_AUTO_REPAIR_ATTEMPTS). */
     abandoned: string[];

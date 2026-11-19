@@ -344,6 +344,25 @@ export declare function hostNodeModulesRoot(directory: string): string;
  * outside Node — but a comparison must not silently miss because of them.
  */
 export declare function normalizedLinkTarget(target: string): string;
+export interface DetachedCheckoutLink {
+    readonly path: string;
+    readonly rawTarget: string;
+    readonly moduleRoot: string;
+}
+/** Reconstruct a saved link using only the active profile and matching checkout. */
+export declare function recordedCheckoutLink(profileDirectory: string, name: string, spec: string, rawTarget: string): DetachedCheckoutLink;
+/** Check the saved checkout without creating its profile link. */
+export declare function checkoutSourceExists(link: DetachedCheckoutLink): boolean;
+/** Disconnect only the profile junction that still matches the recorded local checkout. */
+export declare function detachCheckoutLink(profileDirectory: string, name: string, spec: string, record: (link: DetachedCheckoutLink) => void): DetachedCheckoutLink | null;
+/** Recheck the slot before a pnpm recovery retry can replace it again. */
+export declare function keepCheckoutDetached(link: DetachedCheckoutLink): void;
+/**
+ * Restore the captured checkout link without asking pnpm to touch it. On
+ * rollback a package materialized inside the profile can be staged until the
+ * link and the caller's saved manifest are restored.
+ */
+export declare function restoreCheckoutLink(link: DetachedCheckoutLink, replacePackage: boolean, restoreMetadata: () => void): void;
 /**
  * Remove the host-side bridge link a confirmed uninstall leaves dangling
  * (#662). The official boot projects profile packages into the host
@@ -365,6 +384,24 @@ export declare function normalizedLinkTarget(target: string): string;
  * fail the uninstall that triggered it.
  */
 export declare function removeDanglingHostBridge(name: string, profileDirectory: string, hostDirectory: string | null): boolean;
+/**
+ * Remove the link a confirmed uninstall left at `node_modules/<name>` (#1191).
+ *
+ * A plugin installed from a local checkout (`link:`) is a junction or
+ * directory symlink into that checkout. The uninstall has removed the
+ * dependency from package.json and the lockfile, but on Windows the link was
+ * reported still there, and the next install of the same name (the online
+ * release) makes pnpm rename `<name>_tmp_*` over it, which Windows refuses
+ * with EPERM.
+ *
+ * Only a link is touched, and only when the manifest no longer lists
+ * `name`. `unlinkSync` also handles directory junctions in Desktop's
+ * embedded Node, which reports EISDIR for nonrecursive `rmSync`.
+ *
+ * @returns the checkout path the removed link pointed at, or null when there
+ * was nothing to remove. Never throws: the uninstall already succeeded.
+ */
+export declare function removeLeftoverProfileLink(profile: string, name: string, profileDirectory: string): string | null;
 /**
  * Group flat `{id, owner}` conflict hits by the installed plugin that owns
  * them. What the user has to decide is which PLUGINS to uninstall, not which

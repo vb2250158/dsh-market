@@ -4,15 +4,17 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import { dirname, isAbsolute } from 'node:path'
 import { createDesktopPluginRuntime, setHostPackageManager, type DesktopPnpmLike, type HostPackageManager } from './dsh-cli.ts'
 import { createOfficialDesktopRuntime, type OfficialPluginManagerLike } from './official-desktop.ts'
-import { isDshProfileName } from './profile.ts'
+import { isDshProfileName, profileDir } from './profile.ts'
 import { setRequestGateSource, setTrustedHostsSource } from './http.ts'
 import { setLauncherInstallAnchorSource } from './dsh-install.ts'
 import { mountMarketRoutes, type HostPluginActivation, type MarketConfig, type MarketHost } from './routes.ts'
 import { installDesktopMarketSettings, installMarketSettings } from './settings.ts'
 import { MAX_AUTO_REPAIR_ATTEMPTS } from './pending-updates.ts'
+import { observeStartupRepair } from './startup-repair-report.ts'
 import type { AgentsServiceLike } from './agents.ts'
 
 export const name = 'dsh-market'
@@ -30,6 +32,21 @@ const PENDING_UPDATE_REPAIR_DELAY_MS = 8_000
 
 /** Optional cordis.yml configuration; profile defaults to `web`. */
 export type Config = Partial<Pick<MarketConfig, 'profile' | 'allowRestart' | 'maxSnapshots' | 'buildEnv'>>
+
+/** A field the form may edit; newer hosts hand one back as a live reference (#1144). */
+const editable = <S>(schema: S): S => (schema as { extra(key: string, value: unknown): S }).extra('volatile', true)
+const valueOf = <T>(field: T | undefined): T | undefined =>
+  typeof (field as { get?: unknown } | undefined)?.get === 'function' ? (field as unknown as { get(): T }).get() : field
+
+/** dsh 0.1.7+ builds its form from `plugin.Config` and writes `simplify(config)` back, so every field the market reads is named here or the first form save deletes it. Each is loose: an older composition still boots, a mistyped value is dropped, and neither editable field takes a default, so "unconfigured" stays distinguishable (#1144, #229). */
+export const Config = z.object({
+  profile: z.string().loose(),
+  channel: z.string().loose(),
+  region: z.string().loose(),
+  allowRestart: editable(z.boolean().loose()),
+  maxSnapshots: editable(z.number().loose()),
+  buildEnv: z.dict(z.any()).loose().extra('default', undefined),
+}).loose()
 
 /**
  * Structural subset of the dsh launcher's public `profileContext` service —
@@ -338,7 +355,7 @@ export function apply(ctx: Context, config?: Config): void {
           },
           desktopHost: true,
           allowRestart: false,
-          maxSnapshots: config?.maxSnapshots,
+          maxSnapshots: valueOf(config?.maxSnapshots),
           // The third construction site, and the one #527's review caught
           // missing: a `buildEnv` configured in cordis.yml was silently
           // dropped on the official desktop host — the very host the feature
@@ -350,22 +367,27 @@ export function apply(ctx: Context, config?: Config): void {
         installDesktopMarketSettings(ctx)
         host.effect(() => {
           const restoreTrustedHosts = useTrustedHosts(ctx)
-          const disposeRoutes = mountMarketRoutes(host, resolved, runtime, agentsLookupOf(ctx))
+          const startupRepair = observeStartupRepair(profileName, profileDir(profileName, profileDirectory))
+          const disposeRoutes = mountMarketRoutes(host, { ...resolved, startupRepair: startupRepair.read }, runtime, agentsLookupOf(ctx))
+          let started = false
           const repairTimer = setTimeout(() => {
+            started = true
             void runtime.repairPendingUpdates().then(report => {
+              startupRepair.finish(report)
               if (report.reinstalled.length === 0 && report.failed.length === 0) return
               const abandoned = report.abandoned.length === 0
                 ? ''
                 : `, ${String(report.abandoned.length)} given up on after ${String(MAX_AUTO_REPAIR_ATTEMPTS)} starts — reinstall from Settings → Plugins: ${report.abandoned.join(', ')}`
               console.warn(`dsh-market: ${String(report.reinstalled.length)} interrupted update(s) reinstalled, ${String(report.failed.length)} still pending${abandoned}`)
-            })
+            }, () => { startupRepair.finish() })
           }, PENDING_UPDATE_REPAIR_DELAY_MS)
           repairTimer.unref?.()
           return async () => {
             clearTimeout(repairTimer)
-            disposeRoutes()
+            if (!started) startupRepair.finish()
+            const routesDisposed = disposeRoutes()
             restoreTrustedHosts()
-            await runtime.dispose()
+            await Promise.all([routesDisposed, runtime.dispose()])
           }
         }, 'dsh-market: official Desktop routes and package operations')
         return
@@ -390,8 +412,8 @@ export function apply(ctx: Context, config?: Config): void {
         // would turn "the operator said nothing" into "the operator said
         // yes", and restartAllowed() could no longer tell them apart — which
         // is exactly the distinction supervisor detection needs (#229).
-        allowRestart: config?.allowRestart,
-        maxSnapshots: config?.maxSnapshots,
+        allowRestart: valueOf(config?.allowRestart),
+        maxSnapshots: valueOf(config?.maxSnapshots),
         // Build-time environment (#336); undefined means "inherit", and the
         // settings wiring below is what makes it editable at runtime.
         buildEnv: config?.buildEnv,
@@ -403,8 +425,9 @@ export function apply(ctx: Context, config?: Config): void {
         const restoreTrustedHosts = useTrustedHosts(ctx)
         const disposeRoutes = mountMarketRoutes(host, resolved, undefined, agentsLookupOf(ctx))
         return () => {
-          disposeRoutes()
+          const routesDisposed = disposeRoutes()
           restoreTrustedHosts()
+          return routesDisposed
         }
       }, 'dsh-market: http routes')
       return
@@ -437,7 +460,7 @@ export function apply(ctx: Context, config?: Config): void {
         // Relaunching a raw Electron process would bypass Desktop's launcher
         // lifecycle. The shell remains responsible for restart in this mode.
         allowRestart: false,
-        maxSnapshots: config?.maxSnapshots,
+        maxSnapshots: valueOf(config?.maxSnapshots),
         // The operator's pinned build environment applies in Desktop mode
         // too: Desktop's packaged pnpm still runs plugin build scripts.
         buildEnv: config?.buildEnv,
@@ -456,9 +479,9 @@ export function apply(ctx: Context, config?: Config): void {
         // market can ask for a replay instead of mounting a second entry.
         const disposeRoutes = mountMarketRoutes(host, resolved, runtime, agentsLookupOf(ctx), desktopProfiles.pluginActivation)
         return async () => {
-          disposeRoutes()
+          const routesDisposed = disposeRoutes()
           restoreTrustedHosts()
-          await runtime.dispose()
+          await Promise.all([routesDisposed, runtime.dispose()])
         }
       }, 'dsh-market: Desktop http routes and package operations')
     })

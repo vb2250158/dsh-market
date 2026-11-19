@@ -23,6 +23,10 @@ export interface UpdateStatus {
      * as "there is an upgrade" and labels a button accordingly.
      */
     updateAvailable: boolean;
+    /** Source lookup failed; notification surfaces may retain a previous confirmed result. */
+    checkError?: 'unavailable';
+    /** The upstream check failed, so this row does not establish that the plugin is current. */
+    checkFailed?: true;
     /** Exact mature npm stable target for Desktop; `latest` remains the registry tag. */
     eligibleVersion?: string;
     /**
@@ -79,6 +83,18 @@ export interface UpdateStatus {
         latest: string;
         until: string;
         estimated?: true;
+    };
+    /**
+     * An update exists, but ANOTHER release already in this profile's lockfile
+     * is still inside the safety wait, and pnpm refuses every change until it is
+     * past (#1252). Separate from {@link heldUpdate}, which is about this
+     * plugin's own target. `readyAt` is null when the end time is unknown.
+     * `updateAvailable` is false while this is set.
+     */
+    profileBlocked?: {
+        name: string;
+        version: string;
+        readyAt: string | null;
     };
     /**
      * The version this package's channel points at, when it differs from what
@@ -237,7 +253,14 @@ export declare function fetchNpmLatest(name: string): Promise<string | null>;
  * without the market volunteering anyone's prerelease as an update.
  */
 export declare function newerPrereleaseFor(name: string, installed: string | null): Promise<string | null>;
-/** Per-plugin update checks; a failed check reports no update rather than failing the listing. */
+/**
+ * Mark the updates a known profile-level blocker would turn into a failed
+ * click (#1252). Applied to what is served, not to the cached registry
+ * answer, so a blocker learned a second ago and one that just ended both show
+ * on the very next read without another round of registry traffic.
+ */
+export declare function applyProfileBlockers(statuses: Record<string, UpdateStatus>, activeProfileDir: string, now?: number): Record<string, UpdateStatus>;
+/** Check each plugin independently so a failed lookup leaves the other results usable. */
 export declare function checkUpdates(profile: string, force?: boolean, explicitDir?: string,
 /**
  * Packages that follow a release channel instead of plain `latest`. Only

@@ -1,7 +1,6 @@
 /**
- * Registry access: the curated list from awesome-dsh-plugin.com, fetched
- * fresh on every request. See `loadRegistry` for why there is nothing
- * behind it any more.
+ * Access to the curated list from awesome-dsh-plugin.com. Each new load
+ * revalidates the catalog with its source.
  */
 import { type Region } from './regions.ts';
 export interface RegistryPlugin {
@@ -117,14 +116,13 @@ export interface Registry {
  */
 export declare function pluginPreviousNpm(plugin: Pick<RegistryPlugin, 'name' | 'npm' | 'previousNpm'>): string[];
 /**
- * Drop what we remember, so the next call is unconditional.
- *
- * Exists for tests: the memo is module state, and a spec that asserted a
- * 304 would otherwise leak a validator into the next one.
+ * Drop the validator and detach any earlier load, so the next call starts an
+ * unconditional request. Earlier callers can still receive their own result.
  */
 export declare function forgetCatalog(): void;
 /**
- * The catalog, revalidated every time it is asked for.
+ * The catalog, revalidated on each new load. Discovery and the update check
+ * share a revalidation while it is in flight for the same configured sources.
  *
  * There used to be three answers here — live, a one-hour in-memory cache,
  * and a snapshot bundled into the npm package — and only the first was

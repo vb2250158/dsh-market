@@ -1388,6 +1388,45 @@ export function removeProfileBundle(profileDirectory: string, name: string): boo
   return true
 }
 
+/** Undo one switch's removal without replacing other manifest fields or a
+ * bundle order edited by another writer. The caller holds the profile lock. */
+export function restoreRemovedProfileBundle(
+  profileDirectory: string,
+  name: string,
+  before: ProfileManifestSnapshot,
+): boolean {
+  if (!before.profileBundles.present || !Array.isArray(before.profileBundles.value)) return false
+  const previous: unknown[] = before.profileBundles.value
+  const originalIndex = previous.indexOf(name)
+  if (originalIndex === -1) return false
+  const manifestPath = join(profileDirectory, 'package.json')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    dependencies?: Record<string, string>
+    dsh?: { profile?: { bundles?: unknown } }
+  }
+  const profile = manifest.dsh?.profile
+  const current: unknown = profile?.bundles
+  if (profile === undefined || !Array.isArray(current) || current.includes(name)
+    || manifest.dependencies?.[name] !== before.dependencies[name]) return false
+
+  const remaining = previous.filter(entry => entry !== name)
+  if (isDeepStrictEqual(current, remaining)) {
+    profile.bundles = previous
+  } else {
+    // Nearby surviving entries keep the old position meaningful even
+    // when someone has added, removed, or moved other bundles.
+    if (previous.lastIndexOf(name) !== originalIndex) return false
+    const earlier = new Set(previous.slice(0, originalIndex))
+    const later = new Set(previous.slice(originalIndex + 1))
+    const left = current.findLastIndex(entry => earlier.has(entry))
+    const right = current.findIndex(entry => later.has(entry))
+    if ((left === -1 && right === -1) || (right !== -1 && left >= right)) return false
+    current.splice(right === -1 ? left + 1 : right, 0, name)
+  }
+  writeManifestAtomic(manifestPath, manifest)
+  return true
+}
+
 /**
  * Re-add a bundle to `dsh.profile.bundles` after a carrier toggle-off (#224).
  * Idempotent: a bundle already present is left untouched. The name is appended
@@ -1949,11 +1988,14 @@ function readReleaseAgeBlock(file: string): ReleaseAgeBlock | null {
  * nothing in the file says which main package it belongs to — guessing would
  * delete policy that may still be in effect for something installed.
  *
+ * With `keepVersion` (the update path) the rows that name that version are
+ * kept and only the older ones go.
+ *
  * @returns the entries removed, for the caller to log; empty when there is no
  *   such block, no such row, or the file cannot be read exactly (in which case
  *   it is left byte-for-byte as it was).
  */
-export function dropReleaseAgeExcludes(profile: string, name: string, explicitDir?: string): string[] {
+export function dropReleaseAgeExcludes(profile: string, name: string, explicitDir?: string, keepVersion?: string): string[] {
   const block = readReleaseAgeBlock(join(profileDir(profile, explicitDir), 'pnpm-workspace.yaml'))
   if (block === null) return []
   const { file, yaml, blockRe, eol, items } = block
@@ -1961,6 +2003,17 @@ export function dropReleaseAgeExcludes(profile: string, name: string, explicitDi
   const lines = items.flatMap(item => {
     if (item.kind === 'comment') return [item.line]
     if (item.rule.name !== name) return [item.original]
+    // After an update (#1093) only rows that do not name the installed version
+    // are stale. A row that names it stays whole — it may be the one pnpm just
+    // wrote for this very update, which the next install's age check needs. A
+    // union that also lists older versions stays too: it is kept or dropped as
+    // written, never rewritten, so nothing here can loosen the gate. A bare
+    // name already covers every version; that is a policy someone chose, not a
+    // leftover.
+    if (keepVersion !== undefined) {
+      if (item.rule.selector === null) return [item.original]
+      if (item.rule.selector.split('||').some(version => version.trim() === keepVersion)) return [item.original]
+    }
     dropped.push(item.rule.selector === null ? item.rule.name : `${item.rule.name}@${item.rule.selector}`)
     return []
   })

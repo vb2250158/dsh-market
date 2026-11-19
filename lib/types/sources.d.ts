@@ -232,6 +232,17 @@ export declare function installTargetFor(entry: {
     npm?: unknown;
     tarball?: unknown;
 }): string | null;
+export interface CatalogReleaseSource {
+    repo: string;
+    asset: string;
+    manifest: string;
+}
+/** Only the catalog's own floating asset opts an existing archive into updates. */
+export declare function catalogReleaseSourceOf(spec: string, entry: {
+    url: string;
+    npm?: unknown;
+    tarball?: unknown;
+}): CatalogReleaseSource | null;
 /**
  * The target to retry with when a prebuilt release tarball could not be
  * installed — the entry's own GitHub source, which is what it would have

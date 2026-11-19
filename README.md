@@ -13,11 +13,28 @@ English | [中文](README.zh.md)
 
 The plugin market inside DeepSeek Harness. On dsh 0.2.1+ it is a tab on the **Plugins** page, right next to **Installed**; on older hosts open Settings → **Plugin Market**. Browse, search, one-click install.
 
+> **The market has moved to the Plugins page.** Open **Plugins → Plugin Market** (dsh 0.2.1+). The entry in Settings will be phased out; on dsh 0.2.0 and earlier, keep opening it from Settings.
+
 > 📡 **The same catalog is also a plugin market index.** On dsh 0.2.1+, open **Plugins → Discover → Index sources** and add `https://cdn.jsdelivr.net/npm/dsh-plugin-catalog/index.json`. That is this list as a format-1 index, served from npm so it loads quickly everywhere — dsh gives a source 15 seconds, and the GitHub Pages copies (`https://awesome-dsh-plugin.com/index.json` and `https://dshmarket.com/index.json`) can exceed that from some networks. The host's Discover tab and the `plugin_market` agent tool then search it.
 
 ![dsh-market](assets/demo-en.png)
 
 One-click themes: install, switch live, no restart.
+
+<!-- sponsors:start -->
+## Sponsors
+
+<table>
+<tr>
+<td width="180" align="center"><a href="https://www.qiniu.com/ai/free-models/conatus-2026?utm_source=dsh-market&utm_medium=oss&utm_campaign=comatus_202611&utm_content=readme"><img src="assets/partners/qiniu.png" alt="Qiniu Cloud" width="150"></a></td>
+<td>Thanks to <strong>Qiniu Cloud</strong> for sponsoring this project!<br>Qiniu Cloud (02567.HK) runs an enterprise MaaS platform: one place to call 150+ leading models from around the world, compatible with the major model vendors' protocols, covering text, image, audio, video and file processing. It serves more than 1.8 million enterprise developers. <strong>New enterprise users get 20 million tokens free. Year-end offer: new users can <a href="https://www.qiniu.com/ai/free-models/conatus-2026?utm_source=dsh-market&utm_medium=oss&utm_campaign=comatus_202611&utm_content=readme">get up to 1 billion free tokens a day</a>.</strong></td>
+</tr>
+<tr>
+<td width="180" align="center"><a href="https://api.fenno.ai/?utm_source=dsh-market&utm_medium=oss&utm_campaign=fenno_202611&utm_content=readme"><img src="assets/partners/fenno.png" alt="Fenno.ai" width="150"></a></td>
+<td>Thanks to <strong>Fenno.ai</strong> for sponsoring this project!<br>Fenno.ai is an API relay service built for coding, best known for its Codex relay. It puts GPT, Claude, Grok and other coding models behind one API key, speaks both the OpenAI and Anthropic protocols, and plugs straight into Codex, Claude Code, Cline, OpenCode and other popular coding tools. Company-to-company billing and invoicing are available for both mainland China and overseas entities. <strong>New users <a href="https://api.fenno.ai/?utm_source=dsh-market&utm_medium=oss&utm_campaign=fenno_202611&utm_content=readme">get $50 of credit for $1.99</a>; invite friends and earn up to 20% back.</strong></td>
+</tr>
+</table>
+<!-- sponsors:end -->
 
 ## Install
 
@@ -50,8 +67,8 @@ the app's **Settings → Plugins** instead; Desktop's profile is managed by the 
 Once it is installed, open the **Plugins** page and pick the **Plugin Market**
 tab next to **Installed** (dsh 0.2.1 and newer — plain `dsh web` included, no
 desktop app needed). The market is also still a section of **Settings → Plugin
-Market**: on dsh 0.2.0 and older that is the only way in, and from 0.2.1 the
-Settings dialog lives in the account menu. If you would rather reach it in one
+Market**, but that entry will be phased out: it is only needed on dsh 0.2.0 and
+older, where it is the only way in. If you would rather reach it in one
 click from anywhere, the market can also put its own **Plugin Market** row in
 the sidebar; turn it on from the market's card under **Plugins**. All three
 entries can be switched individually under **Advanced** in that card, and the
@@ -68,18 +85,19 @@ its own dsh: it may be older than the one `npm` would give you (#139).
 
 ## What you get
 
-- **Browse & search** the full community catalog (4200+ plugins, growing daily) — category filters, star counts, top/new sorting, bilingual descriptions that follow your UI language
+- **Browse & search** the full community catalog (10,000+ plugins, growing daily) — category filters, star counts, top/new sorting, bilingual descriptions that follow your UI language
 - **Host-aware discovery** — cards show the DSH requirement declared by `engines.dsh` or lockstep `@deepseek-ai/dsh-*` peers; the compatibility filter hides only confirmed mismatches with the running host. GitHub-only entries read the linked package's manifest, including monorepo subdirectories; Release downloads read the selected release tag, including the current tag behind `latest/download`. Undeclared, malformed or unavailable requirements stay unknown and visible. Public manifest facts are cached; compatibility is evaluated against the running host
 - **Screenshots** — AppStore-style screenshots, auto-carousel when there's more than one, click to preview full-size: author-curated shots show right on the card (zero extra requests); plugins without curated shots fall back to automatic README extraction once you open the install dialog. Images load from GitHub hosting only
 - **Comments** — every card opens the plugin's discussion thread in place. It is the same thread its pages on [dshmarket.com](https://dshmarket.com) and the [catalog](https://awesome-dsh-plugin.com) show, so a plugin has one conversation rather than three. Backed by GitHub Discussions through giscus: it loads when you open it, needs a GitHub account only to post, and the note above it says plainly that opening it contacts giscus.app and GitHub. On local dsh web, reading stays embedded while a dedicated GitHub action opens the exact discussion in a new tab for sign-in and posting, so the cross-site return never carries or depends on the host session
 - **Favorites** — bookmark plugins and themes from Discover or the Themes tab; a dedicated Favorites tab lists them with search, sort, and install actions. Bookmarks persist in the profile's market state (`state.json`); entries that leave the catalog can be cleared in one click
-- **Groups** — organise installed plugins into named groups (rename, delete, and per-group search); a plugin lives in one group and ungrouped is the default. A group carries its own switch: all-on, all-off, or the mixed state its members are really in, so a working set can be switched as a unit without touching the rest. A group holds at most one theme. The grouping itself is local state in the profile's `state.json`
+- **Groups** — organise installed plugins into named groups (rename, delete, and per-group search); a plugin lives in one group and ungrouped is the default. **Collapse all / Expand all** folds the whole list at once. A group carries its own switch: all-on, all-off, or the mixed state its members are really in, so a working set can be switched as a unit without touching the rest. A group holds at most one theme. The grouping itself is local state in the profile's `state.json`
 - **Notes** — write your own one-line description for any installed plugin and it replaces the author's on that row, so a shelf of forty plugins answers "why did I install this" in your words. Stored locally beside groups and favorites, never sent anywhere
 - **Themes** — a dedicated tab for community themes and skins: install → active immediately, switch with one click (themes are mutually exclusive, your choice survives restarts), uninstall to revert
 - **One-click install** — confirm the source, watch live progress; most plugins go live after a page refresh, no restart
 - **Backup & restore** — export your profile's plugin list and configuration as readable JSON, import it on another machine, store it on WebDAV with daily auto-backup, or sync through a private GitHub Gist; restores **merge** (plugins installed after the backup are kept), validate before writing, and roll back on failure
 - **Updates** — per-plugin update checks (npm version or pinned commit vs HEAD), one-click update, or update everything at once; the market updates itself the same way. A plugin installed from an archive link is updated only through its own source: a catalog entry that merely shares the name is never offered as its update, so updating cannot silently replace it with a different plugin. Each row with an update pending carries a **What changed** link — the release notes, or the commits when the version cannot be aligned to one. A notice you are not acting on can be ignored for the rest of the boot instead of being dismissed again on every reload — scoped to the running host, so a restart brings the reminder back and ignoring it is never the same as turning it off
 - **Resilient GitHub routes** — in the China download region, Git refs, README content, and avatars each keep their own fallback order. The market remembers the last working route, switches only after transport/HTTP/payload validation fails, and rejects proxy error pages disguised as HTTP 200. If every built-in route fails, **Settings → Plugins → Plugin configuration → GitHub acceleration** accepts one persistent custom HTTPS prefix; `DSHM_GITHUB_PROXY` remains the operator-owned override
+- **Background update reminders** — automatic checks are off by default. When enabled, checks start 30 seconds after the market loads, then repeat every 6 hours, 12 hours, 3 days, or 7 days while Harness is running, even if you stay in chat. The default interval is 6 hours. Supported hosts show a dot on the existing **Plugins** icon for unseen updates. Opening Plugins clears the dot while keeping the update offers available. With browser storage available, seen targets stay quiet across refreshes and restarts of the same profile; a new target can notify again. Older servers remember seen updates for the current boot only. Unsupported hosts keep their original entry without an error or empty placeholder. Review the same results in **Plugin Market → Installed → Update checks**, or change the interval and turn automatic checks on or off there. Choosing an interval does not enable automatic checks. Checks never install or restart anything; failures keep the last confirmed results, and ignored or exempt updates stay quiet. Desktop-managed plugins open their host page. This does not change the host’s own `Updates available` counter.
 - **Public update API** — plugin-owned settings pages can use the versioned, capability-gated [update API v1](UPDATE-API-V1.md) (beta) instead of copying package-manager logic or depending on private Market UI responses
 - **Uninstall** — two-step confirm; plugins installed this session are removed live
 - **Hot disable / enable** — toggles write `- id: …` + `disabled: true|false` into the profile's `cordis.patch.yml` (the official patch layer, mechanism ported from [dsh-plugin-hub](https://github.com/Noob-stupid/dsh-plugin-hub)): DSH's HMR re-composes within ~1s, no restart, and the loader re-applies the choice on every boot; hand-edited patch rows show as badges, host-infrastructure plugins are protected from toggling, and a malformed patch file is never made worse

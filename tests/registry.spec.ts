@@ -14,6 +14,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { describeFetchFailure, forgetCatalog, loadRegistry, pluginPreviousNpm } from '../src/registry.ts'
+import { exportLogs } from '../src/log.ts'
 import { configuredProxy, marketFetch } from '../src/net.ts'
 
 /**
@@ -73,6 +74,7 @@ afterEach(() => {
     else process.env[key] = savedProxy[key]
   }
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 /** Headers sent on each call, in order — what a conditional request needs. */
@@ -107,6 +109,10 @@ const ok = (body: unknown): Response =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
 
 describe('loadRegistry', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('passes through source download dates without inventing them for legacy entries', async () => {
     const stats = { downloads: 42, downloadsStart: '2026-08-25', downloadsEnd: '2026-09-23', downloadsCheckedAt: '2026-09-24' }
     scriptedFetch(ok({
@@ -204,6 +210,39 @@ describe('loadRegistry', () => {
     // reporter sent us — cannot tell a slow link from a blocked one.
     scriptedFetch(new Error('The operation was aborted due to timeout'))
     await expect(loadRegistry()).rejects.toThrow(/aborted due to timeout.*\ds, 4 attempts/s)
+  })
+
+  /**
+   * A successful load used to leave nothing behind, which is what made a slow
+   * one impossible to report. #1181 measured thirteen, twenty and forty
+   * seconds on the same machine, five minutes on the run that failed, and
+   * every export said the buffer starts empty. The line has to be there when
+   * it is slow, and absent when it is not — a log that fires on every entry
+   * into the market is worse than one that fires on none.
+   */
+  it('leaves a line when a successful load crossed the slow threshold', async () => {
+    scriptedFetch(ok(CATALOG))
+    const clock = vi.spyOn(Date, 'now')
+    const started = 1_760_000_000_000
+    clock.mockReturnValueOnce(started)
+    clock.mockReturnValue(started + 6_100)
+    await loadRegistry('global')
+    expect(exportLogs({})).toContain('answered in 6.1s')
+  })
+
+  it('says nothing when the catalog arrives quickly', async () => {
+    scriptedFetch(ok(CATALOG))
+    const clock = vi.spyOn(Date, 'now')
+    const started = 1_760_000_000_000
+    clock.mockReturnValueOnce(started)
+    clock.mockReturnValue(started + 900)
+    // "Says nothing" has to mean "adds nothing", not "adds no line saying
+    // 0.9s": the buffer is shared by the whole file, so a slower neighbour's
+    // line is still in the export here, and matching on one duration would
+    // also accept any other duration the quick path might start printing.
+    const before = exportLogs({})
+    await loadRegistry('global')
+    expect(exportLogs({})).toBe(before)
   })
 })
 
@@ -385,6 +424,85 @@ describe('loadRegistry revalidation', () => {
     scriptedFetch(okTagged(CATALOG, 'W/"abc"'))
     await loadRegistry()
     expect(sent[0]).toEqual({})
+  })
+
+  it('shares the overlapping first catalog download from discovery and updates (#1181)', async () => {
+    const gate = Promise.withResolvers<void>()
+    const fetch = vi.fn(async () => {
+      await gate.promise
+      return okTagged(CATALOG, 'W/"shared"')
+    })
+    vi.stubGlobal('fetch', fetch)
+    const discovery = loadRegistry('global')
+    const updates = loadRegistry('global')
+    gate.resolve()
+    const [first, second] = await Promise.all([discovery, updates])
+    expect(first).toEqual(second)
+    expect(first.plugins[0]?.name).toBe('dsh-loop')
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    const next = scriptedFetch(notModified())
+    expect(await loadRegistry('global')).toEqual(first)
+    expect(next).toHaveBeenCalledTimes(1)
+    expect(sent[0]).toEqual({ 'if-none-match': 'W/"shared"' })
+  })
+
+  it('lets the next call retry after an overlapping catalog load failed', async () => {
+    const fetch = scriptedFetch(new Error('the catalog is temporarily offline'))
+    const failures = await Promise.allSettled([loadRegistry('global'), loadRegistry('global')])
+    expect(failures.map(result => result.status)).toEqual(['rejected', 'rejected'])
+    expect(fetch).toHaveBeenCalledTimes(4)
+    scriptedFetch(ok(CATALOG))
+    expect((await loadRegistry('global')).plugins[0]?.name).toBe('dsh-loop')
+  })
+
+  it('starts a fresh load after forgetting the catalog and keeps its new validator', async () => {
+    const stale = Promise.withResolvers<Response>()
+    const newer = { ...CATALOG, updated: '2026-08-19' }
+    const fetch = vi.fn().mockReturnValueOnce(stale.promise).mockResolvedValueOnce(okTagged(newer, 'W/"new"'))
+    vi.stubGlobal('fetch', fetch)
+    const previous = loadRegistry('global')
+    forgetCatalog()
+    const current = loadRegistry('global')
+    try {
+      expect(fetch).toHaveBeenCalledTimes(2)
+      expect((await current).updated).toBe(newer.updated)
+    } finally {
+      stale.resolve(okTagged(CATALOG, 'W/"old"'))
+    }
+    expect((await previous).updated).toBe(CATALOG.updated)
+    expect((await current).updated).toBe(newer.updated)
+
+    scriptedFetch(notModified())
+    expect((await loadRegistry('global')).updated).toBe(newer.updated)
+    expect(sent[0]).toEqual({ 'if-none-match': 'W/"new"' })
+  })
+
+  it.each(['region', 'primary source', 'fallback source'])('does not join or clear a load after a %s change', async change => {
+    vi.stubEnv('DSHM_REGISTRY_URL', 'https://one.example/plugins.json')
+    vi.stubEnv('DSHM_NPM_MIRROR', 'https://one.example/npm')
+    const stale = Promise.withResolvers<Response>()
+    const fresh = Promise.withResolvers<Response>()
+    const newer = { ...CATALOG, updated: '2026-08-20' }
+    const fetch = vi.fn()
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(fresh.promise)
+      .mockResolvedValue(okTagged(newer, 'W/"extra"'))
+    vi.stubGlobal('fetch', fetch)
+    const previous = loadRegistry('global')
+    if (change === 'primary source') vi.stubEnv('DSHM_REGISTRY_URL', 'https://two.example/plugins.json')
+    if (change === 'fallback source') vi.stubEnv('DSHM_NPM_MIRROR', 'https://two.example/npm')
+    const region = change === 'region' ? 'china' : 'global'
+    const current = loadRegistry(region)
+    stale.resolve(ok(CATALOG))
+    expect((await previous).updated).toBe(CATALOG.updated)
+
+    const joined = loadRegistry(region)
+    fresh.resolve(okTagged(newer, 'W/"other"'))
+    const [first, second] = await Promise.all([current, joined])
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(first.updated).toBe(newer.updated)
+    expect(second).toEqual(first)
   })
 
   it('offers the validator it was given, and reuses the body on 304', async () => {

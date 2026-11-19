@@ -20,6 +20,7 @@
  * `source` instead: its history is where it came from, and the market says
  * it has none on hand rather than that the plugin publishes none (#819).
  */
+import { type ReleaseHistory } from './release-history.ts';
 export interface ReleaseNotes {
     tag: string | null;
     name: string | null;
@@ -35,6 +36,7 @@ export interface CommitNote {
 interface UpdatesEntry {
     release?: ReleaseNotes | null;
     commits?: CommitNote[];
+    releaseHistory?: true;
 }
 interface UpdatesPayload {
     count?: number;
@@ -100,6 +102,7 @@ export interface UpdateNotes {
     kind: 'release' | 'commits' | 'npm' | 'source' | 'none';
     /** Present for `release`: the author's own notes for the latest release. */
     release?: ReleaseNotes;
+    history?: ReleaseHistory;
     /** Present for `commits`: the tail, sliced when the boundary was found. */
     commits?: {
         items: CommitNote[];
@@ -112,6 +115,13 @@ export interface UpdateNotes {
     }[];
     /** Present for `source`: the repository page to read changes on, or null. */
     sourceUrl?: string | null;
+    /**
+     * Present for `release` when the notes describe a version NEWER than the
+     * one the Update button installs (#1193): the snapshot is the repository's
+     * latest release, while the target may be an older, already installable
+     * one. Carries that target so the dialog can say whose notes these are.
+     */
+    beyondTarget?: string;
     /**
      * Present for `source`: `missing` when the notes loaded without this
      * plugin, `unavailable` when they could not be loaded at all — a passing
@@ -127,5 +137,7 @@ export interface UpdateNotes {
  * same contract the issue promised — a dialog that cannot load its data shows
  * a neutral statement, not an error.
  */
-export declare function updateNotesFor(profile: string, explicitDir: string | undefined, name: string): Promise<UpdateNotes>;
+export declare function updateNotesFor(profile: string, explicitDir: string | undefined, name: string,
+/** Exact version or Git SHA displayed as the update target. */
+target?: string): Promise<UpdateNotes>;
 export {};

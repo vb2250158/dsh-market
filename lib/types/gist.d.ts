@@ -67,7 +67,7 @@ export declare function ghAuthSpawnOptions(platform?: NodeJS.Platform): {
     detached: boolean;
     windowsHide: boolean;
 };
-/** Create a new private Gist carrying one backup file. */
+/** Create a secret Gist carrying one backup file. */
 export declare function createGist(token: string, content: string, signal?: AbortSignal): Promise<GistRef>;
 /** Overwrite the backup file inside an existing Gist (other files kept). */
 export declare function updateGist(token: string, gistId: string, content: string, signal?: AbortSignal): Promise<GistRef>;

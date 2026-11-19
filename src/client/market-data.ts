@@ -5,7 +5,9 @@
 
 import type { DiagnosticReportV1 } from '../diagnostics.ts'
 import { findCatalogEntryForLocal } from '../catalog-local-match.ts'
-import { parseSourceUrl } from '../sources.ts'
+import { catalogReleaseSourceOf, NPM_NAME_RE, parseSourceUrl } from '../sources.ts'
+import type { StartupRepairSnapshot } from '../startup-repair-report.ts'
+import type { CheckoutRecoveryStatus } from '../pending-checkout-links.ts'
 export type { SharedHostPackageDependencyFinding } from '../diagnostics.ts'
 
 /** Localized text keyed by language ('zh' / 'en'). */
@@ -40,6 +42,8 @@ export interface RegistryPlugin {
   url: string
   npm?: string | null
   tarball?: string | null
+  /** Server-provided revision of this GitHub-only entry's compatibility source. */
+  compatibilityRevision?: string
   /** One legacy category id or several category ids. */
   category: string | string[]
   description?: LocalizedText
@@ -114,7 +118,9 @@ export interface HostCompatibility {
   status: 'compatible' | 'incompatible' | 'unknown'
   basis: 'manifest' | 'undeclared' | 'unavailable'
   requirement: string | null
-  declarations: Array<{ kind: 'engine' | 'peer'; package?: string; range: string }>
+  declarations: Array<{ kind: 'engine' | 'peer' | 'dependency'; package?: string; range: string }>
+  retryAfterMs?: number
+  catalogChanged?: true
 }
 
 /** npm package name or GitHub catalog URL -> discovery-time host verdict. */
@@ -122,7 +128,7 @@ export type HostCompatibilityMap = Record<string, HostCompatibility>
 
 /** Keep GitHub packages in one repository distinct, independently of their display names. */
 export function hostCompatibilityKey(plugin: Pick<RegistryPlugin, 'npm' | 'url'>): string | null {
-  if (typeof plugin.npm === 'string' && plugin.npm !== '') return plugin.npm
+  if (typeof plugin.npm === 'string' && plugin.npm !== '') return NPM_NAME_RE.test(plugin.npm) ? plugin.npm : null
   return parseSourceUrl(plugin.url) === null ? null : plugin.url
 }
 
@@ -164,7 +170,10 @@ export function queuedRowApplies(
     return world.plugins.some(plugin => plugin.url === row.url) ? null : 'gone'
   }
   if (world.installed[row.name] === undefined) return 'gone'
-  if (row.kind === 'update' && world.updates[row.name]?.updateAvailable !== true) {
+  // A profile-wide wait (#1252) is not "no update any more": the update is
+  // still there, it just cannot start yet. Keep the row; the drain says why.
+  if (row.kind === 'update' && world.updates[row.name]?.updateAvailable !== true
+    && world.updates[row.name]?.profileBlocked === undefined) {
     // A local restore replaces a checkout, not a newer release.
     if (row.restore === true && world.updates[row.name]?.kind === 'linked' &&
         findCatalogEntryForLocal(world.plugins, row.name) !== null) return null
@@ -207,9 +216,13 @@ export function isGenerationSpec(spec: string): boolean {
 /** Per-package update status from /dsh-market/updates. */
 export interface UpdateStatus {
   updateAvailable?: boolean
+  /** The source could not be checked, so false is not a no-update verdict. */
+  checkFailed?: true
   /** Server-verified precise Desktop stable npm update target. */
   eligibleVersion?: string
-  version?: string
+  version?: string | null
+  /** The latest check failed; any retained update facts came from an earlier successful check. */
+  checkError?: 'unavailable'
   /** `github` | `npm` | `linked` | `generation` — the last is a host-managed
       install (#497): `latest` names a newer release, never an offer. */
   kind?: string
@@ -233,6 +246,9 @@ export interface UpdateStatus {
       remain available as `eligibleVersion` (#991); this names the held latest.
       `estimated` means the publication time is unknown, not a release-age ETA. */
   heldUpdate?: { latest: string; until: string; estimated?: true }
+  /** Another release in this profile is still inside the safety wait, so no
+      update can start (#1252). `readyAt` is null when the end is unknown. */
+  profileBlocked?: { name: string; version: string; readyAt: string | null }
   /** Explicit source migration; never part of update-all. */
   sourceMigration?:
     | { kind: 'git-to-npm'; repo: string; target: string }
@@ -285,6 +301,10 @@ export interface DrainHistoryWire {
 
 /** Poll payload from /dsh-market/status. */
 export interface MarketStatus {
+  /** The official Desktop host's repair of updates interrupted before this start. */
+  startupRepair?: StartupRepairSnapshot
+  /** The market's own recovery of local links disconnected by a source switch. */
+  checkoutRecovery?: CheckoutRecoveryStatus
   /** The market's own version — rendered in the heading so screenshots carry it. */
   version?: string
   /** Whether the profile package manager owns the market dependency. */
@@ -499,6 +519,43 @@ export interface ThemeSnapshot {
 
 /** Bound locale translator for the dsh-market namespace. */
 export type Translate = (key: string) => string
+
+export interface MarketLocaleStore {
+  subscribe(callback: () => void): () => void
+  getSnapshot(): { active: string }
+}
+
+/** Match the languages for which the market registers its own dictionary. */
+export function marketUiLocale(active: string): 'zh-CN' | 'en' | 'ja' {
+  const language = active.toLowerCase().split(/[-_]/)[0]
+  return language === 'zh' ? 'zh-CN' : language === 'ja' ? 'ja' : 'en'
+}
+
+/** Release versions get a prefix and commit targets get a short SHA. */
+export function displayLatest(latest: string): string {
+  if (/^\d/.test(latest)) return 'v' + latest
+  if (/^[0-9a-f]{12,40}$/i.test(latest)) return latest.slice(0, 7)
+  return latest
+}
+
+/** A time is shown only when a future eligibility deadline is known. */
+export function marketHeldVersionText(
+  held: NonNullable<UpdateStatus['heldUpdate']>,
+  locale: string,
+  t: Translate,
+): string {
+  const version = displayLatest(held.latest)
+  const until = new Date(typeof held.until === 'string' ? held.until : NaN)
+  const now = new Date()
+  if (held.estimated === true || !(until.getTime() > now.getTime())) return version
+  const time = new Intl.DateTimeFormat(marketUiLocale(locale), {
+    ...(until.toDateString() === now.toDateString() ? {} : { month: 'short', day: 'numeric' }),
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(until)
+  return t('marketVersionAvailableAt').replace('{0}', version).replace('{1}', time)
+}
 
 export function avatarColor(name: string): string {
   let hash = 0
@@ -726,9 +783,8 @@ export function visiblePlugins(plugins: RegistryPlugin[], options: ListQuery): R
     const categories = pluginCategories(plugin)
     if (options.category !== 'all' && !categories.includes(options.category)) return []
     if (options.sinceDays !== undefined && !withinDays(plugin.added, options.sinceDays)) return []
-    const compatibilityKey = hostCompatibilityKey(plugin)
-    if (options.compatibleWithHost === true && compatibilityKey !== null
-      && options.hostCompatibility?.[compatibilityKey]?.status === 'incompatible') return []
+    const compatibilityKey = options.compatibleWithHost === true ? hostCompatibilityKey(plugin) : null
+    if (compatibilityKey !== null && options.hostCompatibility?.[compatibilityKey]?.status === 'incompatible') return []
     const relevance = query === '' ? 0 : pluginRelevance(plugin, query, tokens, options.lang, options.categories)
     return relevance === 0 && query !== '' ? [] : [{ plugin, relevance, index }]
   })
@@ -936,12 +992,38 @@ function entryRepoIds(plugin: RegistryPlugin): Set<string> {
 function repoRoots(ids: ReadonlySet<string>): Set<string> {
   return new Set([...ids].map(id => id.split('#path:/')[0]!))
 }
-function sameSourceConflict(plugin: RegistryPlugin, spec: string, repoIdentities: readonly string[] = []): boolean {
-  const entry = repoRoots(entryRepoIds(plugin))
+/**
+ * An entry's repository roots, per entry object. A pure function of an object
+ * that outlives every call, like `entryIdCache` above, and asked about every
+ * entry on every pass of the installed matching (#1097).
+ */
+const entryRootCache = new WeakMap<RegistryPlugin, Set<string>>()
+
+function entryRoots(plugin: RegistryPlugin): Set<string> {
+  const cached = entryRootCache.get(plugin)
+  if (cached !== undefined) return cached
+  const roots = repoRoots(entryRepoIds(plugin))
+  entryRootCache.set(plugin, roots)
+  return roots
+}
+
+/**
+ * `sameSourceConflict` for ONE dependency against many entries: the
+ * dependency's half is built once, not once per entry (#1097).
+ */
+function sourceConflictWith(spec: string, repoIdentities: readonly string[] = []): (plugin: RegistryPlugin) => boolean {
   const dep = repoRoots(depRepoIds(spec, repoIdentities))
-  if (entry.size === 0 || dep.size === 0) return false
-  for (const id of dep) if (entry.has(id)) return false
-  return true
+  if (dep.size === 0) return () => false
+  return (plugin) => {
+    const entry = entryRoots(plugin)
+    if (entry.size === 0) return false
+    for (const id of dep) if (entry.has(id)) return false
+    return true
+  }
+}
+
+function sameSourceConflict(plugin: RegistryPlugin, spec: string, repoIdentities: readonly string[] = []): boolean {
+  return sourceConflictWith(spec, repoIdentities)(plugin)
 }
 
 function repoHintMatches(plugin: RegistryPlugin, hints: readonly string[]): boolean {
@@ -1022,10 +1104,16 @@ export function matchInstalledName(
     }
     if (depRepoIds(specStr, repos).size === 0 && plugins !== undefined && looseMatchCount(plugins, name) > 1
       && !repoHintMatches(plugin, repoHints[name] ?? [])) continue
-    if (sameSourceConflict(plugin, specStr, repos)) continue
+    // The cheap test first: identities meet for a handful of installed
+    // dependencies at most, and only those can be a source conflict (#1097).
+    // Both terms are pure and the result is their conjunction, so the order
+    // changes nothing but the cost.
+    let meets = false
     for (const id of depIdentities(name, specStr, repos)) {
-      if (ids.has(id)) return name
+      if (ids.has(id)) { meets = true; break }
     }
+    if (!meets || sameSourceConflict(plugin, specStr, repos)) continue
+    return name
   }
   return null
 }
@@ -1043,10 +1131,30 @@ export function entryForDep(
     if (hinted === undefined) return undefined
   }
   const ids = depIdentities(name, String(spec), repoIdentities)
+  const conflicts = sourceConflictWith(String(spec), repoIdentities)
+  // A monorepo subpackage manifest states the parent repository plus a
+  // `directory`, so its identity list carries BOTH `owner/repo` and
+  // `owner/repo#path:/sub`. The bare half also names the collection output
+  // root row, and that row almost always comes first in the catalog — so a
+  // single `find()` below answers a subpackage with the root row, and its
+  // card shows the root plugin description and version. An exact `#path:`
+  // hit cannot be ambiguous, so it decides first; the bare-repo pass stays
+  // as the fallback for manifests that declare no `repository.directory`.
+  const subpaths = new Set([...ids].filter(id => id.includes("#path:/")))
+  if (subpaths.size > 0) {
+    const exact = plugins.find((plugin) => {
+      if (conflicts(plugin)) return false
+      for (const id of entryIdentities(plugin)) if (subpaths.has(id)) return true
+      return false
+    })
+    if (exact !== undefined) return exact
+  }
   return plugins.find((plugin) => {
-    if (sameSourceConflict(plugin, String(spec), repoIdentities)) return false
-    for (const id of entryIdentities(plugin)) if (ids.has(id)) return true
-    return false
+    // Identity first: it rejects nearly every entry for a few set lookups,
+    // and only the survivors can be a source conflict (#1097).
+    let meets = false
+    for (const id of entryIdentities(plugin)) if (ids.has(id)) { meets = true; break }
+    return meets && !conflicts(plugin)
   })
 }
 
@@ -1703,8 +1811,8 @@ export function localizeBilingualList(parts: string[], lang: 'zh' | 'en'): strin
  * The repository name IS the plugin name in the ordinary case, because a
  * repository holding one plugin is named after it. Only the compound form
  * needs unpicking. Prefer its mapped npm package when available: a generic
- * directory such as `plugin` is not the product name. Without that mapping,
- * keep the directory-leaf fallback for source-only entries.
+ * directory such as `plugin` is not the product name. For a source-only entry,
+ * use the repository name when its directory leaf is empty or generic.
  *
  * Not a substitute for the identity: every key, lookup and install still
  * uses `name` unchanged.
@@ -1715,9 +1823,7 @@ export function pluginName(name: string, npm?: string | null): string {
   if (typeof npm === 'string' && npm.trim() !== '') return npm.trim()
   const sub = name.slice(hash + 1)
   const leaf = sub.slice(sub.lastIndexOf('/') + 1)
-  // A sub-path that is empty or trailing-slashed tells us nothing; the
-  // repository half is a better answer than an empty title.
-  return leaf === '' ? name.slice(0, hash) : leaf
+  return leaf === '' || /^(?:dsh|plugin)$/i.test(leaf) ? name.slice(0, hash) : leaf
 }
 
 /**
@@ -1775,5 +1881,109 @@ export function catalogEntryForInstalled(
   if (/^(?:link|file):/i.test(spec)) {
     return findCatalogEntryForLocal(plugins, name, repoIdentities, repoHints) ?? undefined
   }
+  if (spec.startsWith('https://github.com/') && spec.includes('/releases/')) {
+    const matches = plugins.filter(plugin =>
+      catalogReleaseSourceOf(spec, plugin) !== null && !sameSourceConflict(plugin, spec, repoIdentities))
+    if (matches.length === 1) return matches[0]
+  }
   return entryForDep(plugins, name, spec, repoIdentities, repoHints)
+}
+
+/**
+ * When the market installed or updated a package (#1142/#1121), as sent by
+ * `/dsh-market/installed`. Both are ISO 8601 and both may be absent — the
+ * absent one is a fact, not a zero.
+ */
+export interface InstallStamp {
+  installedAt?: string
+  updatedAt?: string
+}
+
+/** How the installed list is ordered. Its own set — see `installedSort`. */
+export type InstalledSort = 'default' | 'name' | 'newest' | 'oldest'
+
+/** The date a row shows, in the reader's own timezone; null when unknown. */
+export function installedDateText(stamp: string | undefined): string | null {
+  if (stamp === undefined) return null
+  const at = new Date(stamp)
+  if (Number.isNaN(at.getTime())) return null
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${String(at.getFullYear())}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`
+}
+
+function installedAtMs(stamp: string | undefined): number | null {
+  if (stamp === undefined) return null
+  const at = Date.parse(stamp)
+  return Number.isFinite(at) ? at : null
+}
+
+/**
+ * Order two installed rows by the chosen field.
+ *
+ * `default` answers 0 on purpose: the list already has an order that means
+ * something (a plugin that is off sinks below every one that is on, #745),
+ * and the caller applies that first. This only decides what happens INSIDE
+ * those groups.
+ *
+ * A row with no install time goes last in BOTH directions. "Sort by install
+ * time" cannot place something whose time nobody recorded, and flipping the
+ * arrow must not lift a guess above a fact — the whole point of showing `—`
+ * is that the market says when it does not know.
+ */
+export function compareInstalledRows(
+  sort: InstalledSort,
+  a: { name: string; installedAt?: string },
+  b: { name: string; installedAt?: string },
+): number {
+  if (sort === 'default') return 0
+  if (sort === 'name') return a.name.localeCompare(b.name)
+  const left = installedAtMs(a.installedAt)
+  const right = installedAtMs(b.installedAt)
+  if (left === null && right === null) return a.name.localeCompare(b.name)
+  if (left === null) return 1
+  if (right === null) return -1
+  if (left === right) return a.name.localeCompare(b.name)
+  return sort === 'newest' ? right - left : left - right
+}
+
+/** Masonry column count for a given content width. `maxColumns` caps Discover(3) vs Installed(2). */
+export function masonryColumnCount(width: number, maxColumns: number, minColWidth = 290, minColumns = 1): number {
+  if (!Number.isFinite(width) || width <= 0) return minColumns
+  const fitted = Math.floor((width + 10) / minColWidth)
+  return Math.min(maxColumns, Math.max(minColumns, fitted))
+}
+
+/**
+ * The one plain sentence for "another release in this profile is still inside
+ * the safety wait" (#1252): what to wait for, and until when. Says the time is
+ * unknown when it is, instead of inventing one.
+ * @param blocked - the blocker the server named.
+ * @param t - the locale lookup; `{0}` package, `{1}` version, `{2}` time.
+ * @param now - injectable for tests.
+ */
+export function profileBlockedText(
+  blocked: { name: string; version: string; readyAt: string | null },
+  t: (key: string) => string,
+  now = new Date(),
+): string {
+  const ready = blocked.readyAt === null ? Number.NaN : Date.parse(blocked.readyAt)
+  if (!Number.isFinite(ready)) {
+    return t('profileBlockedNoteUnknown').replace('{0}', blocked.name).replace('{1}', blocked.version)
+  }
+  const at = new Date(ready)
+  const time = new Intl.DateTimeFormat(undefined, {
+    ...(at.toDateString() === now.toDateString() ? {} : { month: '2-digit', day: '2-digit' }),
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(at)
+  return t('profileBlockedNote').replace('{0}', blocked.name).replace('{1}', blocked.version).replace('{2}', time)
+}
+
+/** Whether a blocker still holds at `now`; an unknown end is believed until the server says otherwise. */
+export function profileBlockStillHolds(blocked: { readyAt: string | null } | null | undefined, now = Date.now()): boolean {
+  if (blocked === null || blocked === undefined) return false
+  if (blocked.readyAt === null) return true
+  const ready = Date.parse(blocked.readyAt)
+  return !Number.isFinite(ready) || ready > now
 }

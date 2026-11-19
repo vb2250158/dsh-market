@@ -35,8 +35,13 @@ export interface ThemeHost {
 /** Manages theme exclusivity for one profile. */
 export interface ThemeManager {
     installedThemeNames(): Promise<Set<string>>;
-    setEntryDisabled(name: string, disabledFlag: boolean, requireLive?: boolean, rejectPending?: boolean): Promise<boolean>;
-    activateTheme(name: string): Promise<boolean>;
+    setEntryDisabled(name: string, disabledFlag: boolean, requireLive?: boolean, rejectPending?: boolean, keepOff?: ReadonlySet<string>): Promise<boolean>;
+    activateTheme(name: string, keepOff?: ReadonlySet<string>): Promise<ThemeActivationResult>;
+}
+interface ThemeActivationResult {
+    ok: boolean;
+    /** Verified component failure before rolling back the attempted switch. */
+    reason?: string;
 }
 /**
  * Create the theme manager. `disabledThemes` is the live, shared set of
@@ -44,3 +49,4 @@ export interface ThemeManager {
  * replaying it; the manager mutates and persists it on switches.
  */
 export declare function createThemeManager(host: ThemeHost, profile: string, disabledThemes: Set<string>, explicitDir?: string): ThemeManager;
+export {};
