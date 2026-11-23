@@ -33,7 +33,7 @@ One-click themes: install, switch live, no restart.
 </tr>
 <tr>
 <td width="180" align="center"><a href="https://dsh-market.hualong-ai.com/"><img src="assets/partners/hualong.png" alt="HuaLongAI" width="150"></a></td>
-<td>Thanks to <strong>HuaLongAI</strong> for sponsoring this project!<br>HuaLongAI is a stable, efficient API relay service focused on Codex, DeepSeek and Claude models: 100% direct from official sources, never diluted, highly available, with average SLA above 99.2%. Billing is transparent, with token-level bills you can verify line by line, and enterprise contracts and invoices are supported. <a href="https://dsh-market.hualong-ai.com/">dsh-market.hualong-ai.com</a></td>
+<td>Thanks to <strong>HuaLongAI</strong> for sponsoring this project!<br>HuaLongAI is a stable, efficient API relay service focused on Codex, DeepSeek and Claude models: 100% direct from official sources, never diluted, highly available, with average SLA above 99.2%. Billing is transparent, with token-level bills you can verify line by line, and enterprise contracts and invoices are supported. <a href="https://dsh-market.hualong-ai.com/">Sign up here for $2 of free credit</a></td>
 </tr>
 </table>
 <!-- sponsors:end -->
@@ -254,6 +254,13 @@ For teams that want their own plugins next to the public catalog, or need the ma
 - **Same safety boundary**: only entries from loaded catalogs can be installed, and tokens never leave the server
 
 Setup, the full `policy.json` reference and examples: [ENTERPRISE.md](ENTERPRISE.md).
+
+<details>
+<summary>Theming the market panel (theme authors)</summary>
+
+The market takes every color from the host's `--dsw-alias-*` design tokens, so a theme re-skins it by overriding tokens — no selector patching of the market's DOM required, and none possible: the panel's class names are build hashes. [THEMING.md](THEMING.md) lists every token the panel and its imported primitives consume, the stable data-attribute hooks (`data-dsh-market-root`, `[data-dshm-stuck]`, the `--dshm-sticky-bg` contract for wallpaper themes), and a worked example. Under-covering the token list is why a theme's gaps show up in the market panel first — segmented tab rows and selected pills in stock colors are a theme-side token gap, not a market bug.
+
+</details>
 
 ## Friends
 

@@ -39,6 +39,8 @@ export interface FindResult {
     /** Which model answered, for the card's footnote. */
     model: string;
     at: string;
+    /** Older saved results lack an exact candidate selection. */
+    selectionVersion?: 2;
     /** Whether the user's installed and favorited plugins informed the picks (they allowed it). */
     personalized?: boolean;
 }
@@ -52,11 +54,9 @@ export interface LlmLike {
     stream(options: {
         provider: string;
         model: string;
-        reasoningEffort?: string;
         messages: unknown[];
         system?: string;
         maxTokens?: number;
-        temperature?: number;
         signal?: AbortSignal;
     }): AsyncIterable<{
         type: string;
@@ -79,10 +79,10 @@ export declare function buildPickPrompt(request: string, registry: Registry, fou
     user: string;
 };
 /** Pull the JSON object out of a model reply (it may wrap it in a code fence). */
-export declare function parsePickReply(text: string, allowed: Set<string>, max?: number): {
+export declare function parsePickReply(text: string, allowed: ReadonlySet<string>, max?: number): {
     intro: string;
     picks: Array<{
-        name: string;
+        id: string;
         why: string;
     }>;
 };

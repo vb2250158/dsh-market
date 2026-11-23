@@ -26,6 +26,17 @@ export type HostRequestGate = (request: IncomingMessage) => number | undefined;
 /** Point the market at the host's request gate. Returns the previous source. */
 export declare function setRequestGateSource(source: () => HostRequestGate | undefined): () => HostRequestGate | undefined;
 /**
+ * The request as `connection.admit` reads it: headers, the socket, and an
+ * absolute `url` — what the host's own `webserver/authorize` hands the same
+ * check (the incoming request's `url` is only a path).
+ */
+export declare function admissionFacts(request: IncomingMessage): {
+    method: string;
+    headers: IncomingMessage['headers'];
+    socket: IncomingMessage['socket'];
+    url: string;
+};
+/**
  * Answer the request with the host's rejection, if it has one.
  * @returns true when the request was refused and answered here.
  */

@@ -53,9 +53,11 @@ export declare function manifestFacts(value: unknown): NpmManifestFacts;
 /**
  * Derive the current host verdict from raw manifest facts.
  *
- * Every valid declaration is conjunctive: an explicit `engines.dsh` and all
- * host peers must agree. A malformed declaration keeps a passing result
- * unknown, but cannot erase a definite mismatch from another declaration.
+ * An explicit `engines.dsh` supersedes host peer declarations, matching the
+ * host loader. Without one, host peers are conjunctive. Host packages declared
+ * as ordinary dependencies remain checked because pnpm can hoist them over the
+ * runtime copy. A malformed declaration keeps a passing result unknown, but
+ * cannot erase a definite mismatch from another declaration.
  */
 export declare function deriveHostCompatibility(facts: NpmManifestFacts | null, hostVersion: string | null, hostPackages: ReadonlySet<string>): HostCompatibility;
 /**

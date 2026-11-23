@@ -160,8 +160,8 @@ describe('mergeSources', () => {
 
 describe('adding a catalog by hand', () => {
   it('reads a URL, a file path, a file: URL and a ~ path, and refuses the rest', () => {
+    const file = join(tmp, 'plugin catalog.json')
     expect(parseCatalogInput(' https://plugins.acme.internal/plugins.json ')).toEqual({ url: 'https://plugins.acme.internal/plugins.json' })
-    const file = join(tmpdir(), 'acme', 'plugins.json')
     expect(parseCatalogInput(file)).toEqual({ file })
     expect(parseCatalogInput(pathToFileURL(file).href)).toEqual({ file })
     expect(parseCatalogInput('~/plugins.json')).toEqual({ file: join(homedir(), 'plugins.json') })

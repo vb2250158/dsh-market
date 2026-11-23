@@ -256,6 +256,16 @@ export declare function readLockCommits(profile: string, explicitDir?: string): 
  * when the spec names no subpath while several entries of that remote do,
  * there is no answer rather than the first sibling's commit (#632).
  *
+ * A `type: git` block is not the only shape: every host the market supports
+ * resolves its install to an archive of that host, whose resolution carries
+ * `gitHosted: true`, the commit inside `tarball:` and the subpackage in
+ * `path:` — no `commit:` and no `repo:` (#632, #637). Reading only the git
+ * block left a monorepo subpackage with no identity of its own, so callers
+ * fell back to `readLockCommits`, which keeps one slot per repository: with
+ * any sibling still on an older commit, that sibling answered for every
+ * subpackage, and an update that really happened was reported as STALE
+ * (#1296).
+ *
  * The key on both sides of the comparison is `hostedRepoKey`, the identity
  * the rest of the market already compares specs by (#851). This function
  * used to derive its own, and that second spelling lost every install pnpm
