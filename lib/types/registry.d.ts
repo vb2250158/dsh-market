@@ -3,6 +3,7 @@
  * revalidates the catalog with its source.
  */
 import { type Region } from './regions.ts';
+import { type SourceInfo } from './catalogs.ts';
 export interface RegistryPlugin {
     name: string;
     owner: string;
@@ -50,6 +51,32 @@ export interface RegistryPlugin {
     icon?: string | null;
     install: string;
     added: string;
+    /**
+     * Which catalog this entry came from. Present ONLY on entries from a
+     * catalog the organization or the user added; the public catalog's entries
+     * carry none, so a plain install looks exactly as it always did. Stamped by
+     * the market after merging, never taken from a catalog's own text.
+     */
+    source?: {
+        id: string;
+        label: Record<string, string>;
+    };
+    /**
+     * Internal repository to install from (`git+https://…#ref`, `git+ssh://…`).
+     * Honored only on an entry from an added catalog — the market stamps
+     * `source` itself — and never taken from a request.
+     */
+    git?: string;
+    /**
+     * Absolute path of a package file that ships with an offline bundle. Set by
+     * the market while reading a file catalog, after checking it lies inside
+     * that catalog's own directory; a catalog's own text cannot set it.
+     */
+    offlineTarball?: string;
+    /** The version an administrator's policy fixed this entry to. */
+    pinned?: string;
+    /** Curated screenshot URLs. */
+    screenshots?: string[];
     /**
      * Catalog-side deprecation flags (#60): supplied by awesome-dsh-plugin,
      * absent for every normal entry — the market only consumes them, so a
@@ -102,6 +129,8 @@ export interface Registry {
     count: number;
     categories: Record<string, Record<string, string>>;
     plugins: RegistryPlugin[];
+    /** Per-source status; present only when more than the public catalog is configured. */
+    sources?: SourceInfo[];
 }
 /**
  * Former npm names for one catalog entry, normalized (#1012).
@@ -120,26 +149,21 @@ export declare function pluginPreviousNpm(plugin: Pick<RegistryPlugin, 'name' | 
  * unconditional request. Earlier callers can still receive their own result.
  */
 export declare function forgetCatalog(): void;
+/** Every source failed (or the only one did): the message for the page, and what each source said. */
+export declare class CatalogLoadError extends Error {
+    readonly sources: SourceInfo[];
+    constructor(message: string, sources: SourceInfo[]);
+}
 /**
- * The catalog, revalidated on each new load. Discovery and the update check
- * share a revalidation while it is in flight for the same configured sources.
+ * The catalog, revalidated on each new load: the public catalog plus whatever
+ * the organization's policy and the user added.
  *
- * There used to be three answers here — live, a one-hour in-memory cache,
- * and a snapshot bundled into the npm package — and only the first was
- * correct. The other two were indistinguishable from it on screen, so a
- * machine that could not reach the registry browsed the publish-time file
- * (839 entries against 1367 live, and frozen forever for anyone on an older
- * release), while a machine that COULD reach it still saw an hour-old
- * listing of a catalog that grows by ~250 entries a day.
- *
- * For a catalog, stale is not a degraded answer, it is a wrong one: a plugin
- * published this morning reads as "does not exist". So there is one source
- * now, and a failure is a failure — the caller reports it and offers a
- * retry, which is a state the user can act on. In particular a network
- * failure is NEVER answered from `served`: an origin that cannot be reached
- * has not confirmed anything, and quietly handing back the last catalog
- * would rebuild exactly the fallback this replaced.
- * @throws when the catalog cannot be fetched or does not look like one.
+ * With nothing configured this IS {@link loadPublicCatalog} — the same
+ * requests, the same object — which is the promise that a user with no policy
+ * and no extra catalogs sees no change. Otherwise every source is read on its
+ * own, in parallel: one that fails costs the user that source and is reported
+ * in `sources`, never the others.
+ * @throws when nothing could be loaded; {@link CatalogLoadError} carries the per-source detail.
  */
 export declare function loadRegistry(region?: Region): Promise<Registry>;
 /**

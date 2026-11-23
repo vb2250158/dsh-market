@@ -3,9 +3,13 @@
  */
 
 import { Button, Input, Menu, Pill, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import css from './Market.module.css'
+import { IconCloseOutline16 } from './icons.ts'
 import {
   IconChevronDownOutline14,
+  IconChevronLeftOutline14,
   IconChevronRightOutline14,
   IconChevronUpOutline14,
   IconDownloadOutline16,
@@ -16,6 +20,7 @@ import {
 import { api, formatCount, orderedCategories, themeSwatch } from './market-data.ts'
 import { SearchInput } from './SearchInput.tsx'
 import { MarketLogo } from './MarketLogo.tsx'
+import { SourceFilter, SourceProblems, useFailedSources } from './SourceParts.tsx'
 import { EmptyResults, FilterMenu, LoadMore, Pager } from './MarketListControls.tsx'
 import { Masonry } from './MarketLayout.tsx'
 import type { MarketStateCtx } from './market-state.tsx'
@@ -25,9 +30,78 @@ import type { MarketRenderCtx } from './market-render.tsx'
 import type { MarketSyncCtx } from './market-sync.ts'
 import type { MarketOperationsCtx } from './market-operations.ts'
 import type { MarketSectionProps } from './market-types.ts'
+import { useAiSearch } from './AiSearch.tsx'
+import { AiRecommend } from './AiRecommend.tsx'
 
 type MarketGoneNoticeCtx = { props: MarketSectionProps }
   & Pick<MarketStateCtx, 'reconnecting' | 'setReconnectRound' | 't'>
+
+/**
+ * Recently added scrolls sideways, and a thin scrollbar that only shows on
+ * hover (or never, on macOS) does not say so. Two arrows in the section head
+ * do: each one is there only while there is more to see in its direction.
+ */
+function RecentArrows({ rowRef, t }: { rowRef: RefObject<HTMLDivElement | null>; t: (key: 'recentPrev' | 'recentNext') => string }) {
+  const [edges, setEdges] = useState({ left: false, right: false })
+  useEffect(() => {
+    const row = rowRef.current
+    if (row === null) return
+    const measure = () => {
+      const max = row.scrollWidth - row.clientWidth
+      setEdges({ left: row.scrollLeft > 2, right: row.scrollLeft < max - 2 })
+    }
+    measure()
+    row.addEventListener('scroll', measure, { passive: true })
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(row)
+    return () => { row.removeEventListener('scroll', measure); observer?.disconnect() }
+  }, [rowRef])
+  if (!edges.left && !edges.right) return null
+  const page = (direction: 1 | -1) => {
+    const row = rowRef.current
+    if (row === null) return
+    row.scrollBy({ left: direction * row.clientWidth * 0.85, behavior: 'smooth' })
+  }
+  return (
+    <span className={css.recentArrows}>
+      <button type="button" className={css.recentArrow} disabled={!edges.left} aria-label={t('recentPrev')} onClick={() => page(-1)}>
+        <IconChevronLeftOutline14 size={14} />
+      </button>
+      <button type="button" className={css.recentArrow} disabled={!edges.right} aria-label={t('recentNext')} onClick={() => page(1)}>
+        <IconChevronRightOutline14 size={14} />
+      </button>
+    </span>
+  )
+}
+
+const HOST_FILTER_NOTE_KEY = 'dshm-host-filter-note-closed'
+
+/**
+ * How many incompatible plugins the compatibility filter hid on this page.
+ * Closing it is remembered: the filter itself stays switchable under Filter,
+ * so the count is never the only way to know it is on.
+ */
+function HostFilterNote({ text, t }: { text: string; t: (key: 'dismissNotice') => string }) {
+  const [closed, setClosed] = useState(() => {
+    try { return localStorage.getItem(HOST_FILTER_NOTE_KEY) === '1' } catch { return false }
+  })
+  if (closed) return null
+  return (
+    <div className={`${css.hostFilterNote} ${css.hostFilterNoteRow}`}>
+      <span>{text}</span>
+      <button
+        type="button"
+        className={css.bannerClose}
+        aria-label={t('dismissNotice')}
+        title={t('dismissNotice')}
+        onClick={() => {
+          setClosed(true)
+          try { localStorage.setItem(HOST_FILTER_NOTE_KEY, '1') } catch { /* storage unavailable */ }
+        }}
+      ><IconCloseOutline16 size={12} /></button>
+    </div>
+  )
+}
 
 export function MarketGoneNotice({ c }: { c: MarketGoneNoticeCtx }) {
   const { reconnecting, setReconnectRound, t } = c
@@ -223,14 +297,37 @@ export function BackupTab({ c }: { c: BackupTabCtx }) {
 }
 
 
-type DiscoverTabCtx = { props: MarketSectionProps }
+type CatalogStatusCtx = Pick<MarketStateCtx, 'loadError' | 't'>
+  & Pick<MarketSyncCtx, 'loadCatalog'>
+
+function CatalogStatus({ c }: { c: CatalogStatusCtx & Partial<Pick<MarketStateCtx, 'lang'>> }) {
+  const { loadError, loadCatalog, t } = c
+  const failedSources = useFailedSources()
+  if (loadError === null) {
+    return <div className={css.loading}><span className={css.logoMark}><MarketLogo size={26} animated /></span>{t('loading')}</div>
+  }
+  return (
+    <div className={css.empty}>
+      <div>{t('loadFail')}</div>
+      {failedSources.length > 0
+        // Catalogs beyond the public one: say which, in plain words, instead of
+        // the joined diagnostic string below.
+        ? <SourceProblems sources={failedSources} lang={c.lang ?? 'en'} t={t} onRetry={() => { void loadCatalog() }} />
+        : <div className={css.err}>{loadError}</div>}
+      <Button variant="outline" size="sm" className={css.retryBtn} onClick={() => { void loadCatalog() }}>
+        {t('loadRetry')}
+      </Button>
+    </div>
+  )
+}
+
+type DiscoverTabCtx = { props: MarketSectionProps } & CatalogStatusCtx
   & Pick<MarketStateCtx,
     'bodyRef' | 'cat' | 'catsStuck' | 'catsWrapRef' | 'compatibleWithHost' | 'data' |
-    'discoverSearchReset' | 'hostVersion' | 'lang' | 'loadError' | 'q' | 'resetDiscoverSearch' |
-    'setCat' | 'setCatsOpen' | 'setCatsSentinel' | 'setCompatibleWithHost' | 'setQ' | 'setSortDir' |
-    'setSortField' | 'setStuckExpanded' | 'setTimeRange' | 'sortDir' | 'sortField' | 'surface' | 't' |
+    'discoverSearchReset' | 'hostVersion' | 'lang' | 'q' | 'resetDiscoverSearch' |
+    'setCat' | 'source' | 'setSource' | 'setCatsOpen' | 'setCatsSentinel' | 'setCompatibleWithHost' | 'setQ' | 'setSortDir' |
+    'setSortField' | 'setStuckExpanded' | 'setTimeRange' | 'sortDir' | 'sortField' | 'surface' |
     'timeRange' | 'visibleCats'>
-  & Pick<MarketSyncCtx, 'loadCatalog'>
   & Pick<MarketInstallCtx,
     'basePage' | 'changePageSize' | 'currentPage' | 'discoverMore' | 'goToPage' | 'hasRecent' |
     'hideRecent' | 'hostHiddenCount' | 'hostUnavailableCount' | 'loadedHostPackages' |
@@ -246,27 +343,32 @@ export function DiscoverTab({ c }: { c: DiscoverTabCtx }) {
     hideRecent, hostHiddenCount, hostUnavailableCount, hostVersion, lang, loadCatalog, loadError,
     loadedHostPackages, pageHostPackages, pagePlugins, pageSize, pluginCard, pluginsAll,
     pluginsUnblocked, q, recentCollapsed, recentHidden, recentPlugins, recentTile,
-    resetDiscoverSearch, setCat, setCatsOpen, setCatsSentinel, setCompatibleWithHost, setQ,
+    resetDiscoverSearch, setCat, source, setSource, setCatsOpen, setCatsSentinel, setCompatibleWithHost, setQ,
     setSortDir, setSortField, setStuckExpanded, setTimeRange, showRecent, sortDir, sortField,
     surface, t, timeRange, toggleRecentCollapsed, totalPages, visibleCats,
   } = c
+  const recentRowRef = useRef<HTMLDivElement | null>(null)
+  const failedSources = useFailedSources()
+  const aiSearch = useAiSearch(t)
+  // AI picks resolved to the catalog's own entries (by repository URL: names
+  // are not unique), in the model's order, drawn exactly like ordinary results.
+  const aiPlugins = useMemo(() => {
+    if (aiSearch.picks === null || data === null) return null
+    const byUrl = new Map(data.plugins.map(plugin => [plugin.url, plugin]))
+    return aiSearch.picks.flatMap(pick => {
+      const plugin = byUrl.get(pick.url)
+      return plugin === undefined ? [] : [plugin]
+    })
+  }, [aiSearch.picks, data])
   return (
-    loadError !== null
-      ? <div className={css.empty}>
-          <div>{t('loadFail')}</div>
-          <div className={css.err}>{loadError}</div>
-          <Button variant="outline" size="sm" className={css.retryBtn} onClick={() => { void loadCatalog() }}>
-            {t('loadRetry')}
-          </Button>
-        </div>
-      : data === null
-        ? <div className={css.loading}><span className={css.logoMark}><MarketLogo size={26} animated /></span>{t('loading')}</div>
-        : (
+    loadError !== null || data === null
+      ? <CatalogStatus c={c} />
+      : (
             <>
               <div ref={setCatsSentinel} />
               <div className={css.stickyHead}>
               <div className={css.tabSearchRow}>
-                <SearchInput key="discover" resetToken={discoverSearchReset} className={css.tabSearch} placeholder={t('searchPh')} value={q} onCommit={setQ} t={t} />
+                <SearchInput key="discover" resetToken={discoverSearchReset} className={css.tabSearch} placeholder={t('searchPh')} value={q} onCommit={setQ} t={t} ai={aiSearch.mode} />
                 <FilterMenu
                   sortField={sortField}
                   sortDir={sortDir}
@@ -332,21 +434,24 @@ export function DiscoverTab({ c }: { c: DiscoverTabCtx }) {
                   }}
                 />
                 </div>
-                {compatibleWithHost && typeof hostVersion === 'string' && pageHostPackages.length > 0 && (
-                  <div className={css.hostFilterNote}>
-                    {loadedHostPackages < pageHostPackages.length
-                      ? t('hostFilterLoading')
-                        .replace('{0}', String(loadedHostPackages))
-                        .replace('{1}', String(pageHostPackages.length))
-                      : t(hostUnavailableCount > 0 ? 'hostFilterIncomplete' : 'hostFilterActive')
-                          .replace('{0}', hostVersion)
-                          .replace('{1}', String(hostHiddenCount))
-                          .replace('{2}', String(hostUnavailableCount))}
-                  </div>
+                <SourceFilter data={data} active={source} onPick={setSource} lang={lang} t={t} />
+                {/* Quiet unless something is actually hidden or unchecked: a line that
+                    says "hid 0" on every visit trains people to skip it. */}
+                {compatibleWithHost && typeof hostVersion === 'string' && pageHostPackages.length > 0
+                  && loadedHostPackages >= pageHostPackages.length && (hostHiddenCount > 0 || hostUnavailableCount > 0) && (
+                  <HostFilterNote
+                    t={t}
+                    text={t(hostUnavailableCount > 0 ? 'hostFilterIncomplete' : 'hostFilterActive')
+                      .replace('{0}', hostVersion)
+                      .replace('{1}', String(hostHiddenCount))
+                      .replace('{2}', String(hostUnavailableCount))}
+                  />
                 )}
               </div>
               </div>
-              {hasRecent && (recentHidden
+              {aiSearch.status}
+              <SourceProblems sources={failedSources} lang={lang} t={t} onRetry={() => { void loadCatalog() }} />
+              {aiPlugins === null && hasRecent && (recentHidden
                 ? <button type="button" className={css.recentShow} onClick={showRecent}>
                     <IconChevronRightOutline14 size={14} />{t('recentShow')}
                   </button>
@@ -364,27 +469,36 @@ export function DiscoverTab({ c }: { c: DiscoverTabCtx }) {
                           {t('recentlyAdded')}
                         </button>
                       </h3>
+                      {!recentCollapsed && <RecentArrows rowRef={recentRowRef} t={t} />}
                       <Button variant="ghost" size="sm" className={css.recentHide} onClick={hideRecent}>{t('recentHide')}</Button>
                     </div>
                     {/* #940: clipped in place, never unmounted. */}
                     <div
                       id="dshm-recent-grid"
+                      ref={recentRowRef}
                       className={recentCollapsed ? `${css.recentRow} ${css.recentCollapsed}` : css.recentRow}
                     >
                       {recentPlugins.map(plugin => recentTile(plugin))}
                     </div>
                   </section>
               )}
-              {pagePlugins.length === 0
+              {aiPlugins === null && (
+                <AiRecommend t={t} lang={lang} plugins={data.plugins} render={items => <Masonry items={items} render={plugin => pluginCard(plugin)} />} />
+              )}
+              {aiPlugins !== null
+                ? (aiPlugins.length === 0
+                    ? <EmptyResults message="aiSearchEmpty" t={t} />
+                    : <Masonry items={aiPlugins} render={plugin => pluginCard(plugin)} />)
+                : pagePlugins.length === 0
                 ? <EmptyResults message={basePage.length > 0 ? 'hostFilterEmpty' : pluginsAll.length > 0 ? 'blockedFilteredEmpty' : 'empty'} t={t}
-                    onClear={data.plugins.length > 0 && (q !== '' || cat !== 'all' || timeRange !== 'all' || compatibleWithHost) ? () => {
+                    onClear={data.plugins.length > 0 && (q !== '' || cat !== 'all' || source !== 'all' || timeRange !== 'all' || compatibleWithHost) ? () => {
                       setQ(''); resetDiscoverSearch(value => value + 1)
-                      setCat('all'); setTimeRange('all'); setCompatibleWithHost(false)
+                      setCat('all'); setSource('all'); setTimeRange('all'); setCompatibleWithHost(false)
                       bodyRef.current?.querySelector('input')?.focus()
                     } : undefined}
                   />
                 : <Masonry items={pagePlugins} render={plugin => pluginCard(plugin)} />}
-              {pluginsUnblocked.length > 0 && (surface === 'plugins'
+              {aiPlugins === null && pluginsUnblocked.length > 0 && (surface === 'plugins'
                 ? <LoadMore more={discoverMore.more} onLoad={discoverMore.loadMore} t={t} />
                 : <Pager currentPage={currentPage} totalPages={totalPages} pageSize={pageSize}
                     onGoToPage={goToPage} onChangePageSize={changePageSize} t={t} />)}
@@ -394,10 +508,10 @@ export function DiscoverTab({ c }: { c: DiscoverTabCtx }) {
 }
 
 
-type FavoritesTabCtx = { props: MarketSectionProps }
+type FavoritesTabCtx = { props: MarketSectionProps } & CatalogStatusCtx
   & Pick<MarketStateCtx,
     'data' | 'favSortDir' | 'favSortField' | 'favTimeRange' | 'favoriteUrls' | 'qFavorites' |
-    'setFavSortDir' | 'setFavSortField' | 'setFavTimeRange' | 'setQFavorites' | 'surface' | 't'>
+    'setFavSortDir' | 'setFavSortField' | 'setFavTimeRange' | 'setQFavorites' | 'surface'>
   & Pick<MarketInstallCtx,
     'favoriteListed' | 'favoritePagePlugins' | 'favoritePageThemes' | 'favoritePluginMore' |
     'favoritePluginPagination' | 'favoritePlugins' | 'favoriteStale' | 'favoriteThemeMore' |
@@ -414,7 +528,7 @@ export function FavoritesTab({ c }: { c: FavoritesTabCtx }) {
   } = c
   return (
     data === null
-      ? <div className={css.loading}><span className={css.logoMark}><MarketLogo size={26} animated /></span>{t('loading')}</div>
+      ? <CatalogStatus c={c} />
       : favoriteUrls.length === 0
         ? <div className={css.empty}>{t('favoritesEmpty')}</div>
         : (
@@ -507,10 +621,10 @@ export function FavoritesTab({ c }: { c: FavoritesTabCtx }) {
 }
 
 
-type ThemesTabCtx = { props: MarketSectionProps }
+type ThemesTabCtx = { props: MarketSectionProps } & CatalogStatusCtx
   & Pick<MarketStateCtx,
     'bodyRef' | 'data' | 'qThemes' | 'resetThemeSearch' | 'setQThemes' | 'setThemeSortDir' |
-    'setThemeSortField' | 'setThemeTimeRange' | 'setThemesFullscreen' | 'surface' | 't' |
+    'setThemeSortField' | 'setThemeTimeRange' | 'setThemesFullscreen' | 'surface' |
     'themeSearchReset' | 'themeSnap' | 'themeSortDir' | 'themeSortField' | 'themeTimeRange' |
     'themesFullscreen'>
   & Pick<MarketInstallCtx,
@@ -563,7 +677,7 @@ export function ThemesTab({ c }: { c: ThemesTabCtx }) {
         )
       })()}
       {data === null
-        ? <div className={css.loading}><span className={css.logoMark}><MarketLogo size={26} animated /></span>{t('loading')}</div>
+        ? <CatalogStatus c={c} />
         : anyThemePlugins.length === 0
           ? <div className={css.empty}>{t('themeEmpty')}</div>
           : themePlugins.length === 0
@@ -601,8 +715,8 @@ export function ThemesTab({ c }: { c: ThemesTabCtx }) {
 }
 
 
-type BlockedTabCtx = { props: MarketSectionProps }
-  & Pick<MarketStateCtx, 'blockedNames' | 'data' | 't'>
+type BlockedTabCtx = { props: MarketSectionProps } & CatalogStatusCtx
+  & Pick<MarketStateCtx, 'blockedNames' | 'data'>
   & Pick<MarketInstallCtx, 'blockedMissing' | 'blockedPlugins'>
   & Pick<MarketOperationsCtx, 'toggleBlock'>
   & Pick<MarketRenderCtx, 'pluginCard'>
@@ -611,7 +725,7 @@ export function BlockedTab({ c }: { c: BlockedTabCtx }) {
   const { blockedMissing, blockedNames, blockedPlugins, data, pluginCard, t, toggleBlock } = c
   return (
     data === null
-      ? <div className={css.loading}><span className={css.logoMark}><MarketLogo size={26} animated /></span>{t('loading')}</div>
+      ? <CatalogStatus c={c} />
       : blockedNames.length === 0
         ? <div className={css.empty}>{t('blockedEmpty')}</div>
         : (

@@ -18,6 +18,7 @@
 import { type UpdateCheckIntervalHours } from './update-notification-settings.ts';
 import { type Channel } from './channels.ts';
 import { type Region } from './regions.ts';
+import { type UserCatalog } from './catalogs.ts';
 interface HotRow {
     id: string;
     name: string;
@@ -192,6 +193,14 @@ export interface MarketState {
      */
     favorites?: string[];
     /**
+     * Extra catalogs the user added in the settings card: a URL or an absolute
+     * file path each, nothing secret. Optional on the way in like `favorites`
+     * (omitted means "the caller has nothing to say"); an explicit empty list
+     * is how the last one is removed. Ignored while the policy sets
+     * `userCatalogs: false`.
+     */
+    userCatalogs?: UserCatalog[];
+    /**
      * Package names the user hid from Discover and Themes (#657).
      *
      * Local, per-profile, reversible. The Hidden tab lists the same names so
@@ -241,11 +250,10 @@ export interface MarketState {
     /**
      * Whether the market still lists its own page in Settings (#1015).
      *
-     * Absent means shown. Only an explicit `false` is stored, unlike
-     * `sidebarEntry`: this entry has always been on, and every host before
-     * 0.2.1 offers it as the only door, so an absent field is the ordinary
-     * case rather than an unanswered question. Turning it back on clears the
-     * field so a later default change still reaches users who never touched it.
+     * Absent means "not chosen": hidden wherever the Plugins page tab or the
+     * sidebar row is a way in, shown where it is the only one (a host before
+     * 0.2.1). Both answers are stored, like `sidebarEntry`, so turning it on
+     * keeps it on.
      */
     settingsSection?: boolean;
     /**
@@ -421,6 +429,19 @@ export declare function recordInstalled(profileDir: string, names: readonly stri
 export declare function recordUpdated(profileDir: string, names: readonly string[], at?: Date): void;
 /** The package is gone: its stamps must not outlive it. */
 export declare function forgetInstalled(profileDir: string, name: string): void;
+/**
+ * Forget every hot mount. Called when the market's routes unload.
+ *
+ * The trees these tables point at hang off the market's own instance, so
+ * they go down with it. The tables do not: they are module state, and a
+ * module the host did not replace — its file did not change — is still
+ * loaded when the next instance starts (src/self-reload.ts). Left as they
+ * are, the new instance would believe a plugin is still mounted that its
+ * predecessor took down: its shim would never be mounted again, and
+ * "switch off" would dispose a handle that is already gone while the plugin,
+ * brought back by the host's own composition, kept running.
+ */
+export declare function resetHotState(): void;
 /** Package names whose hot-mount trees are still attached and can be removed. */
 export declare function listHotMounts(): string[];
 /** Report a failed child only when it belongs to this package's hot-mount tree. */

@@ -34,6 +34,7 @@ import {
 import { type OperationRecord, restoreSettled, serializeSettled, SETTLED_STORAGE_KEY } from './operations.ts'
 import type { RecoveryView } from './RecoveryPanel.tsx'
 import { exportMarketLog } from './self-check.ts'
+import { claimOpenPlugin, pendingOpenPlugin, subscribeOpenPlugin } from './open-request.ts'
 import { readInstalledSort, readSortChoice, rememberInstalledSort, rememberSortChoice } from './sort-preference.ts'
 import {
   installedRepoHints,
@@ -213,6 +214,8 @@ const t = props.t
   const [sidebarTipDismissed, setSidebarTipDismissed] = useState(readSidebarTipDismissed)
   const [sidebarTipSaving, setSidebarTipSaving] = useState(false)
   const [sidebarTipError, setSidebarTipError] = useState<string | null>(null)
+  /** This page turned the row on just now, so it owes the user a way back (#1276). */
+  const [sidebarTipAdded, setSidebarTipAdded] = useState(false)
   useEffect(() => {
     if (sidebar === undefined) return undefined
     const sync = (): void => {
@@ -231,14 +234,23 @@ const t = props.t
     && sidebarSnap.supported
     && !sidebarSnap.enabled
     && !sidebarTipDismissed
-  const enableSidebar = useCallback(() => {
+  // The row is a choice the user can change their mind about, and the only
+  // other switch for it is inside the plugin's own page, behind a collapsed
+  // group (#1276). Turning it on from here therefore leaves an Undo here
+  // instead of a tip that simply vanishes.
+  const showSidebarAdded = surface === 'settings' && sidebarTipAdded && sidebarSnap.enabled
+  const setSidebarFromTip = useCallback((next: boolean) => {
     if (sidebar === undefined) return
     setSidebarTipError(null)
     setSidebarTipSaving(true)
-    void sidebar.set(true).catch((cause: unknown) => {
+    void sidebar.set(next).then(() => {
+      setSidebarTipAdded(next)
+    }).catch((cause: unknown) => {
       setSidebarTipError(cause instanceof Error ? cause.message : String(cause))
     }).finally(() => { setSidebarTipSaving(false) })
   }, [sidebar])
+  const enableSidebar = useCallback(() => { setSidebarFromTip(true) }, [setSidebarFromTip])
+  const undoSidebar = useCallback(() => { setSidebarFromTip(false) }, [setSidebarFromTip])
   // null when the composition has no theme service — the Themes tab hides.
   const themeSnap = useSyncExternalStore(
     props.themeStore.subscribe,
@@ -295,6 +307,8 @@ const t = props.t
   const [qFavorites, setQFavorites] = useState('')
   const [qInstalled, setQInstalled] = useState('')
   const [cat, setCat] = useState('all')
+  /** Which catalog Discover is narrowed to; 'all' unless more than one is loaded. */
+  const [source, setSource] = useState('all')
   // FLAQ Desktop supplies this for onboarding/feature navigation; upstream dsh web omits it, so ordinary web opens intentionally leave this effect idle.
   useEffect(() => {
     const target = props.preferredSubsectionId
@@ -309,11 +323,23 @@ const t = props.t
     } else if (kind === 'discover') {
       setTab('discover')
       setCat('all')
+      setSource('all')
       setQ(value)
       resetDiscoverSearch(n => n + 1)
     }
   }, [props.preferredSubsectionId])
   const [confirming, setConfirming] = useState<RegistryPlugin | null>(null)
+  // A plugin someone asked to open from outside this page (the /find-plugin
+  // card, AI search): show its install dialog once the catalog can name it.
+  const openRequest = useSyncExternalStore(subscribeOpenPlugin, pendingOpenPlugin, () => null)
+  useEffect(() => {
+    if (openRequest === null || data === null) return
+    const entry = data.plugins.find(plugin => plugin.name === openRequest || plugin.npm === openRequest)
+    if (entry === undefined) return
+    claimOpenPlugin(openRequest)
+    setTab('discover')
+    setConfirming(entry)
+  }, [openRequest, data])
   /** The plugin whose comment thread is open, or null. */
   const [commentsFor, setCommentsFor] = useState<RegistryPlugin | null>(null)
 
@@ -350,14 +376,36 @@ const t = props.t
    * heard from the server (#1252). pnpm refuses every change while it holds,
    * so a batch or the queue stops at the first such refusal instead of trying
    * each plugin in turn. The update check is the authority: whatever it says
-   * next replaces this.
+   * next replaces this. A list that still offers an update beside a held row
+   * comes from a host whose update route takes the offered ones past the
+   * wait, so that list stops nothing and the held rows say why on their own.
    */
   const profileBlockRef = useRef<{ name: string; version: string; readyAt: string | null } | null>(null)
-  const profileBlocked = useMemo(
-    () => Object.values(updates).find(status => status.profileBlocked !== undefined)?.profileBlocked ?? null,
-    [updates],
-  )
-  useEffect(() => { profileBlockRef.current = profileBlocked }, [profileBlocked])
+  const { profileBlocked, listChecked } = useMemo(() => {
+    const failed = updateCheck.failed
+    const rows = Object.entries(updates)
+    // A row whose check failed in this read keeps its last good answer
+    // (applyUpdateCheck), which can still offer an update the server now
+    // holds, so only the rows this read checked say whether an update is
+    // offered beside a held one. A read that checked no row (the request
+    // failed, or every row's check did) leaves the rows as earlier reads
+    // answered them.
+    const checked = failed === null ? [] : rows.filter(([name]) => !failed.has(name))
+    const offered = (checked.length > 0 ? checked : rows).some(([, status]) => status.updateAvailable === true)
+    return {
+      profileBlocked: offered ? null : rows.find(([, status]) => status.profileBlocked !== undefined)?.[1].profileBlocked ?? null,
+      listChecked: checked.length > 0,
+    }
+  }, [updates, updateCheck.failed])
+  // Every new list (a new `updates` object) that checked a row replaces what
+  // a refusal set here, also when `profileBlocked` stays null, so Update all
+  // and the queue do what the rows on screen say: on such a host the list
+  // read after a floating git row was refused holds that row alone and
+  // offers the rest. A read that checked no row says nothing about the wait,
+  // so the stop stays until one does.
+  useEffect(() => {
+    if (listChecked) profileBlockRef.current = profileBlocked
+  }, [listChecked, profileBlocked, updates])
   /**
    * The host answered an update with "restart first" (#1253): an earlier one in
    * this run already moved the loaded packages, and every later one would be
@@ -559,7 +607,7 @@ const t = props.t
     return {
       title: pluginName(entry.name, entry.npm),
       author: entry.owner === '' ? undefined : entry.owner,
-      avatar: <OwnerAvatar name={entry.name} owner={entry.owner || ''} icon={entry.icon ?? undefined} />,
+      avatar: <OwnerAvatar name={entry.name} owner={entry.owner || ''} icon={entry.icon ?? undefined} trusted={entry.source !== undefined} />,
     }
   }, [data])
   /** Ids are sequential rather than random so a replayed session is stable. */
@@ -934,6 +982,8 @@ const t = props.t
   }, [bootId, restartHold])
   /** One-click restart (#14 by @ysyyhhh): server capability + in-flight state. */
   const [restartEnabled, setRestartEnabled] = useState(false)
+  /** What the host can do about a server half older than this page (see client-version.ts). */
+  const [hostCaps, setHostCaps] = useState<{ desktop: boolean; selfReload: boolean }>({ desktop: false, selfReload: false })
   /** Supervisor the host detected around itself, when it named one (#229). */
   const [supervisor, setSupervisor] = useState<string | null>(null)
   /** Debugger latch when one-click restart must not kill the host (#447). */
@@ -1280,7 +1330,7 @@ const t = props.t
     compatibilityNotice, compatibleWithHost, configNamespaceIssues, confirming, creatingGroup, data,
     debuggerLatch, deletingGroup, describePlugin, disabledNames, discoverSearchReset,
     dismissBrokenError, dismissBrokenGen, dismissingBroken, doExportLog, doneUrls, drainingRef,
-    enableSidebar, envFailed, envFixing, envReady, exportError, exportIncludeConfig, exportOpen,
+    enableSidebar, undoSidebar, envFailed, envFixing, envReady, exportError, exportIncludeConfig, exportOpen,
     exportSelection, exportState, exportToastDone, favSortDir, favSortField, favTimeRange,
     favoriteError, favoriteErrorDone, favoriteOpGen, favoriteUrls, fileInputRef, findingCompat,
     gistBusy, gistId, gistMessage, gistMode, gistOk, gistResult, gistToken, groupMenuFor, groupOrder,
@@ -1298,13 +1348,13 @@ const t = props.t
     recovery, recoveryBusy, recoveryKeep, recoveryOpen, refreshInstalled, refreshNames,
     refreshRequest, rememberPassword, removeConfirm, removedCount, removingName, renamingGroup,
     renamingValue, repairStatusRequest, replacing, repoHints, repoIdentities, resetDiscoverSearch,
-    resetThemeSearch, restartEnabled, restartHold, restartHoldRef, restartNames,
+    hostCaps, resetThemeSearch, restartEnabled, restartHold, restartHoldRef, restartNames,
     restartNoticeDismissed, restartReachable, restarting, restoreBlocked, restoreConfirm,
     restoreConfirmOpen, restoreErrors, restoringStickRef, rollingBack, rootRef,
     setActivationWarnings, setActivations, setAddPanel, setAddQuery, setAddSelected,
     setAgentsConfirm, setAssignFor, setAutoBackup, setBackupBusy, setBackupMessage,
     setBackupRestored, setBlockError, setBlockNotice, setBlockedNames, setBootId, setBrokenPlugins,
-    setBuildsSkipped, setBusyUrl, setCancelling, setCapsOpen, setCat, setCatsOpen, setCatsSentinel,
+    setBuildsSkipped, setBusyUrl, setCancelling, setCapsOpen, setCat, setSource, source, setCatsOpen, setCatsSentinel,
     setCatsStuck, setCheckingUpdates, setCheckoutRecovery, setClearingStale, setCmdOpen,
     setCollapsedGroups, setCommentsFor, setCompatRetry, setCompatibilityNotice,
     setCompatibleWithHost, setConfirming, setCreatingGroup, setDebuggerLatch, setDeletingGroup,
@@ -1321,7 +1371,7 @@ const t = props.t
     setProgressPhase, setQ, setQFavorites, setQInstalled, setQThemes, setReconnectRound,
     setReconnecting, setRecords, setRecovery, setRecoveryBusy, setRecoveryKeep, setRecoveryOpen,
     setRefreshNames, setRememberPassword, setRemoveConfirm, setRemovedCount, setRemovingName,
-    setRenamingGroup, setRenamingValue, setReplacing, setRestartEnabled, setRestartHold,
+    setRenamingGroup, setRenamingValue, setReplacing, setHostCaps, setRestartEnabled, setRestartHold,
     setRestartNames, setRestartNoticeDismissed, setRestartReachable, setRestarting,
     setRestoreBlocked, setRestoreConfirm, setRestoreConfirmOpen, setRestoreErrors, setRollingBack,
     setShowTheirs, setShowTop, setSidebarTipDismissed, setSkins, setSortDir, setSortField,
@@ -1330,7 +1380,7 @@ const t = props.t
     setTimeRange, setToggleRestart, setToggled, setTogglingName, setUpdateExemptError,
     setUpdateExemptNames, setUpdateExemptNotice, setUpdateNotes, setUpdatedNames, setUpdatingAll,
     setUpdatingName, setVersion, setVisibleCats, setWebdavNeedsPassword, setWebdavPassword,
-    setWebdavSaved, setWebdavUrl, setWebdavUser, setWhyOpen, settledHostRef, showSidebarTip,
+    setWebdavSaved, setWebdavUrl, setWebdavUser, setWhyOpen, settledHostRef, showSidebarAdded, showSidebarTip,
     showTheirs, showTop, sidebarTipError, sidebarTipSaving, skins, sortDir, sortField, staleName,
     startupRepair, statusRef, stuckExpanded, supervisor, surface, t, tab, themePanel, themePick,
     themeSearchReset, themeSnap, themeSortDir, themeSortField, themeTimeRange, themesFullscreen,

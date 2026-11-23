@@ -22,9 +22,12 @@ import { SettingsCard } from './SettingsCard.tsx'
 import { SourceRepoLink } from './SourceRepoLink.tsx'
 import { installSettingsNavIcon } from './settings-nav-icon.ts'
 import { createHostNavigation } from './host-navigation.ts'
+import { FindPluginOverlay, FindPluginRow, FindPluginRowBoundary } from './FindPluginCard.tsx'
+import { onFindPluginExecuted } from './find-plugin-overlay.ts'
 import { createSidebarEntry, SIDEBAR_PANEL_ID, SIDEBAR_PANEL_ORDER } from './sidebar-entry.ts'
 import type { SidebarEntry } from './sidebar-entry.ts'
 import { MarketLogo } from './MarketSection.tsx'
+import { AddMenuMarketItem } from './AddMenuMarketItem.tsx'
 import { updateNotifications } from './update-notifications.ts'
 import { installPluginsUpdateIndicator } from './PluginsUpdateIndicator.tsx'
 import css from './Market.module.css'
@@ -209,6 +212,19 @@ function mountMarket(ctx: MarketClientContext): void {
    * or after this package mounts. See host-navigation.ts.
    */
   const hostNavigation = createHostNavigation()
+
+  // The `/find-plugin` command's row in the chat, drawn as plugin cards. The
+  // chat lets a plugin replace a command's row by name; where the slot is
+  // missing the row falls back to the command's own text.
+  ctx.slots.inject('conversation.chat.commandview', () => {
+    const off = ctx.slots.register({
+      name: 'conversation.chat.commandview',
+      key: 'find-plugin',
+      locale: NS,
+    }, ((props: { node: Parameters<typeof FindPluginRow>[0]['node'] }) => h(FindPluginRowBoundary, { fallback: props.node.outcome?.text ?? '' },
+      h(FindPluginRow, { node: props.node, t, navigation: hostNavigation }))) as unknown as () => unknown)
+    return off
+  })
   /**
    * The market's own panel, as an element — one builder for the settings
    * section this package registers and for `market.render()` (#602). Built
@@ -344,7 +360,7 @@ function mountMarket(ctx: MarketClientContext): void {
     hasOtherSeat: () => entries.settingsSupported() || entries.pluginsTabSupported(),
   })
   void sidebar.load()
-  ctx.slots.inject('sidebar.panellist', () => { sidebar?.markSupported() })
+  ctx.slots.inject('sidebar.panellist', () => { sidebar?.markSupported(); entries.reapply() })
   // The slot injections above either fire synchronously (the host declares the
   // slot) or never; this re-answers once the setup pass is over so a host with
   // no settings page shows the row without waiting for the server round trip.
@@ -494,6 +510,22 @@ function mountMarket(ctx: MarketClientContext): void {
     sidebar?.refresh()
   })
 
+  // "Browse the Plugin Market" in the Plugins page's "Add plugin" menu: the
+  // host's own seat for extra ways to add a plugin (dsh 0.2.2+).
+  const addMenuCtx = ctx as unknown as {
+    slots: {
+      inject(name: string, register: () => unknown): void
+      register(options: Record<string, unknown>, render: (ownerProps: { onDismiss?: () => void }) => unknown): unknown
+    }
+  }
+  addMenuCtx.slots.inject('plugins.add.actions', () => addMenuCtx.slots.register({
+    name: 'plugins.add.actions',
+    id: 'dsh-market-browse',
+    order: -10,
+    locale: NS,
+    inject: () => ({ t }),
+  }, (ownerProps: { onDismiss?: () => void } = {}) => h(AddMenuMarketItem, { t, navigation: hostNavigation, ...(ownerProps.onDismiss === undefined ? {} : { onDismiss: ownerProps.onDismiss }) })))
+
   // "View source" on every bundle's detail page: the page states a package's
   // origin as an install spec, a version range nobody can open. No key, so it
   // lands on every bundle; official pages carry no `pkg`. The slot is the
@@ -521,4 +553,14 @@ function mountMarket(ctx: MarketClientContext): void {
     id: 'dsh-market-toast',
     label: () => 'dsh-market',
   }, Toast))
+  // A /find-plugin run on the home screen (a blank session) draws no chat
+  // row; show its result in a frame-wide overlay instead.
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: `${NS}.find-plugin`,
+    locale: NS,
+  }, (() => h(FindPluginOverlay, { t, navigation: hostNavigation })) as unknown as () => unknown))
+  ;(ctx as unknown as { on(name: string, listener: (...args: unknown[]) => void): unknown }).on('command/executed', (sessionId: unknown, name: unknown, result: unknown) => {
+    if (name === 'find-plugin' && typeof sessionId === 'string') onFindPluginExecuted(sessionId, result as { kind?: string; text?: string } | undefined)
+  })
 }

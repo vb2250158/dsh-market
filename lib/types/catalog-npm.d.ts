@@ -74,4 +74,4 @@ file?: string): Promise<{
  * @param pkg - package name.
  * @param file - exact entry name inside the tarball (`package/cordis.patch.yml`).
  */
-export declare function packageFileFromRegistry(registry: string, pkg: string, file: string): Promise<Buffer | null>;
+export declare function packageFileFromRegistry(base: string, pkg: string, file: string): Promise<Buffer | null>;

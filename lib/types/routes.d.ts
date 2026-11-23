@@ -33,6 +33,8 @@ export interface MarketHost {
         dispose(): Promise<unknown> | void;
     };
     on?(event: string, callback: (payload: unknown) => void): () => void;
+    /** Service lookup; the host context has it, test doubles may not. */
+    get?(name: string): unknown;
     logger?: {
         info?(message: string): void;
         warn(message: string): void;
@@ -123,6 +125,14 @@ export interface MarketConfig {
         launcherNow: () => string;
     };
 }
+/**
+ * Forget the version read from disk. Called when the routes unload: a module
+ * the host did not replace (its file did not change) stays loaded across an
+ * in-process reload (src/self-reload.ts), and the instance that comes next
+ * must report the package.json that is on disk now, not the one it started
+ * beside.
+ */
+export declare function forgetMarketVersion(): void;
 export declare function marketVersion(): string;
 /**
  * Register the market's HTTP routes.

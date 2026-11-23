@@ -1,12 +1,14 @@
 # Maintenance fork
 
-Upstream: [dsh-market/dsh-market](https://github.com/dsh-market/dsh-market), pinned at `bcbdc4a9c3e3eb0d143dd1e598fe980f514e5866` (`1.73.23`). This fork retains the upstream market behavior and online catalog.
+Upstream: [dsh-market/dsh-market](https://github.com/dsh-market/dsh-market), pinned at `8747e073` (`1.80.0`). This fork retains the upstream market behavior and online catalog.
 
 The supported test target is the declared Windows source-Web host DSH `0.2.2-rc.1`; the package declaration limits this maintenance build to that host. This is a test-scope declaration, not a claim that other upstream hosts fail. No older-host or cross-platform compatibility matrix is maintained here.
 
 Git and npm packages include both Host `lib/` and browser `client/client.js`. `prepare` uses these shipped artifacts when all declared Host and Client exports exist; a source checkout missing an exported artifact runs the existing build. `prepack` uses the same artifact check before package preflight. Developers rebuild changed source explicitly with `npm run build`. The upstream catalog remains authoritative. `DSHM_REGISTRY_URL` can select a dedicated test catalog for isolated acceptance; it replaces the upstream catalog and is not set by this fork.
 
 ## Unreleased
+
+- `1.80.0-fork.1`: synchronize upstream catalog, update, and in-process reload improvements. Retain the fork's fixed Git preparation path.
 
 - `1.73.23-fork.1`: synchronize the upstream default branch through 1.73.23 and retain the fixed Git preparation path.
 

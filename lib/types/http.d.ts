@@ -110,5 +110,7 @@ export declare function trustedAuthority(host: string, trustedHosts: readonly st
  */
 export declare function loopbackAuthority(host: string | undefined): boolean;
 export declare function sameOrigin(request: IncomingMessage): boolean;
+/** Read a request body as bytes, refusing anything over `maxBytes` (stops reading as soon as it is over). */
+export declare function readRawBody(request: IncomingMessage, maxBytes: number): Promise<Buffer>;
 /** Read and parse a JSON request body, rejecting anything over 4 KiB. */
 export declare function readJsonBody(request: IncomingMessage, maxBytes?: number): Promise<unknown>;

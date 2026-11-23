@@ -231,6 +231,9 @@ export declare function installTargetFor(entry: {
     url: string;
     npm?: unknown;
     tarball?: unknown;
+    source?: unknown;
+    git?: unknown;
+    offlineTarball?: unknown;
 }): string | null;
 export interface CatalogReleaseSource {
     repo: string;

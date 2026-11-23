@@ -6,8 +6,9 @@ import { Button, Input, Modal, Toast, Tooltip } from '@deepseek-ai/dsh-client-ui
 import css from './Market.module.css'
 import { IconCheckOutline16, IconChevronUpOutline14, IconWarningOutline16 } from './icons.ts'
 import { SearchInput } from './SearchInput.tsx'
-import { installCommandFor, localizeBilingual, looksTerminal, pluginCategories, pluginName } from './market-data.ts'
+import { installCommandFor, isInstalled, localizeBilingual, looksTerminal, pluginCategories, pluginName } from './market-data.ts'
 import { RecoveryPanel } from './RecoveryPanel.tsx'
+import { PinnedNote, SourceTag } from './SourceParts.tsx'
 import { CommentsModal } from './CommentsModal.tsx'
 import { OwnerAvatar, ScreenshotStrip } from './MarketImages.tsx'
 import {
@@ -34,7 +35,7 @@ type MarketDialogsCtx = { props: MarketSectionProps }
   & Pick<MarketStateCtx,
     'activations' | 'addPanel' | 'addQuery' | 'addSelected' | 'agentsConfirm' | 'backupBusy' |
     'blockError' | 'blockErrorDone' | 'blockNotice' | 'blockNoticeDone' | 'busyUrl' |
-    'catalogVersionTip' | 'cmdOpen' | 'commentsFor' | 'confirming' | 'data' | 'exportError' |
+    'catalogVersionTip' | 'cmdOpen' | 'commentsFor' | 'confirming' | 'data' | 'exportError' | 'repoHints' | 'repoIdentities' |
     'exportIncludeConfig' | 'exportOpen' | 'exportSelection' | 'exportState' | 'exportToastDone' |
     'favoriteError' | 'favoriteErrorDone' | 'findingCompat' | 'gistBusy' | 'groups' |
     'hostCompatHeld' | 'hostCompatHeldHours' | 'hostCompatWindowHours' | 'hostIncompatible' |
@@ -50,7 +51,7 @@ type MarketDialogsCtx = { props: MarketSectionProps }
     'setThemePick' | 'showTop' | 't' | 'themePanel' | 'themePick' | 'toggled' | 'toggledDone' |
     'uiLocale' | 'updateExemptError' | 'updateExemptErrorDone' | 'updateExemptNotice' |
     'updateExemptNoticeDone' | 'updateNotes' | 'updatingName'>
-  & Pick<MarketSyncCtx, 'effectiveDisabledSet' | 'scrollToTop'>
+  & Pick<MarketSyncCtx, 'catalogInstalled' | 'effectiveDisabledSet' | 'scrollToTop'>
   & Pick<MarketInstallCtx, 'doInstall'>
   & Pick<MarketOperationsCtx,
     'applyRecoveryChoice' | 'closeNotes' | 'doSourceMigration' | 'doUninstall' | 'doUpdate'>
@@ -65,7 +66,8 @@ export function MarketDialogs({ c }: { c: MarketDialogsCtx }) {
   const {
     activations, addPanel, addQuery, addSelected, agentsConfirm, applyGroupTheme,
     applyRecoveryChoice, backupBusy, blockError, blockErrorDone, blockNotice, blockNoticeDone,
-    busyUrl, capabilityDetail, catalogVersionTip, closeNotes, cmdOpen, commentsFor, confirming, data,
+    busyUrl, capabilityDetail, catalogInstalled, catalogVersionTip, closeNotes, cmdOpen, commentsFor, confirming, data,
+    repoHints, repoIdentities,
     doAddSelectedMembers, doInstall, doRenameGroup, doRestore, doSourceMigration, doUninstall,
     doUpdate, effectiveDisabledSet, exportAllSelected, exportError, exportIncludeConfig, exportOpen,
     exportOptions, exportSelection, exportState, exportToastDone, favoriteError, favoriteErrorDone,
@@ -82,6 +84,10 @@ export function MarketDialogs({ c }: { c: MarketDialogsCtx }) {
     themePanel, themePick, toggled, toggledDone, uiLocale, ungroupedNames, updateExemptError,
     updateExemptErrorDone, updateExemptNotice, updateExemptNoticeDone, updateNotes, updatingName,
   } = c
+  // The card title opens this same dialog as a detail view. For a plugin that
+  // is already installed it is only that: no "Install X?", no install button.
+  const confirmingInstalled = confirming !== null
+    && isInstalled(confirming, catalogInstalled, repoIdentities, data?.plugins, repoHints)
   return (
     <>
       {showTop && (
@@ -240,11 +246,17 @@ export function MarketDialogs({ c }: { c: MarketDialogsCtx }) {
           className={css.confirmModal}
           contentClassName={css.confirmContent}
           onClose={() => setConfirming(null)}
-          title={t('confirmTitle') + ' ' + pluginName(confirming.name, confirming.npm) + '?'}
+          title={confirmingInstalled ? pluginName(confirming.name, confirming.npm) : t('confirmTitle') + ' ' + pluginName(confirming.name, confirming.npm) + '?'}
           footer={(
             <>
-              <Button variant="ghost" onClick={() => setConfirming(null)}>{t('cancel')}</Button>
-              <Button variant="primary" onClick={() => doInstall(confirming)}>{t('confirmInstall')}</Button>
+              {confirmingInstalled
+                ? <Button variant="ghost" onClick={() => setConfirming(null)}>{t('detailClose')}</Button>
+                : (
+                    <>
+                      <Button variant="ghost" onClick={() => setConfirming(null)}>{t('cancel')}</Button>
+                      <Button variant="primary" onClick={() => doInstall(confirming)}>{t('confirmInstall')}</Button>
+                    </>
+                  )}
             </>
           )}
         >
@@ -256,7 +268,7 @@ export function MarketDialogs({ c }: { c: MarketDialogsCtx }) {
               (#739). */}
           <div className={css.confirmBody}>
           <div className={css.byline}>
-            <OwnerAvatar name={confirming.name} owner={confirming.owner || ''} icon={confirming.icon ?? undefined} />
+            <OwnerAvatar name={confirming.name} owner={confirming.owner || ''} icon={confirming.icon ?? undefined} trusted={confirming.source !== undefined} />
             <span className={css.owner} title={confirming.owner}>{confirming.owner}</span>
             <CatalogVersionMark version={confirming.version} tip={catalogVersionTip} />
             <DownloadCount plugin={confirming} t={t} />
@@ -265,8 +277,10 @@ export function MarketDialogs({ c }: { c: MarketDialogsCtx }) {
               <span className={css.star} title={t('published')}>{`· ${confirming.added}`}</span>
             )}
           </div>
-          {pluginCategories(confirming).length > 0 && (
+          {(pluginCategories(confirming).length > 0 || confirming.source !== undefined || confirming.pinned !== undefined) && (
             <div className={css.confirmTags}>
+              <SourceTag plugin={confirming} lang={lang} />
+              <PinnedNote plugin={confirming} t={t} />
               {pluginCategories(confirming).map(category => (
                 <span key={category} className={css.tag}>
                   {(data!.categories[category] && (data!.categories[category]![lang] || data!.categories[category]!.en)) || category}

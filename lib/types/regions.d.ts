@@ -108,6 +108,8 @@ export declare function catalogSourcesFor(region: Region): CatalogSource[];
 export declare function normalizeGithubProxy(value: unknown): string | null;
 /** Apply (or clear) the persisted UI escape route. */
 export declare function setCustomGithubProxy(proxy: string | null): void;
+/** Whether an administrator's policy (not just the environment) fixed the GitHub route. */
+export declare function githubProxyByPolicy(): boolean;
 /** Whether the operator-owned environment variable disables UI changes. */
 export declare function githubProxyManaged(env?: NodeJS.ProcessEnv): boolean;
 /** Remember one verified route without changing other GitHub services. */

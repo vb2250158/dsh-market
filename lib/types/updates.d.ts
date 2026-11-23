@@ -244,6 +244,8 @@ export declare function latestPublishedRecently(name: string, windowMs?: number)
  */
 export declare function versionOnChannel(name: string, channel: Channel, stable: string | null): Promise<string | null>;
 export declare function fetchNpmLatest(name: string): Promise<string | null>;
+/** What the registry itself calls `latest`, whatever a pin says (the desktop path checks the registry's identity against it). */
+export declare function fetchRegistryLatest(name: string): Promise<string | null>;
 /**
  * The newest build above `installed` that some tag other than `latest`
  * points at, or null (#867).
@@ -258,8 +260,9 @@ export declare function newerPrereleaseFor(name: string, installed: string | nul
  * click (#1252). Applied to what is served, not to the cached registry
  * answer, so a blocker learned a second ago and one that just ended both show
  * on the very next read without another round of registry traffic.
+ * @param holds - which offered updates the blocker stops; every one by default.
  */
-export declare function applyProfileBlockers(statuses: Record<string, UpdateStatus>, activeProfileDir: string, now?: number): Record<string, UpdateStatus>;
+export declare function applyProfileBlockers(statuses: Record<string, UpdateStatus>, activeProfileDir: string, now?: number, holds?: (name: string) => boolean): Record<string, UpdateStatus>;
 /** Check each plugin independently so a failed lookup leaves the other results usable. */
 export declare function checkUpdates(profile: string, force?: boolean, explicitDir?: string,
 /**

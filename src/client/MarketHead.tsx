@@ -2,15 +2,18 @@
  * The Market header: title row, tabs, toolbar and the banners under them.
  */
 
-import { Button, StateDot, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useState } from 'react'
+import { Button, Menu, StateDot, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import css from './Market.module.css'
 import { OperationsPanel } from './OperationsPanel.tsx'
 import { rememberDismissedHostId } from './dismissed-host.ts'
 import { clearSettled, drop } from './operations.ts'
-import { localizeBilingual, localizeBilingualList, profileBlockedText, restartHintKey } from './market-data.ts'
+import { CLIENT_VERSION, requestSelfReload, serverIsBehind } from './client-version.ts'
+import { api, localizeBilingual, localizeBilingualList, profileBlockedText, restartHintKey } from './market-data.ts'
 import {
   IconCordisPluginOutline14,
   IconDownloadOutline16,
+  IconCloseOutline16,
   IconQuestionOutline14,
   IconRefreshOutline14,
   IconSparkle16,
@@ -40,7 +43,7 @@ type MarketHeadCtx = { props: MarketSectionProps }
     'activationWarnings' | 'backupBusy' | 'backupMessage' | 'blockedNames' | 'bootId' |
     'brokenPluginNames' | 'brokenPlugins' | 'buildsSkipped' | 'busyUrl' | 'checkingUpdates' |
     'checkoutRecovery' | 'compatibilityNotice' | 'configNamespaceIssues' | 'data' | 'debuggerLatch' |
-    'describePlugin' | 'dismissBrokenError' | 'dismissingBroken' | 'doExportLog' | 'enableSidebar' |
+    'describePlugin' | 'dismissBrokenError' | 'dismissingBroken' | 'doExportLog' | 'enableSidebar' | 'undoSidebar' | 'showSidebarAdded' |
     'envFailed' | 'envFixing' | 'envReady' | 'exportState' | 'headRef' | 'hostBusy' |
     'hostDependencyFindings' | 'hotNames' | 'installError' | 'lang' | 'marketGone' |
     'notificationSnapshot' | 'openInHost' | 'operationsOpen' | 'pendingBackup' | 'profileBlocked' |
@@ -50,7 +53,7 @@ type MarketHeadCtx = { props: MarketSectionProps }
     'setRestartNoticeDismissed' | 'setRestoreConfirmOpen' | 'setSidebarTipDismissed' | 'setTab' |
     'showSidebarTip' | 'sidebarTipError' | 'sidebarTipSaving' | 'staleName' | 'startupRepair' |
     'supervisor' | 'surface' | 't' | 'tab' | 'themeSnap' | 'uiLocale' | 'updates' | 'updatingName' |
-    'version'>
+    'version' | 'hostCaps' | 'restartNames' | 'updatedNames' | 'activations'>
   & Pick<MarketSyncCtx, 'fixEnv'>
   & Pick<MarketInstallCtx,
     'compatibilitySummary' | 'doInstall' | 'doRollback' | 'favoriteTabCount' | 'shadowSummary'>
@@ -59,18 +62,20 @@ type MarketHeadCtx = { props: MarketSectionProps }
   & Pick<MarketGroupsBackupCtx,
     'approveAndRetry' | 'installedOtherCount' | 'recordsRef' | 'runQueuedNow'>
   & Pick<MarketRenderCtx,
-    'batchActions' | 'eligibleMarketVersion' | 'exportLogButton' | 'hasUpdates' |
+    'eligibleMarketVersion' | 'hasUpdates' |
     'heldMarketVersion' | 'missingRestoreCount' | 'pendingRefreshNames' | 'pendingRestart' |
-    'showHostPending' | 'showMarketWait' | 'updateCheckFailed'>
+    'showHostPending' | 'showMarketWait' | 'updateCheckFailed' | 'marketOffer' | 'takeMarketOffer'>
+
+const MARKET_OFFER_CLOSED_KEY = 'dshm-market-offer-closed'
 
 export function MarketHead({ c }: { c: MarketHeadCtx }) {
   const {
-    activationWarnings, approveAndRetry, askRestore, backupBusy, backupMessage, batchActions,
+    activationWarnings, approveAndRetry, askRestore, backupBusy, backupMessage,
     blockedNames, bootId, brokenPluginNames, brokenPlugins, buildsSkipped, busyUrl, checkingUpdates,
     checkoutRecovery, compatibilityNotice, compatibilitySummary, configNamespaceIssues, data,
     debuggerLatch, describePlugin, dismissBrokenError, dismissBrokenPlugin, dismissingBroken,
     doCancel, doExportLog, doInstall, doRestart, doRollback, doUpdate, eligibleMarketVersion,
-    enableSidebar, envFailed, envFixing, envReady, exportLogButton, exportState, favoriteTabCount,
+    enableSidebar, undoSidebar, showSidebarAdded, envFailed, envFixing, envReady, exportState, favoriteTabCount,
     fixEnv, hasUpdates, headRef, heldMarketVersion, hostBusy, hostDependencyFindings, hotNames,
     installError, installedOtherCount, lang, marketGone, missingRestoreCount, notificationSnapshot,
     openInHost, operationsOpen, pendingBackup, pendingRefreshNames, pendingRestart, profileBlocked,
@@ -80,12 +85,51 @@ export function MarketHead({ c }: { c: MarketHeadCtx }) {
     setRestartNoticeDismissed, setRestoreConfirmOpen, setSidebarTipDismissed, setTab, shadowSummary,
     showHostPending, showMarketWait, showSidebarTip, sidebarTipError, sidebarTipSaving, staleName,
     startupRepair, supervisor, surface, t, tab, themeSnap, uiLocale, updateCheckFailed, updates,
-    updatingName, version,
+    updatingName, version, marketOffer, takeMarketOffer, hostCaps, restartNames, updatedNames, activations,
   } = c
+  const [reloadingSelf, setReloadingSelf] = useState<'idle' | 'working' | 'failed'>('idle')
+  // Why the server said it could not switch, in its own words; '' = no reason given.
+  const [reloadError, setReloadError] = useState('')
+  const staleServer = serverIsBehind(version)
+  /** Swap the new server half in, then reload the page so it matches. */
+  const applyNow = (): void => {
+    setReloadingSelf('working')
+    requestSelfReload(
+      () => fetch(api('/dsh-market/reload-self'), { method: 'POST' }),
+      async () => {
+        const status = await (await fetch(api('/dsh-market/status'))).json() as { version?: unknown }
+        return typeof status.version === 'string' ? status.version : null
+      },
+    ).then(result => {
+      if (result.ok) { location.reload(); return }
+      setReloadError(localizeBilingual(result.error, lang))
+      setReloadingSelf('failed')
+    }, () => { setReloadError(''); setReloadingSelf('failed') })
+  }
+  // The market itself is among the changes waiting for a restart, and this
+  // host can swap it in place: offer that instead of a restart (or on a
+  // Desktop that cannot restart, instead of nothing).
+  const marketWaiting = [...restartNames, ...updatedNames, ...Object.keys(activations).filter(name => activations[name]?.state === 'restart')]
+    .some(name => name === 'dshmarket' || name === 'dsh-market')
+  const applyInPlace = hostCaps.selfReload && marketWaiting && !staleServer && reloadingSelf !== 'failed'
+  // Four everyday tabs in the row; the rarely used ones (Hidden, Advanced)
+  // and the rarely used actions sit behind ···.
+  const [moreOpen, setMoreOpen] = useState(false)
+  // A restart notice can be closed. It comes back when another change needs
+  // a restart, so closing it never hides something new.
+  const [restartClosedAt, setRestartClosedAt] = useState(0)
+  // Closing the new-version notice hides that version only; a newer one shows
+  // again. Kept across reloads, since the offer itself is.
+  const [offerClosed, setOfferClosed] = useState<string | null>(() => {
+    try { return localStorage.getItem(MARKET_OFFER_CLOSED_KEY) } catch { return null }
+  })
+  const showMarketOffer = marketOffer !== null && (marketOffer.version === null || marketOffer.version !== offerClosed)
   return (
     <>
       <div ref={headRef} className={css.head}>
-        {surface !== 'plugins' && (
+        {/* The logo title row, on every surface: the sidebar and the Plugins
+            page tab carry the same heading, so either one reads as the market. */}
+        {(
         <div className={css.headTop}>
         <div className={css.titleRow}>
           <MarketLogo size={18} ambient style={{ flexShrink: 0 }} />
@@ -108,10 +152,20 @@ export function MarketHead({ c }: { c: MarketHeadCtx }) {
             </span>
           )}
           <a className={css.submitLink} href="https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md" target="_blank" rel="noreferrer">{t('submitPlugin')}</a>
-          {exportLogButton}
-          {batchActions}
           </div>
         </div>
+        )}
+        {showSidebarAdded && (
+          <div className={css.sidebarTip}>
+            <span>{t('sidebarTipAdded')}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={sidebarTipSaving}
+              onClick={undoSidebar}
+            >{t('sidebarTipUndo')}</Button>
+            {sidebarTipError !== null && <span>{sidebarTipError}</span>}
+          </div>
         )}
         {showSidebarTip && (
           <div className={css.sidebarTip}>
@@ -143,30 +197,57 @@ export function MarketHead({ c }: { c: MarketHeadCtx }) {
           >{t('tabFavorites') + (favoriteTabCount > 0 ? ' (' + favoriteTabCount + ')' : '')}</button>
           <button className={tab === 'installed' ? `${css.tab} ${css.on}` : css.tab} onClick={() => { setTab('installed'); refreshInstalled(true) }}>
             {t('tabInstalled') + (installedOtherCount > 0 ? ' (' + installedOtherCount + ')' : '')}
-            {hasUpdates && <StateDot state="error" size={7} className={css.dot} />}
+            {(hasUpdates || showMarketOffer || (tab !== 'installed' && pendingRestart > restartClosedAt)) && <StateDot state="error" size={7} className={css.dot} />}
           </button>
-          <button className={tab === 'blocked' ? `${css.tab} ${css.on}` : css.tab} onClick={() => setTab('blocked')}>
-            {t('tabBlocked') + (blockedNames.length > 0 ? ' (' + blockedNames.length + ')' : '')}
-          </button>
-          <button
-            className={(tab === 'backup' || tab === 'diagnostics') ? `${css.tab} ${css.on}` : css.tab}
-            onClick={() => { if (tab !== 'backup' && tab !== 'diagnostics') setTab('backup') }}
-          >{t('tabAdvanced')}</button>
-          {/* Sponsors live in the spacer. It never shrinks below the mark, so
-              when the row has no room the spacer (and the buttons after it)
-              moves to the next line instead of hiding a sponsor. */}
-          <span className={surface === 'plugins' ? `${css.grow} ${css.sponsorSlot}` : css.grow}>
-            {surface === 'plugins' && <SponsorMark lang={lang} t={t} />}
-          </span>
+          {tab === 'blocked' && (
+            <button className={tab === 'blocked' ? `${css.tab} ${css.on}` : css.tab} onClick={() => setTab('blocked')}>
+              {t('tabBlocked') + (blockedNames.length > 0 ? ' (' + blockedNames.length + ')' : '')}
+            </button>
+          )}
+          {(tab === 'backup' || tab === 'diagnostics') && (
+            <button
+              className={(tab === 'backup' || tab === 'diagnostics') ? `${css.tab} ${css.on}` : css.tab}
+              onClick={() => { if (tab !== 'backup' && tab !== 'diagnostics') setTab('backup') }}
+            >{t('tabAdvanced')}</button>
+          )}
           {/* The host page already names this tab, so these sit here instead
               of a second title row. Settings and the sidebar keep them in
               the heading. Export stays reachable on this surface — install
               failures ask for a log, and this is where that failure happens. */}
-          {surface === 'plugins' && batchActions}
-          {surface === 'plugins' && exportLogButton}
+          <Menu
+            open={moreOpen}
+            onClose={() => setMoreOpen(false)}
+            onSelect={(id) => {
+              setMoreOpen(false)
+              if (id === 'blocked') setTab('blocked')
+              if (id === 'advanced') setTab('backup')
+              if (id === 'tasks') setOperationsOpen(true)
+              if (id === 'export') doExportLog()
+            }}
+            align="start"
+            portal
+            anchor={(
+              <button
+                type="button"
+                className={css.headMore}
+                data-dshm-head-more
+                aria-label={t('headMore')}
+                aria-expanded={moreOpen}
+                onClick={() => setMoreOpen(open => !open)}
+              >···</button>
+            )}
+            items={[
+              { id: 'blocked', label: t('tabBlocked') + (blockedNames.length > 0 ? ' (' + blockedNames.length + ')' : '') },
+              { id: 'advanced', label: t('tabAdvanced') },
+              { type: 'separator', id: 'sep' },
+              { id: 'tasks', label: t('opTitle') },
+              { id: 'export', label: exportState === 'busy' ? t('exportingLog') : t('exportLog'), disabled: exportState === 'busy' },
+            ]}
+          />
           {/* In the tab row, not above the grid: paginating, searching and
               switching tab all leave it — and any pending decision — in place. */}
           <OperationsPanel
+            hideWhenQuiet
             t={t}
             lang={lang}
             describe={describePlugin}
@@ -217,6 +298,12 @@ export function MarketHead({ c }: { c: MarketHeadCtx }) {
               })
             }}
           />
+          {/* Sponsors live in the spacer. It never shrinks below the mark, so
+              when the row has no room the spacer (and the buttons after it)
+              moves to the next line instead of hiding a sponsor. */}
+          <span className={surface === 'plugins' ? `${css.grow} ${css.sponsorSlot}` : css.grow}>
+            {surface === 'plugins' && <SponsorMark lang={lang} t={t} />}
+          </span>
         </div>
         {!marketGone && updateCheckFailed && (
           <div className={css.updateCheckNotice}>
@@ -298,7 +385,72 @@ export function MarketHead({ c }: { c: MarketHeadCtx }) {
             >{t('refresh')}</Button>
           </div>
         )}
-        {pendingRestart > 0 && (
+        {/* The page is newer than the server half still running: the market
+            updated itself and DSH has not reloaded it. Routes the page relies
+            on may not exist yet, so say so, with the one action that fixes
+            it where the host allows one. */}
+        {staleServer && (
+          <div className={css.banner} data-dshm-stale-server>
+            <IconRefreshOutline14 size={14} className={css.bannerIcon} />
+            <span className={css.grow}>
+              {t('staleBanner').replace('{0}', CLIENT_VERSION ?? '').replace('{1}', version ?? '')}
+              {' '}
+              {hostCaps.selfReload || (restartEnabled && restartReachable && debuggerLatch === null)
+                ? null
+                : t(hostCaps.desktop ? 'staleDesktopHint' : 'staleManualHint')}
+              {reloadingSelf === 'failed' && <> {reloadError !== '' ? reloadError : t(hostCaps.desktop ? 'staleDesktopHint' : 'staleManualHint')}</>}
+            </span>
+            {hostCaps.selfReload && reloadingSelf !== 'failed' ? (
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={reloadingSelf === 'working' || hostBusy || busyUrl !== null || updatingName !== null || removingName !== null}
+                onClick={applyNow}
+              >{reloadingSelf === 'working' ? t('restarting') : t('staleReload')}</Button>
+            ) : restartEnabled && restartReachable && debuggerLatch === null && recovery === null && !marketGone && (
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={restarting || hostBusy || busyUrl !== null || updatingName !== null || removingName !== null}
+                onClick={doRestart}
+              >{restarting ? t('restarting') : t('staleRestart')}</Button>
+            )}
+          </div>
+        )}
+        {/* The market's own new version: named, with what updating does, on
+            Installed; the Installed tab carries a dot so it is found. Once it
+            is downloaded the restart notice below takes over. */}
+        {showMarketOffer && tab === 'installed' && (
+          <div className={css.banner} data-dshm-market-offer>
+            <IconDownloadOutline16 size={14} className={css.bannerIcon} />
+            <span className={css.grow}>
+              {marketOffer.version !== null
+                ? <>{t('marketOfferBanner')} <b>{marketOffer.version}</b></>
+                : t('marketOfferBanner')}
+              <span className={css.bannerSub}>{t('marketOfferHint')}</span>
+            </span>
+            <Button
+              variant="primary"
+              size="sm"
+              aria-label={marketOffer.restoreRequired ? t('restoreOnline') : t('marketUpdate')}
+              disabled={updatingName !== null || busyUrl !== null}
+              onClick={takeMarketOffer}
+            >{updatingName === marketOffer.name ? t('updating') : marketOffer.restoreRequired ? t('restoreOnline') : t('update')}</Button>
+            <button
+              type="button"
+              className={css.bannerClose}
+              aria-label={t('dismissNotice')}
+              title={t('dismissNotice')}
+              onClick={() => {
+                setOfferClosed(marketOffer.version)
+                try { if (marketOffer.version !== null) localStorage.setItem(MARKET_OFFER_CLOSED_KEY, marketOffer.version) } catch { /* storage unavailable */ }
+              }}
+            ><IconCloseOutline16 size={14} /></button>
+          </div>
+        )}
+        {/* On the Plugins page this lives on Installed, next to the rows it is
+            about; the Installed tab carries a dot so it is not missed. */}
+        {pendingRestart > restartClosedAt && tab === 'installed' && (
           <div className={css.banner}>
             <IconRefreshOutline14 size={14} className={css.bannerIcon} />
             <span className={css.grow}><b>{pendingRestart}</b> {t('restartBanner')}</span>
@@ -308,7 +460,14 @@ export function MarketHead({ c }: { c: MarketHeadCtx }) {
             >
               <span className={css.bannerHint}><IconQuestionOutline14 size={14} /></span>
             </Tooltip>
-            {restartEnabled && restartReachable && debuggerLatch === null && recovery === null && !marketGone && (
+            {applyInPlace ? (
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={reloadingSelf === 'working' || hostBusy || busyUrl !== null || updatingName !== null || removingName !== null}
+                onClick={applyNow}
+              >{reloadingSelf === 'working' ? t('restarting') : t('staleReload')}</Button>
+            ) : restartEnabled && restartReachable && debuggerLatch === null && recovery === null && !marketGone && (
               <Button
                 variant="primary"
                 size="sm"
@@ -316,20 +475,20 @@ export function MarketHead({ c }: { c: MarketHeadCtx }) {
                 onClick={doRestart}
               >{restarting ? t('restarting') : t('restartNow')}</Button>
             )}
-            {/* Only the standing host-reported notice is dismissible: a
-                banner for something you just did in this session should not
-                be swipeable away mid-flow. */}
-            {showHostPending && (
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label={t('dismissNotice')}
-                onClick={() => {
+            {reloadingSelf === 'failed' && reloadError !== '' && marketWaiting && <span className={css.grow}>{reloadError}</span>}
+            <button
+              type="button"
+              className={css.bannerClose}
+              aria-label={t('dismissNotice')}
+              title={t('dismissNotice')}
+              onClick={() => {
+                setRestartClosedAt(pendingRestart)
+                if (showHostPending) {
                   setRestartNoticeDismissed(true)
                   try { sessionStorage.setItem('dshm-restart-dismissed', String(bootId ?? '')) } catch { /* storage unavailable */ }
-                }}
-              >{t('dismiss')}</Button>
-            )}
+                }
+              }}
+            ><IconCloseOutline16 size={14} /></button>
           </div>
         )}
         {activationWarnings.length > 0 && (

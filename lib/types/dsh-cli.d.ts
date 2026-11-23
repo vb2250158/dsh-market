@@ -395,6 +395,26 @@ export declare function lastPnpmProbeFailure(): {
  */
 export declare function probePnpm(): Promise<boolean>;
 /**
+ * The cwd to hand a provisioning child.
+ *
+ * `corepack enable`, `npm i -g` and `npm prefix -g` read no project files, so
+ * they gain nothing from inheriting this process's directory — and a host
+ * whose boot directory was deleted loses everything to it: the child dies
+ * inside `getcwd()` before running a line of its own logic, which is how a
+ * one-click setup ended up reporting `npm -g: exit=7` with `syscall:
+ * 'uv_cwd'` (#1270).
+ *
+ * A readable directory is still inherited unchanged, so a healthy machine
+ * behaves exactly as before, including the per-project `.npmrc` npm would
+ * read from it. Only an unreadable one is replaced, and then with a directory
+ * that exists by definition.
+ *
+ * `process.cwd()` throws instead of returning a stale path, so the call
+ * itself is the test.
+ * @returns `undefined` to inherit, or a directory that is known to exist.
+ */
+export declare function provisionCwd(): string | undefined;
+/**
  * Provision pnpm without user involvement: corepack (ships with Node) first,
  * a global npm install as fallback.
  * @returns true when `pnpm --version` succeeds afterwards.

@@ -86,9 +86,10 @@ export declare function configuredProxy(): string | null;
  * through this module's own agent when it has none. Both paths pass the
  * dispatcher described on this module.
  */
-export declare function marketFetch(url: string, init?: {
+export declare function marketFetch(url: string, given?: {
     signal?: AbortSignal;
     headers?: Record<string, string>;
-    method?: 'GET' | 'HEAD';
+    method?: 'GET' | 'HEAD' | 'POST';
+    body?: string;
     redirect?: 'follow' | 'manual';
 }): Promise<Response>;
