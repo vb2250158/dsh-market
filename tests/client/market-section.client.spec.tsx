@@ -461,101 +461,45 @@ describe('the market names its own new version on Installed', () => {
   })
 })
 
-describe('Market self-update waiting hint (#1244)', () => {
+describe('the market\'s own new version beside its version number', () => {
   const current = '1.73.19'
   const until = new Date(2026, 10, 17, 4, 45).toISOString()
   const endpoints = {
     '/dsh-market/status': { active: false, pnpm: true, boot: 'boot-1', version: current },
     '/dsh-market/installed': { profile: 'desktop', installed: { dshmarket: current }, live: ['dshmarket'] },
   }
-  const hint = '(New version)'
+  const offer = /^New version/
 
   beforeEach(() => { vi.setSystemTime(new Date(2026, 10, 17, 0, 54)) })
   afterEach(() => { vi.useRealTimers() })
 
-  it('shows when the held version becomes available and then hands off to the existing action', async () => {
-    let updateAvailable = false
+  it('says nothing about a version that cannot be installed yet: there is nothing to do', async () => {
     stubFetch({
       ...endpoints,
-      '/dsh-market/updates': () => ({ updates: { dshmarket: {
-        kind: 'npm', current, latest: '1.73.20', updateAvailable,
-        ...(updateAvailable ? { eligibleVersion: '1.73.20' } : { heldUpdate: { latest: '1.73.20', until } }),
-      } } }),
+      '/dsh-market/updates': { updates: { dshmarket: {
+        kind: 'npm', current, latest: '1.73.20', updateAvailable: false, heldUpdate: { latest: '1.73.20', until },
+      } } },
     })
     render(<MarketSection {...props()} />)
-    const marker = await screen.findByText(hint)
-    expect(marker.tabIndex).toBe(0)
-    expect(screen.queryByRole('button', { name: en.marketUpdate })).toBeNull()
-    expect(screen.queryByRole('tooltip')).toBeNull()
-
-    fireEvent.mouseEnter(marker)
-    expect((await screen.findByRole('tooltip')).textContent).toBe('v1.73.20 available at 04:45')
-    fireEvent.mouseLeave(marker)
-    expect(screen.queryByRole('tooltip')).toBeNull()
-
-    updateAvailable = true
-    fireEvent.click(screen.getByRole('button', { name: re(en.tabInstalled) }))
-    expect(await screen.findByRole('button', { name: en.marketUpdate })).toBeTruthy()
-    expect(screen.queryByText(hint)).toBeNull()
+    await screen.findByText(`v${current}`)
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    expect(screen.queryByRole('button', { name: offer })).toBeNull()
   })
 
-  it('distinguishes the held release from the existing button’s install target', async () => {
+  it('offers the installable version as one click that starts the update on Installed', async () => {
     stubFetch({
       ...endpoints,
       '/dsh-market/updates': { updates: { dshmarket: {
         kind: 'npm', current, latest: '1.73.21', eligibleVersion: '1.73.20', updateAvailable: true,
         heldUpdate: { latest: '1.73.21', until },
       } } },
-      '/dsh-market/update': { ok: true },
     })
     render(<MarketSection {...props()} />)
-    await openInstalled()
-    const button = await screen.findByRole('button', { name: en.marketUpdate })
-    const marker = screen.getByText(hint)
-    fireEvent.focus(marker)
-    const tooltip = screen.getByRole('tooltip')
-    expect(tooltip.textContent).toContain('v1.73.20 available now')
-    expect(tooltip.textContent).toContain('v1.73.21 available at 04:45')
-    fireEvent.blur(marker)
-    expect(screen.queryByRole('tooltip')).toBeNull()
-
+    const button = await screen.findByRole('button', { name: offer })
+    expect(button.textContent).toContain('v1.73.20')
+    expect(button.textContent).not.toContain('1.73.21')
     fireEvent.click(button)
-    await waitFor(() => expect(fetchCalls.filter(call => call.path === '/dsh-market/update').map(call => call.body))
-      .toEqual([{ name: 'dshmarket', eligibleVersion: '1.73.20' }]))
-  })
-
-  it('identifies a held release without promising an estimated availability time', async () => {
-    stubFetch({
-      ...endpoints,
-      '/dsh-market/updates': { updates: { dshmarket: {
-        kind: 'npm', current, latest: '1.73.20', updateAvailable: false,
-        heldUpdate: { latest: '1.73.20', until, estimated: true },
-      } } },
-    })
-    render(<MarketSection {...props()} />)
-    fireEvent.focus(await screen.findByText(hint))
-    expect(screen.getByRole('tooltip').textContent).toBe('v1.73.20')
-  })
-
-  it('formats a next-day waiting time in the UI language (#1254)', async () => {
-    const DateTimeFormat = Intl.DateTimeFormat
-    const formatter = vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function (locales, options) {
-      return new DateTimeFormat(locales ?? 'zh-CN', options)
-    })
-    try {
-      stubFetch({
-        ...endpoints,
-        '/dsh-market/updates': { updates: { dshmarket: {
-          kind: 'npm', current, latest: '1.73.20', updateAvailable: false,
-          heldUpdate: { latest: '1.73.20', until: new Date(2026, 10, 18, 4, 45).toISOString() },
-        } } },
-      })
-      render(<MarketSection {...props()} />)
-      fireEvent.focus(await screen.findByText(hint))
-      expect(screen.getByRole('tooltip').textContent).toBe('v1.73.20 available at Nov 18, 04:45')
-    } finally {
-      formatter.mockRestore()
-    }
+    await waitFor(() => expect(fetchCalls.some(call => call.path === '/dsh-market/update')).toBe(true))
   })
 })
 
@@ -11755,8 +11699,9 @@ describe('recently added Discover row (#780)', () => {
     registry: { ...REGISTRY, count: plugins.length, plugins },
   })
   const recent = () => screen.getByRole('region', { name: en.recentlyAdded })
-  const names = (element: HTMLElement) => [...element.querySelectorAll<HTMLAnchorElement>(`.${css.nmLink}`)]
-    .map(link => link.getAttribute('aria-label')?.replace(/ — .*$/, '') ?? '')
+  // A tile's name is the same button a card uses (it opens the detail dialog); its title is the full name.
+  const names = (element: HTMLElement) => [...element.querySelectorAll<HTMLElement>(`.${css.recentTile} .${css.nmButton}`)]
+    .map(button => button.getAttribute('title') ?? '')
   const expectHidden = () => expect(screen.queryByRole('region', { name: en.recentlyAdded })).toBeNull()
 
   beforeEach(() => {
@@ -11881,7 +11826,7 @@ describe('recently added Discover row (#780)', () => {
     const title = tile.querySelector(`.${css.recentTitle}`)!
     const bottom = tile.querySelector(`.${css.recentBottom}`)!
     const avatar = tile.querySelector(`.${css.recentAv}`)
-    const name = within(tile).getByRole('link')
+    const name = tile.querySelector<HTMLElement>(`.${css.nmButton}`)!
     const install = within(tile).getByRole('button', { name: en.install })
     const more = within(tile).getByRole('button', { name: en.groupMore })
     const desc = within(tile).getByText('recent-high description')
@@ -11903,38 +11848,28 @@ describe('recently added Discover row (#780)', () => {
     const tile = recent().querySelector(`.${css.recentTile}`)!
     const title = tile.querySelector(`.${css.recentTitle}`)!
     const bottom = tile.querySelector(`.${css.recentBottom}`)!
-    expect(title.contains(within(tile).getByRole('link'))).toBe(true)
+    expect(title.contains(tile.querySelector(`.${css.nmButton}`))).toBe(true)
     expect(title.contains(within(tile).getByRole('button', { name: en.install }))).toBe(true)
     expect(bottom.contains(within(tile).getByRole('button', { name: en.groupMore }))).toBe(true)
-    expect(tile.querySelector(`.${css.recentDesc}`)).toBeNull()
+    expect(tile.querySelector(`.${css.recentDescBox}`)).toBeNull()
   })
 
-  it('keeps the full name and description available on hover', async () => {
+  it('opens the same detail dialog as a card from the name and from the description', async () => {
     stubFetch({ '/dsh-market/registry': registry() })
     render(<MarketSection {...props()} />)
     await screen.findByRole('region', { name: en.recentlyAdded })
     const first = recent().querySelector(`.${css.recentTile}`)!
-    const name = within(first).getByRole('link')
-    const desc = within(first).getByText('recent-high description')
-    // Native title is the beige system bubble; the host Tooltip is the one
-    // that matches the rest of the page.
-    expect(name.getAttribute('title')).toBeNull()
-    expect(desc.getAttribute('title')).toBeNull()
-    fireEvent.mouseEnter(name)
-    expect(screen.queryByRole('tooltip')).toBeNull()
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 400)) })
-    expect(screen.queryByRole('tooltip')).toBeNull()
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)) })
-    expect(screen.getByRole('tooltip').textContent).toBe('recent-high')
-    fireEvent.mouseLeave(name)
-    fireEvent.mouseEnter(desc)
-    expect(screen.queryByRole('tooltip')).toBeNull()
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 400)) })
-    expect(screen.queryByRole('tooltip')).toBeNull()
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)) })
-    expect(screen.getByRole('tooltip').textContent).toBe('recent-high description')
-    fireEvent.mouseLeave(desc)
-    expect(screen.queryByRole('tooltip')).toBeNull()
+    const name = first.querySelector<HTMLElement>(`.${css.nmButton}`)!
+    // The full name stays reachable on a truncated tile.
+    expect(name.getAttribute('title')).toBe('recent-high')
+    fireEvent.click(name)
+    let dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByRole('button', { name: en.confirmInstall })).toBeTruthy()
+    fireEvent.click(dialog.getByRole('button', { name: en.cancel }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: en.confirmInstall })).toBeNull())
+    fireEvent.click(within(first as HTMLElement).getByText('recent-high description'))
+    dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByRole('button', { name: en.confirmInstall })).toBeTruthy()
   })
 
   it('keeps extra recent tiles on a quiet horizontal scroll, capped at eight', async () => {
@@ -11972,8 +11907,8 @@ describe('recently added Discover row (#780)', () => {
     expect(row).not.toContain('scrollbar-width:none')
     const tiles = rule('recentRow > *')
     expect(tiles).toContain('flex:0 0 auto')
-    expect(tiles).toContain('/ 3.25)')
-    expect(tiles).toContain('min-width:220px')
+    expect(tiles).toContain('/ 2.6)')
+    expect(tiles).toContain('min-width:260px')
     const collapsed = rule('recentRow.recentCollapsed')
     expect(collapsed).toContain('overflow:hidden')
   })

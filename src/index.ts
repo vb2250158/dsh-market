@@ -18,6 +18,8 @@ import { observeStartupRepair } from './startup-repair-report.ts'
 import type { AgentsServiceLike } from './agents.ts'
 import { modelAccess, registerFindPlugin, setModelAccess, type CommandsServiceLike, type LlmLike, type ModelSelectionLike } from './find-plugin.ts'
 import { loadRegistry } from './registry.ts'
+import { githubPackageVersionAt } from './github-install-target.ts'
+import { activeRegion } from './regions.ts'
 
 export const name = 'dsh-market'
 
@@ -242,11 +244,32 @@ export function useTrustedHosts(ctx: Context): () => void {
     }
     return hosts
   })
+  // The gate below calls `connection.admit`, which verifies the browser login
+  // through `connection.authentication`. Cordis resolves a service property
+  // through the context the service was READ from, not the one that provided
+  // it: reading the connection from this plugin's own context — which
+  // declares `webServer` and `loader`, never the registry — made `admit`
+  // throw `cannot get property "connection.authentication" without inject`.
+  // The fence turns any throw into 403, so every route answered 403 for every
+  // browser, signed in or not, on every host that replaced `requestRejection`
+  // with `admit` (#1299).
+  //
+  // Declaring the registry is what makes that read legal, and the declared
+  // scope is what the call has to be made from. A host that has no registry —
+  // every release before `admit` existed — leaves the scope cold, and the
+  // source below then reads the connection from here exactly as it always
+  // did: `requestRejection` needs no such declaration. A host that has one
+  // makes both branches reachable, which is the whole point.
+  let gateCtx: Context | undefined
+  const gateScope = ctx.inject(['connection', 'connection.authentication'], (loginCtx: Context) => {
+    gateCtx = loginCtx
+    return () => { if (gateCtx === loginCtx) gateCtx = undefined }
+  })
   // The same service carries the host's request gate (#603): its fence plus
   // its browser login, the check its own API runs. Read per request for the
   // same reason as the authorities above.
   const previousGate = setRequestGateSource(() => {
-    const connection = ctx.get('connection') as { requestRejection?: unknown; admit?: unknown } | undefined
+    const connection = (gateCtx ?? ctx).get('connection') as { requestRejection?: unknown; admit?: unknown } | undefined
     const gate = connection?.requestRejection
     if (typeof gate === 'function') {
       return request => (gate as (request: unknown) => number | undefined).call(connection, request)
@@ -268,6 +291,11 @@ export function useTrustedHosts(ctx: Context): () => void {
   return () => {
     setTrustedHostsSource(previous)
     setRequestGateSource(previousGate)
+    // The scoped fiber holds the only declaration that made the gate readable;
+    // keeping it alive after the source is pulled back would leave a dependency
+    // on a host that may never provide it.
+    void Promise.resolve(gateScope.dispose()).catch(() => {})
+    gateCtx = undefined
   }
 }
 
@@ -357,6 +385,24 @@ export function apply(ctx: Context, config?: Config): void {
           // globally: other official-desktop installs still go through the
           // manager (#702). The market itself is the one exception (#982).
           hostPackageManagerOf(profileContext),
+          {
+            // A Git bundle's in-place update names the exact version of the
+            // commit it installs; the commit's package.json is the only place
+            // that number lives.
+            gitVersionAt: spec => githubPackageVersionAt(spec, activeRegion()),
+            // dsh 0.2.2+ announces the steps of an in-place update; the page
+            // shows which one is running instead of one fixed line.
+            watchUpdateSteps: (requestId, listener) => {
+              const subscribe = (hostCtx as unknown as {
+                on?: (event: string, listener: (progress: { requestId?: string; step?: string }) => void) => () => void
+              }).on
+              if (typeof subscribe !== 'function') return () => {}
+              const dispose = subscribe.call(hostCtx, 'plugin-manager/update-state', progress => {
+                if (progress.requestId === requestId && typeof progress.step === 'string') listener(progress.step)
+              })
+              return typeof dispose === 'function' ? dispose : () => {}
+            },
+          },
         )
         const resolved: MarketConfig = {
           profile: profileName,
